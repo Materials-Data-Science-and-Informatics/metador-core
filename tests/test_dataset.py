@@ -19,7 +19,7 @@ def ds_dir(tmpdir_factory):
 DS_NAME = "Test-ds1"  # dataset used throughout the tests
 
 
-def test_open_create_write(ds_dir):
+def test_open_create_write_base(ds_dir):
     # dataset names: only alphanumeric and dashes allowed
     for name in ["invalid.name", "invalid_name", "Юникод", "inva#lid"]:
         assert not ArdiemDataset._is_valid_dataset_name(name)
@@ -262,7 +262,11 @@ def test_create_patch1(ds_dir):
 
         assert "attribute" not in ds["/number"].attrs
         ds["/number"].attrs["attribute"] = "value"  # add (to dataset)
+        ds["/number"].attrs["attribute2"] = "value2"  # add (to dataset)
         assert ds["number"].attrs["attribute"] == "value"
+        assert ds["number"].attrs["attribute2"] == "value2"
+        assert "attribute" in ds["/number"].attrs
+        assert "attribute2" in ds["/number"].attrs
 
         assert "newattr" not in ds["nested"].attrs
         ds["nested"].attrs["newattr"] = 432  # add (to group)
@@ -322,7 +326,7 @@ def test_create_patch1(ds_dir):
         assert "/nested/group2" not in ds
         ds["/nested/group2"] = 123
         assert "/nested/group2" in ds
-        assert ds["/nested/group2"][()] == 123
+        assert ds["/nested/group2"][()] == 123  # type: ignore
 
         assert "bool" in ds
         del ds["bool"]  # delete dataset
@@ -332,9 +336,8 @@ def test_create_patch1(ds_dir):
         assert "/nested/bool" in ds
         with pytest.raises(ValueError):
             ds["/nested/bool/surprise"] = 1337
-        # TODO:
-        # with pytest.raises(ValueError):
-        #     ds["nested"].create_group("bool")
+        with pytest.raises(ValueError):
+            ds["nested"].create_group("bool")
         del ds["/nested/bool"]
         assert "/nested/bool" not in ds
         val = ds._files[-1]["/nested/bool"][()].tobytes()  # type: ignore
@@ -362,9 +365,11 @@ def test_create_patch1(ds_dir):
 # /@rootattr = 234
 # /number = 42
 # /number@attribute = "value"
+# /number@attribute2 = "value2"
 # /nested@newattr = 432
 # /nested/bool = True
 # /nested/list = [1,2,3]
+# /nested/group2/
 # /nested/group/string = "newvalue"
 # /pocket/containing/data = "value"
 def test_check_patch1(ds_dir):
@@ -376,6 +381,7 @@ def test_check_patch1(ds_dir):
         assert set(ds["/nested/group"].keys()) == set(["string"])
         assert ds.attrs["rootattr"] == 234  # get new value
         assert ds["number"].attrs["attribute"] == "value"
+        assert ds["number"].attrs["attribute2"] == "value2"
         assert ds["nested"].attrs["newattr"] == 432
         assert ds["/number"][()] == 42  # type: ignore
         assert ds["/nested/bool/surprise"][()] == 1337
@@ -386,13 +392,66 @@ def test_check_patch1(ds_dir):
         assert ds["/nested/group"]._gpath == "/nested/group"
         assert ds["nested"]["group"]._gpath == "/nested/group"
         assert ds["nested/group"]["/pocket/containing"]._gpath == "/pocket/containing"
+        assert "nested/group2" in ds
 
 
 def test_create_patch2(ds_dir):
-    # TODO: replace root
-    pass
+    with ArdiemDataset.open(ds_dir / DS_NAME) as ds:
+        ds.create_patch()
+
+        # some more attribute mangling
+        del ds["number"].attrs["attribute2"]  # remove
+        ds["number"].attrs["attribute"] = "value2"  # override
+        ds["number"].attrs["attribute3"] = "another_value"  # add
+
+        # override nested group, everything inside should die!
+        assert "nested" in ds
+        assert list(ds["nested"].attrs.keys()) == ["newattr"]
+        with pytest.raises(ValueError):
+            ds.create_group("/nested")  # already exists
+        del ds["nested"]
+        assert "nested" not in ds
+        with pytest.raises(KeyError):
+            ds["nested"].attrs  # type: ignore
+
+        # recreate it -> children and attributes must be empty
+        ds.create_group("/nested")
+        assert "nested" in ds
+        assert not list(ds["nested"].keys())  # type: ignore
+        assert not list(ds["nested"].attrs.keys())  # type: ignore
+
+        # add a new dataset, with nesting
+        ds["nested/newstuff/dat"] = 1123
+
+        # remove a group with content
+        del ds["pocket/containing"]
+
+        ds.commit()
 
 
 def test_check_patch2(ds_dir):
-    # TODO
-    pass
+    with ArdiemDataset.open(ds_dir / DS_NAME) as ds:
+        assert len(ds.containers) == 3
+        assert list(ds["number"].attrs.keys()) == ["attribute", "attribute3"]
+        assert ds["number"].attrs["attribute"] == "value2"
+        assert ds["number"].attrs["attribute3"] == "another_value"
+
+        assert list(ds["nested"].keys()) == ["newstuff"]
+        assert ds["nested/newstuff/dat"][()] == 1123
+        assert "pocket" in ds
+        assert "pocket/containing" not in ds
+
+
+# TODO: add more isolated tests for different aspects, one DS per test
+
+# for attributes, groups and datasets:
+# should fail:
+# delete non-existing
+# create existing
+# should succeed:
+# delete existing
+# create non-existing
+# should work correctly (override = delete, then create):
+# override existing (dataset -> group, group -> dataset, group -> group, dataset -> dataset)
+# ensure: that create/override kills old attributes of nodes
+# access data of complex ds with n patches (w/non-trivial patched group and attribute set)

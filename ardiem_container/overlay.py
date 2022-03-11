@@ -6,12 +6,10 @@ groups and attributes to the correct path.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import h5py
 import numpy as np
-
-H5Node = Union[h5py.Dataset, h5py.Group]
 
 
 def _latest_container_idx(files, gpath) -> Optional[int]:
@@ -29,14 +27,10 @@ def _latest_container_idx(files, gpath) -> Optional[int]:
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 
 
-def _is_del_value(value) -> bool:
-    """Return whether given value is equal to the special `DEL_VALUE`."""
-    return isinstance(value, np.void) and value.tobytes() == DEL_VALUE.tobytes()
-
-
-def _node_is_deletion(node: H5Node) -> bool:
+def _node_is_del_mark(node) -> bool:
     """Return whether node is marking a deleted group/dataset/attribute value."""
-    return _is_del_value(node[()] if isinstance(node, h5py.Dataset) else node)
+    val = node[()] if isinstance(node, h5py.Dataset) else node
+    return isinstance(val, np.void) and val.tobytes() == DEL_VALUE.tobytes()
 
 
 # attribute key marking group substitution (instead of pass-through default for groups)
@@ -45,7 +39,7 @@ def _node_is_deletion(node: H5Node) -> bool:
 SUBST_KEY = "\x1a"  # ASCII SUBSTITUTE
 
 
-def _node_is_virtual(node: H5Node) -> bool:
+def _node_is_virtual(node) -> bool:
     """Virtual node (i.e. transparent and only carrier for child nodes and attributes)."""
     return isinstance(node, h5py.Group) and SUBST_KEY not in node.attrs
 
@@ -55,6 +49,9 @@ class ArdiemNode:
 
     It takes care of finding the correct container to look for the data
     and helps with patching data in a new patch container.
+
+    It essentially lifts the interface of h5py from a single file to an Ardiem dataset
+    that may consist of a base container file and a number of patch containers.
     """
 
     def __init__(self, files: List[h5py.File], gpath: str, creation_idx: int):
@@ -82,13 +79,19 @@ class ArdiemNode:
         """Index of the latest container."""
         return len(self._files) - 1
 
+    def _inspect_path(self, path):
+        """Print the path node of all containers where the path is contained in."""
+        print(f"Path {path}:")
+        for j in range(len(self._files)):
+            if path in self._files[j]:
+                node = self._files[j][path]
+                print(f"  idx={j}: {type(node).__name__}")
+                if isinstance(node, h5py.Dataset):
+                    print("    ", node[()])
+
 
 class ArdiemInnerNode(ArdiemNode):
     """Common Group and AttributeManager overlay with familiar dict-like interface.
-
-    It lifts the interface of h5py from a single file to an Ardiem dataset
-    that may consist of a base container file and a number of patch containers.
-    This overlay takes care of returning the correct, most recent values.
 
     Will grant either access to child datasets/subgroups,
     or to the attributes attached to the group/dataset at a path in a dataset.
@@ -183,14 +186,20 @@ class ArdiemInnerNode(ArdiemNode):
             k: idx
             for k, idx in children.items()
             if (not self._attrs or not k == SUBST_KEY)
-            and not _node_is_deletion(self._get_child_raw(k, idx))
+            and not _node_is_del_mark(self._get_child_raw(k, idx))
         }
 
     def _create_group(self, gpath):
         """Create group, overwriting whatever was at that path."""
         path = self._abs_path(gpath)
+        nodes = self._node_seq(gpath)
+        if not isinstance(nodes[-1], ArdiemGroup):
+            raise ValueError(f"Cannot create group, {nodes[-1]._gpath} is a dataset!")
+        if nodes[-1]._gpath == path:
+            raise ValueError("Cannot create group, it already exists!")
+
         # remove "deleted" marker, if set at current path in current patch container
-        if path in self._files[-1] and _node_is_deletion(self._files[-1][path]):
+        if path in self._files[-1] and _node_is_del_mark(self._files[-1][path]):
             del self._files[-1][path]
         # create group (or fail if something else exists there already)
         self._files[-1].create_group(path)
@@ -199,64 +208,75 @@ class ArdiemInnerNode(ArdiemNode):
         if len(self._files) > 1:
             self._files[-1][path].attrs[SUBST_KEY] = h5py.Empty(None)
 
+    def _node_seq(self, path: str) -> List[ArdiemNode]:
+        """Return node sequence (node per path prefix) to given path.
+
+        Returns:
+            Sequence starting with the current node (if path is relative)
+            or the root node (if absolute) followed by all successive
+            children along the requested path that exist.
+        """
+        curr = ArdiemGroup(self._files) if path[0] == "/" else self
+
+        ret: List[ArdiemNode] = [curr]
+        if path == "/":  # special case
+            return ret
+
+        # access entity through child group sequence
+        segs = path.strip("/").split("/")
+        nxt_cidx = 0
+        for i in range(len(segs)):
+            seg, is_last_seg = segs[i], i == len(segs) - 1
+            # find most recent container with that child
+            nxt_cidx = curr._children.get(seg, -1)
+            if nxt_cidx == -1:
+                return ret  # not found -> return current prefix
+            curr = curr._get_child(seg, nxt_cidx)  # proceed to child
+            ret.append(curr)
+            # catch invalid access, e.g. /foo is dataset, user accesses /foo/bar:
+            if not is_last_seg and isinstance(curr, ArdiemValue):
+                raise ValueError(f"Cannot access path inside a dataset: {curr._gpath}")
+        # return path index sequence
+        return ret
+
     def _find(self, key: str, create: bool = False) -> Optional[int]:
         """Return index of container holding that key (attribute or path), if any.
 
         Args:
             key: nonempty string (attribute, or relative/absolute path)
-            create: if set, will create a virtual node if path does not exist
 
         Returns:
-            Index >= 0 of most recent container patching that path if found,
-            None if not found and -1 if create is set and a virtual node is created.
+            Index >= 0 of most recent container patching that path if found, else None.
         """
-        if self._attrs:  # access an attribute by key
+        if self._attrs:  # access an attribute by key (always "relative")
             return self._children.get(key, None)
-        # take care if the path is absolute -> need the root group!
-        curr = ArdiemGroup(self._files) if key[0] == "/" else self
-        if key == "/":  # special case
-            return curr._cidx  # return index of latest root group
+        # access a path (absolute or relative)
+        nodes = self._node_seq(key)
+        return nodes[-1]._cidx if nodes[-1]._gpath == self._abs_path(key) else None
 
-        # access entity through child group sequence
-        segs = key.strip("/").split("/")
-        nxt_cidx = 0
-        for i in range(len(segs)):
-            seg = segs[i]
-            is_last_seg = i == len(segs) - 1
+    def _create_virtual(self, key: str) -> bool:
+        nodes = self._node_seq(key)
+        path = self._abs_path(key)
+        if (
+            nodes[-1]._gpath == path
+            and nodes[-1]._cidx == self._last_idx
+            and not _node_is_del_mark(nodes[-1])
+        ):
+            return False  # something at that path in most recent container exists
 
-            # find most recent container with that child
-            nxt_cidx = curr._children.get(seg, -1)
-            if nxt_cidx == -1 and not create:
-                return None  # not found and no overlay created
+        missing_suf = path[len(nodes[-1]._gpath):].lstrip("/")
+        suf_segs = missing_suf.split("/")
+        # print(path, missing_suf, suf_segs)
 
-            # create virtual node in most recent container, if path not found there
-            if create:
-                # most recent entity is a deletion marker or not existing?
-                if nxt_cidx == -1 or _node_is_deletion(curr):
-                    # create "overwrite" group in most recent patch...
-                    self._create_group(f"{curr._gpath}/{seg}")
-                    # ... and create (nested) virtual group node(s), if needed
-                    if not is_last_seg:
-                        self._files[-1].create_group(key)
+        # most recent entity is a deletion marker or not existing?
+        if nodes[-1]._gpath != path or _node_is_del_mark(nodes[-1]):
+            # create "overwrite" group in most recent patch...
+            self._create_group(f"{nodes[-1]._gpath}/{suf_segs[0]}")
+            # ... and create (nested) virtual group node(s), if needed
+            if len(suf_segs) > 1:
+                self._files[-1].create_group(key)
 
-                    return -1  # found in previous, but created overlay
-
-            # proceed to child
-            curr = curr._get_child(seg, nxt_cidx)
-            # catch invalid access, e.g. /foo is dataset, user accesses /foo/bar:
-            if not is_last_seg and isinstance(curr, ArdiemValue):
-                raise ValueError(f"Cannot access path inside a dataset: {curr._gpath}")
-
-        return nxt_cidx  # found in some previous container, w/o creating overlay node
-
-    def _inspect_path(self, path):
-        print(f"Path {path}:")
-        for j in range(len(self._files)):
-            if path in self._files[j]:
-                node = self._files[j][path]
-                print(f"  idx={j}: {type(node).__name__}")
-                if isinstance(node, h5py.Dataset):
-                    print("    ", node[()])
+        return True
 
     def __setitem__(self, key: str, val):
         self._check_key(key)
@@ -277,14 +297,14 @@ class ArdiemInnerNode(ArdiemNode):
                     if isinstance(prev_val, ArdiemGroup):
                         raise ValueError("Path is a group, cannot overwrite with data!")
 
-                if path in self._files[-1] and _node_is_deletion(
+                if path in self._files[-1] and _node_is_del_mark(
                     self._get_child_raw(path, self._last_idx)
                 ):
                     # remove deletion marker in latest patch, if set
                     del self._files[-1][path]
                 elif path not in self._files[-1]:
                     # create path and overwrite-group in latest patch
-                    self._find(path, create=True)
+                    self._create_virtual(path)
                     assert path in self._files[-1]
                     del self._files[-1][path]
 
@@ -297,21 +317,25 @@ class ArdiemInnerNode(ArdiemNode):
     def __delitem__(self, key: str):
         self._check_key(key)
         found_cidx = self._find(key)
-        if found_cidx is None or _is_del_value(self._get_child(key, found_cidx)):
+        if found_cidx is None or _node_is_del_mark(self._get_child(key, found_cidx)):
             raise KeyError(f"Cannot delete, '{key}' does not exist!")
-        # remove entity if found in newest container
-        if found_cidx == self._last_idx:
-            if self._attrs:
+        # remove the entity if it is found in newest container,
+        # mark the path as deleted if doing a patch and not working on base container
+        found_in_latest = found_cidx == self._last_idx
+        has_patches = len(self._files) > 1
+        if self._attrs:
+            if found_in_latest:
                 del self._files[-1][self._gpath].attrs[key]
-            else:
-                path = self._abs_path(key)
+            if has_patches:
+                if self._gpath not in self._files[-1]:  # no node at path in latest?
+                    self._files[-1].create_group(self._gpath)  # create "virtual" node
+                self._files[-1][self._gpath].attrs[key] = DEL_VALUE  # mark deleted
+        else:
+            path = self._abs_path(key)
+            if found_in_latest:
                 del self._files[-1][path]
-        # mark path as deleted if doing a patch
-        if len(self._files) > 1:
-            if self._attrs:
-                self._files[-1][self._gpath].attrs[key] = DEL_VALUE
-            else:
-                self._files[-1][key] = DEL_VALUE
+            if has_patches:
+                self._files[-1][path] = DEL_VALUE
 
     def __getitem__(self, key: str):
         self._check_key(key)
@@ -367,7 +391,7 @@ class ArdiemGroup(ArdiemInnerNode):
     def __init__(self, files, gpath: str = "/", creation_idx: Optional[int] = None):
         if creation_idx is None:
             creation_idx = _latest_container_idx(files, gpath)
-            assert creation_idx is not None  # this is only used with /, which exists
+            assert creation_idx is not None  # this is only used with '/' (always exists)
         super().__init__(files, gpath, creation_idx, False)
 
     @property
