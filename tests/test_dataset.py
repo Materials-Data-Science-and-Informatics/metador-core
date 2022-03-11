@@ -1,8 +1,14 @@
 import h5py
+import numpy as np
 import pytest
 
 from ardiem_container.dataset import ArdiemDataset
-from ardiem_container.overlay import ArdiemAttributeManager, ArdiemGroup, ArdiemValue
+from ardiem_container.overlay import (
+    DEL_VALUE,
+    ArdiemAttributeManager,
+    ArdiemGroup,
+    ArdiemValue,
+)
 
 
 @pytest.fixture(scope="session")
@@ -164,15 +170,38 @@ def test_open_create_write(ds_dir):
     with pytest.raises(KeyError):
         del nested["/nested/addremove"]
 
-    # check keys / values / items function
-    assert set(ds.keys()) == {"number", "bool", "nested"}
-    assert len(ds.values()) == len(ds.items()) == 3
-
-    assert set(nested.attrs.keys()) == {"myattr"}
-    assert set(nested.attrs.values()) == {321}
-    assert dict(nested.attrs.items()) == {"myattr": 321}
-
+    ds["/nested/group2/int"] = 135  # add another nested group and value
     ds.close()
+
+
+# base container layout:
+# ---------------
+# /@rootattr = 123
+# /number = 42
+# /bool = False
+# /nested@myattr = 321
+# /nested/bool = True
+# /nested/group/string = "hello world"
+# /nested/group2/int = 135
+def test_check_base(ds_dir):
+    with ArdiemDataset.open(ds_dir / DS_NAME) as ds:
+        assert len(ds.containers) == 1
+        nested = ds["nested"]
+
+        # test dict functions and attributes
+        assert dict(ds.attrs)["rootattr"] == 123
+        assert set(ds.keys()) == {"number", "bool", "nested"}
+        assert len(ds.values()) == len(ds.items()) == 3
+        assert set(nested.attrs.keys()) == {"myattr"}
+        assert set(nested.attrs.values()) == {321}
+        assert dict(nested.attrs.items()) == {"myattr": 321}
+
+        # check content of data
+        assert ds["/number"][()] == 42
+        assert ds["/bool"][()] == False
+        assert ds["/nested/bool"][()] == True
+        assert ds["/nested/group/string"][()] == b"hello world"
+        assert ds["/nested/group2/int"][()] == 135
 
 
 def test_patch_create_discard(ds_dir):
@@ -223,17 +252,7 @@ def test_patch_create_discard(ds_dir):
             ds["/nested"].attrs["newattr"]
 
 
-# base container layout:
-# ---------------
-# /@rootattr = 123
-# /number = 42
-# /bool = False
-# /nested@myattr = 321
-# /nested/bool = True
-# /nested/group/string = "hello"
-
-
-def test_patch1(ds_dir):
+def test_create_patch1(ds_dir):
     with ArdiemDataset.open(ds_dir / DS_NAME) as ds:
         assert len(ds.containers) == 1
         ds.create_patch()
@@ -260,39 +279,82 @@ def test_patch1(ds_dir):
         assert "myattr" not in ds["/nested"].attrs
         with pytest.raises(KeyError):
             del ds["/nested"].attrs["myattr"]  # remove again (should fail)
+        ds["/nested"].attrs["myattr"] = "aloha"  # re-add again (should work)
+        assert "myattr" in ds["/nested"].attrs
+        assert ds["nested"].attrs["myattr"] == "aloha"
+        del ds["/nested"].attrs["myattr"]  # remove for good
+        assert "myattr" not in ds["/nested"].attrs
 
         # try setting/changing attribute of non-existing
         with pytest.raises(KeyError):
             ds["/non-existing"].attrs["someattr"] = "something"
 
         # similarly for datasets and groups - create, substitute and remove
-        # TODO
+
+        assert "list" not in ds["/nested"]
+        ds["/nested"]["list"] = [1, 3, 4]  # add a dataset
+        assert np.array_equal(ds["/nested/list"][()], np.array([1, 3, 4]))
+        assert ds["nested"]["list"][1] == 3
+        ds["/nested"]["list"][1:] = np.array([2, 3])  # modify part of the data
+        assert np.array_equal(ds["/nested/list"][()], np.array([1, 2, 3]))
+
+        assert "number" in ds
+        with pytest.raises(OSError):  # just replacing dataset should fail (like h5py)
+            ds["/number"] = 123
+        # should stay the same as before
+        assert ds["/number"][()] == 42  # type: ignore
+
+        assert "/nested/group/string" in ds
+        assert "group/string" in ds["nested"]
+        del ds["/nested/group/string"]  # delete dataset... (should set marker)
+        assert "group/string" not in ds["nested"]
+        val = ds._files[-1]["/nested/group/string"][()].tobytes()  # type: ignore
+        assert val == DEL_VALUE.tobytes()
+        ds["/nested/group/string"] = "newvalue"  # ... recreate anew at same path
+        assert "group/string" in ds["nested"]
+        assert ds["/nested/group/string"][()] == b"newvalue"  # type: ignore
+
+        # replace a group with a dataset
+        assert "/nested/group2" in ds
+        with pytest.raises(ValueError):
+            ds["/nested/group2"] = 123
+        del ds["/nested/group2"]
+        assert "/nested/group2" not in ds
+        ds["/nested/group2"] = 123
+        assert "/nested/group2" in ds
+        assert ds["/nested/group2"][()] == 123
+
+        assert "bool" in ds
+        del ds["bool"]  # delete dataset
+        assert "bool" not in ds
+
+        # remove a dataset and put a group with a new dataset there
+        assert "/nested/bool" in ds
+        with pytest.raises(ValueError):
+            ds["/nested/bool/surprise"] = 1337
+        # TODO:
+        # with pytest.raises(ValueError):
+        #     ds["nested"].create_group("bool")
+        del ds["/nested/bool"]
+        assert "/nested/bool" not in ds
+        val = ds._files[-1]["/nested/bool"][()].tobytes()  # type: ignore
+        assert val == DEL_VALUE.tobytes()
+        ds["/nested/bool/surprise"] = 1337
+        assert "bool/surprise" in ds["nested"]
+        assert ds["/nested"]["bool/surprise"][()] == 1337
+
+        # create fresh group
+        assert "pocket" not in ds
+        ds.create_group("pocket")
+        assert "pocket" in ds
+
+        # implicitly create nested group and create a dataset
+        assert "pocket/containing/data" not in ds
+        ds["pocket/containing/data"] = "value"
+        assert "pocket/containing/data" in ds
+        assert ds["/pocket/containing/data"][()] == b"value"  # type: ignore
 
         ds.commit()
-        assert len(ds.containers) == 2
-
-        # check again after it was reopened as read-only:
-        assert set(ds.keys()) == set(["number", "bool", "nested"])
-        assert set(ds["/nested"].keys()) == set(["bool", "group"])
-        assert set(ds["/nested/group"].keys()) == set(["string"])
-        assert ds.attrs["rootattr"] == 234  # get new value
-        assert ds["number"].attrs["attribute"] == "value"
-        assert ds["nested"].attrs["newattr"] == 432
-        assert ds["/number"][()] == 42
-        assert ds["/bool"][()] == False
-        assert ds["/nested/bool"][()] == True
-        assert ds["/nested/group/string"][()] == b"hello world"
-
-        # just check for correct gpath (the / and combining paths should work right)
-        assert ds["/nested/group"]._gpath == "/nested/group"
-        assert ds["nested"]["group"]._gpath == "/nested/group"
-        assert ds["nested/group"]["/nested/bool"]._gpath == "/nested/bool"
-
-
-# TODO: replace dataset with directory
-# replace directory with dataset
-# add new ones, delete old ones, substitute with same kind of thing
-# replace root
 
 
 # container + patch 1 layout:
@@ -300,7 +362,37 @@ def test_patch1(ds_dir):
 # /@rootattr = 234
 # /number = 42
 # /number@attribute = "value"
-# /bool = False
 # /nested@newattr = 432
 # /nested/bool = True
-# /nested/group/string = "hello"
+# /nested/list = [1,2,3]
+# /nested/group/string = "newvalue"
+# /pocket/containing/data = "value"
+def test_check_patch1(ds_dir):
+    with ArdiemDataset.open(ds_dir / DS_NAME) as ds:
+        assert len(ds.containers) == 2
+
+        assert set(ds.keys()) == set(["number", "nested", "pocket"])
+        assert set(ds["/nested"].keys()) == set(["bool", "group", "group2", "list"])
+        assert set(ds["/nested/group"].keys()) == set(["string"])
+        assert ds.attrs["rootattr"] == 234  # get new value
+        assert ds["number"].attrs["attribute"] == "value"
+        assert ds["nested"].attrs["newattr"] == 432
+        assert ds["/number"][()] == 42  # type: ignore
+        assert ds["/nested/bool/surprise"][()] == 1337
+        assert np.array_equal(ds["/nested/list"][()], np.array([1, 2, 3]))
+        assert ds["/nested/group/string"][()] == b"newvalue"  # type: ignore
+
+        # just check for correct gpath (the / and combining paths should work right)
+        assert ds["/nested/group"]._gpath == "/nested/group"
+        assert ds["nested"]["group"]._gpath == "/nested/group"
+        assert ds["nested/group"]["/pocket/containing"]._gpath == "/pocket/containing"
+
+
+def test_create_patch2(ds_dir):
+    # TODO: replace root
+    pass
+
+
+def test_check_patch2(ds_dir):
+    # TODO
+    pass

@@ -41,6 +41,9 @@ from .util import hashsum
 
 # TODO: hashsum directory tree helper function (to help creating updates from directory)
 
+# TODO: explain the "patching algebra" rules, pseudo Haskell?
+# maybe use that formalization for property-based tests with hypothesis?
+
 
 class ArdiemDataset:
     """
