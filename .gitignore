@@ -1,5 +1,6 @@
 # don't add test containers
-*.rdm.h5
+*.ih5
+scratch.py
 
 # we don't keep the auto-generated docs in the source repo
 docs/

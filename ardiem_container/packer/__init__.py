@@ -2,9 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict
 
-import h5py
-
-from ..container import ArdiemContainer
+from ..dataset import IH5Dataset
 
 
 class ArdiemPacker(ABC):
@@ -25,13 +23,13 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def check_directory(dir: Path) -> Dict[str, str]:
+    def check_directory(data_dir: Path) -> Dict[str, str]:
         """Check whether the given directory is suitable for packing with this plugin.
 
         This method will be called before `pack_directory`.
 
         Args:
-            dir: Directory containing all the data to be packed
+            data_dir: Directory containing all the data to be packed
 
         Returns:
             {} if there are no problems and the directory can be packed.
@@ -47,17 +45,18 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def pack_directory(dir: Path, container: h5py.File):
-        """Pack a directory into an Ardiem HDF5 container.
+    def pack_directory(data_dir: Path, dataset: IH5Dataset, update: bool):
+        """Pack a directory into an Ardiem IH5 dataset or update it.
 
-        It is assumed that `dir` is suitable (according to `check_directory`).
+        It is assumed that `data_dir` is suitable (according to `check_directory`).
         The container file will be overwritten, if it already exists.
 
         No files in `dir` will be created or modified.
 
         Args:
-            dir: Directory containing all the data to be packed
-            container: Filepath to be used for the resulting container
+            data_dir: Directory containing all the data to be packed
+            container: IH5 dataset to pack the data into
+            update: if true, this is a non-empty dataset to be updated
         """
 
     # TODO: what if packing fails? maybe need ArdiemPackerException
@@ -69,23 +68,23 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def check_container(container: ArdiemContainer) -> Dict[str, str]:
-        """Check a container assembled by this plugin whether it is in order.
+    def check_container(dataset: IH5Dataset) -> Dict[str, str]:
+        """Check a dataset assembled by this plugin whether it is in order.
 
         This clearly must be the case immediately after `pack_directory` and
         can be used to verify the internal container structure in case that
         e.g. the user manually modified it.
 
         Args:
-            container: Filepath to the existing packed container
+            dataset: The dataset to be verified
 
         Returns:
             {} if there are no problems with the container.
 
-            Otherwise, a dict mapping container group paths to error messages.
+            Otherwise, a dict mapping dataset paths to error messages.
 
             The error message must be either a string (containing a
             human-readable summary of all problems with that file), or another
-            dict with more granular error messages, in case that the file is a
+            dict with more granular error messages, e.g. in case that the file is a
             JSON-compatible file subject to validation with JSON Schemas.
         """

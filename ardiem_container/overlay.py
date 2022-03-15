@@ -6,10 +6,13 @@ groups and attributes to the correct path.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import h5py
 import numpy as np
+
+# TODO: overlay maybe also could support symlinks as a special kind of value
 
 
 def _latest_container_idx(files, gpath) -> Optional[int]:
@@ -27,10 +30,14 @@ def _latest_container_idx(files, gpath) -> Optional[int]:
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 
 
+def _is_del_mark(val) -> bool:
+    return isinstance(val, np.void) and val.tobytes() == DEL_VALUE.tobytes()
+
+
 def _node_is_del_mark(node) -> bool:
     """Return whether node is marking a deleted group/dataset/attribute value."""
     val = node[()] if isinstance(node, h5py.Dataset) else node
-    return isinstance(val, np.void) and val.tobytes() == DEL_VALUE.tobytes()
+    return _is_del_mark(val)
 
 
 # attribute key marking group substitution (instead of pass-through default for groups)
@@ -44,35 +51,44 @@ def _node_is_virtual(node) -> bool:
     return isinstance(node, h5py.Group) and SUBST_KEY not in node.attrs
 
 
-class ArdiemNode:
+@dataclass(frozen=True)
+class IH5Node:
     """An overlay node stands in for a group, dataset or attribute manager.
 
     It takes care of finding the correct container to look for the data
     and helps with patching data in a new patch container.
 
-    It essentially lifts the interface of h5py from a single file to an Ardiem dataset
+    It essentially lifts the interface of h5py from a single file to an IH5 dataset
     that may consist of a base container file and a number of patch containers.
     """
 
-    def __init__(self, files: List[h5py.File], gpath: str, creation_idx: int):
-        """Instantiate an overlay node.
+    _files: List[h5py.File]
+    """List of open containers in patch order (the actual data store)."""
 
-        Args:
-            files: list of open containers in patch order (the actual data store)
-            gpath: location this node represents
-            creation_idx: left boundary index for lookups, i.e. this node will not
-                consider containers with smaller index than that.
+    _gpath: str
+    """Location in dataset this node represents."""
+
+    _cidx: int
+    """Left boundary index for lookups, i.e. this node will not consider
+    containers with smaller index than that.
+    """
+
+    def __post_init__(self):
+        """Instantiate an overlay node."""
+        if not self._files:
+            raise ValueError("List of opened dataset containers must be non-empty!")
+        if not self._gpath:
+            raise ValueError("Path must be non-empty!")
+        if not (0 <= self._cidx < len(self._files)):
+            raise ValueError("Creation index must be in index range of file list!")
+
+    def __hash__(self):
+        """Hash an overlay node.
+
+        Two nodes are equivalent if they are linked to the same list of open
+        HDF5 files and address the same entity.
         """
-        if not files:
-            raise ValueError("Need a non-empty list of opened dataset containers!")
-        if not gpath:
-            raise ValueError("Node path cannot be empty!")
-        if not (0 <= creation_idx < len(files)):
-            raise ValueError("Creation index for node not in valid range!")
-
-        self._files: List[h5py.File] = files
-        self._gpath: str = gpath
-        self._cidx: int = creation_idx
+        return hash((id(self._files), self._gpath, self._cidx))
 
     @property
     def _last_idx(self):
@@ -90,7 +106,7 @@ class ArdiemNode:
                     print("    ", node[()])
 
 
-class ArdiemInnerNode(ArdiemNode):
+class IH5InnerNode(IH5Node):
     """Common Group and AttributeManager overlay with familiar dict-like interface.
 
     Will grant either access to child datasets/subgroups,
@@ -104,7 +120,7 @@ class ArdiemInnerNode(ArdiemNode):
         creation_idx: int,
         attrs: bool = False,
     ):
-        """See `ArdiemNode` constructor.
+        """See `IH5Node` constructor.
 
         This variant represents an "overlay container", of which there are two types -
         a group (h5py.Group) and a set of attributes (h5py.AttributeManager).
@@ -123,7 +139,7 @@ class ArdiemInnerNode(ArdiemNode):
         """
         if key == "":
             raise ValueError("Invalid empty path!")
-        if self._attrs and key.find("/") >= 0:
+        if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
 
     def _abs_path(self, path: str):
@@ -146,13 +162,12 @@ class ArdiemInnerNode(ArdiemNode):
         val = self._get_child_raw(key, cidx)
         path = self._abs_path(key)
         if isinstance(val, h5py.Group):
-            return ArdiemGroup(self._files, path, cidx)
+            return IH5Group(self._files, path, cidx)
         elif isinstance(val, h5py.Dataset):
-            return ArdiemValue(self._files, path, cidx)
+            return IH5Value(self._files, path, cidx)
         else:
             return val
 
-    @property
     def _children(self) -> Dict[str, int]:
         """Return dict mapping from a child name to the most recent overriding patch idx.
 
@@ -193,7 +208,7 @@ class ArdiemInnerNode(ArdiemNode):
         """Create group, overwriting whatever was at that path."""
         path = self._abs_path(gpath)
         nodes = self._node_seq(gpath)
-        if not isinstance(nodes[-1], ArdiemGroup):
+        if not isinstance(nodes[-1], IH5Group):
             raise ValueError(f"Cannot create group, {nodes[-1]._gpath} is a dataset!")
         if nodes[-1]._gpath == path:
             raise ValueError("Cannot create group, it already exists!")
@@ -208,7 +223,7 @@ class ArdiemInnerNode(ArdiemNode):
         if len(self._files) > 1:
             self._files[-1][path].attrs[SUBST_KEY] = h5py.Empty(None)
 
-    def _node_seq(self, path: str) -> List[ArdiemNode]:
+    def _node_seq(self, path: str) -> List[IH5Node]:
         """Return node sequence (node per path prefix) to given path.
 
         Returns:
@@ -216,9 +231,9 @@ class ArdiemInnerNode(ArdiemNode):
             or the root node (if absolute) followed by all successive
             children along the requested path that exist.
         """
-        curr = ArdiemGroup(self._files) if path[0] == "/" else self
+        curr = IH5Group(self._files) if path[0] == "/" else self
 
-        ret: List[ArdiemNode] = [curr]
+        ret: List[IH5Node] = [curr]
         if path == "/":  # special case
             return ret
 
@@ -228,13 +243,13 @@ class ArdiemInnerNode(ArdiemNode):
         for i in range(len(segs)):
             seg, is_last_seg = segs[i], i == len(segs) - 1
             # find most recent container with that child
-            nxt_cidx = curr._children.get(seg, -1)
+            nxt_cidx = curr._children().get(seg, -1)
             if nxt_cidx == -1:
                 return ret  # not found -> return current prefix
             curr = curr._get_child(seg, nxt_cidx)  # proceed to child
             ret.append(curr)
             # catch invalid access, e.g. /foo is dataset, user accesses /foo/bar:
-            if not is_last_seg and isinstance(curr, ArdiemValue):
+            if not is_last_seg and isinstance(curr, IH5Value):
                 raise ValueError(f"Cannot access path inside a dataset: {curr._gpath}")
         # return path index sequence
         return ret
@@ -249,7 +264,7 @@ class ArdiemInnerNode(ArdiemNode):
             Index >= 0 of most recent container patching that path if found, else None.
         """
         if self._attrs:  # access an attribute by key (always "relative")
-            return self._children.get(key, None)
+            return self._children().get(key, None)
         # access a path (absolute or relative)
         nodes = self._node_seq(key)
         return nodes[-1]._cidx if nodes[-1]._gpath == self._abs_path(key) else None
@@ -264,9 +279,8 @@ class ArdiemInnerNode(ArdiemNode):
         ):
             return False  # something at that path in most recent container exists
 
-        missing_suf = path[len(nodes[-1]._gpath):].lstrip("/")
-        suf_segs = missing_suf.split("/")
-        # print(path, missing_suf, suf_segs)
+        pathlen = len(nodes[-1]._gpath)
+        suf_segs = path[pathlen:].lstrip("/").split("/")
 
         # most recent entity is a deletion marker or not existing?
         if nodes[-1]._gpath != path or _node_is_del_mark(nodes[-1]):
@@ -280,6 +294,8 @@ class ArdiemInnerNode(ArdiemNode):
 
     def __setitem__(self, key: str, val):
         self._check_key(key)
+        if _is_del_mark(val):
+            raise ValueError(f"Assigning '{val}' is forbidden, cannot write!")
         try:
             if self._attrs:
                 # if path does not exist in current patch, just create "virtual node"
@@ -294,7 +310,7 @@ class ArdiemInnerNode(ArdiemNode):
                 fidx = self._find(path)
                 if fidx is not None:
                     prev_val = self._get_child(path, fidx)
-                    if isinstance(prev_val, ArdiemGroup):
+                    if isinstance(prev_val, IH5Group):
                         raise ValueError("Path is a group, cannot overwrite with data!")
 
                 if path in self._files[-1] and _node_is_del_mark(
@@ -348,11 +364,14 @@ class ArdiemInnerNode(ArdiemNode):
         self._check_key(key)
         return self._find(key) is not None
 
+    def __iter__(self):
+        return iter(self._children().keys())
+
     def keys(self):
-        return self._children.keys()
+        return self._children().keys()
 
     def _dict(self):
-        return {k: self._get_child(k, idx) for k, idx in self._children.items()}
+        return {k: self._get_child(k, idx) for k, idx in self._children().items()}
 
     def values(self):
         return self._dict().values()
@@ -361,15 +380,15 @@ class ArdiemInnerNode(ArdiemNode):
         return self._dict().items()
 
 
-class ArdiemValue(ArdiemNode):
-    """`ArdiemNode` representing a `h5py.Dataset`, i.e. a leaf of the tree."""
+class IH5Value(IH5Node):
+    """`IH5Node` representing a `h5py.Dataset`, i.e. a leaf of the tree."""
 
     def __init__(self, files, gpath, creation_idx):
         super().__init__(files, gpath, creation_idx)
 
     @property
     def attrs(self):
-        return ArdiemAttributeManager(self._files, self._gpath, self._cidx)
+        return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
     # for a dataset, instead of paths the numpy data is indexed. at this level
     # the patching mechanism ends, so it's just passing through to h5py
@@ -385,26 +404,28 @@ class ArdiemValue(ArdiemNode):
         self._files[self._cidx][self._gpath][key] = val  # type: ignore
 
 
-class ArdiemGroup(ArdiemInnerNode):
-    """`ArdiemNode` representing a `h5py.Group`."""
+class IH5Group(IH5InnerNode):
+    """`IH5Node` representing a `h5py.Group`."""
 
     def __init__(self, files, gpath: str = "/", creation_idx: Optional[int] = None):
         if creation_idx is None:
             creation_idx = _latest_container_idx(files, gpath)
-            assert creation_idx is not None  # this is only used with '/' (always exists)
+            assert (
+                creation_idx is not None
+            )  # this is only used with '/' (always exists)
         super().__init__(files, gpath, creation_idx, False)
 
     @property
     def attrs(self):
-        return ArdiemAttributeManager(self._files, self._gpath, self._cidx)
+        return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
     def create_group(self, gpath):
         """Create a group (overrides whatever was at the path in previous versions)."""
         self._create_group(gpath)
 
 
-class ArdiemAttributeManager(ArdiemInnerNode):
-    """`ArdiemNode` representing an `h5py.AttributeManager`."""
+class IH5AttributeManager(IH5InnerNode):
+    """`IH5Node` representing an `h5py.AttributeManager`."""
 
     def __init__(self, files, gpath, creation_idx):
         super().__init__(files, gpath, creation_idx, True)

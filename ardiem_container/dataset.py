@@ -1,69 +1,175 @@
 """
-Ardiem dataset management.
+Management of immutable HDF5 container datasets.
 
-An Ardiem dataset consists of a base container and a number of patch containers.
+A dataset consists of a base container and a number of patch containers.
 This allows a dataset to work in settings where files are immutable, but still
 provide a structured way of updating data stored inside.
 
 Both base containers and patches are HDF5 files that are linked together
 by some special attributes in the container root.
-`ArdiemDataset` is a class that wraps such a set of files. It features
+`IH5Dataset` is a class that wraps such a set of files. It features
 * support for dataset creation and updating
 * automatic handling of the patch mechanism (i.e., creating/finding corresponding files)
 * transparent access to data in the dataset (possibly spanning multiple files)
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 from uuid import UUID, uuid1
 
 import h5py
+from pydantic import BaseModel, Field, PrivateAttr
+from typing_extensions import Annotated, Final
 
-from .overlay import ArdiemGroup
+from .overlay import IH5Group
 from .util import hashsum
 
-# TODO: assemble() to merge containers into a new base dataset
-# Question:
-# should it be an independent new base dataset?
-# simplest solution, but makes patches not compatible to both split and assembled
-#
-# alternatively, patches would not do integrity checking and trust container UUID
-# then the assembled one could have the container id of the highest patch
-# and the patch index could start higher than 0
+# TODO: merge() to merge containers into a new dataset
+# should keep patch number and patch uuid of last merged container
+# should keep prev_uuid of first merged container
+# should recompute the hashsum
 
-# TODO: do we need write/delete protection for the base/patch special attributes
-# with the UUIDs etc, also including prevention of manual setting of
-# the substitution-marker attribute and deletion-marker dataset value?
+# the magic string we use to identify a valid container
+FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
 
-# TODO: create patch in a temp file, move/rename to actual name after commit
+# space to reserve at beginning of each HDF5 file in bytes.
+# must be a power of 2 and at least 512 (required by HDF5)
+USER_BLOCK_SIZE: Final[int] = 512
 
-# TODO: hashsum directory tree helper function (to help creating updates from directory)
-
-# TODO: explain the "patching algebra" rules, pseudo Haskell?
-# maybe use that formalization for property-based tests with hypothesis?
+# algorithm to use and prepend to a hashsum
+HASH_ALG = "sha256"
 
 
-class ArdiemDataset:
+def compute_hashsum(filename: Path, skip_bytes: int = 0) -> str:
+    """Compute hashsum of HDF5 file (ignoring the first `skip_bytes`)."""
+    with open(filename, "rb") as f:
+        f.seek(skip_bytes)
+        chksum = hashsum(f, HASH_ALG)
+    return f"{HASH_ALG}:{chksum}"
+
+
+class IH5UserBlock(BaseModel):
+    """IH5 metadata object parser and writer for the HDF5 user block.
+
+    The userblock begins with the magic format string, followed by a newline,
+    followed by a string encoding the length of the user block, followed by a newline,
+    followed by a serialized JSON object without newlines containing the metadata,
+    followed by a NUL byte.
     """
-    Class representing a dataset, which consists of a collection of files.
 
-    One file is a base container (with patch index 0 and no linked predecessor)
+    _filename: Path = PrivateAttr(Path(""))
+    """Filename this user block was loaded from."""
+
+    _userblock_size: int = PrivateAttr(default=USER_BLOCK_SIZE)
+    """User block size claimed in the block itself (second line)."""
+
+    dataset_uuid: UUID
+    """UUID linking together multiple HDF5 files that form a (patched) dataset."""
+
+    patch_index: Annotated[int, Field(ge=0)]
+    """Index with the current revision number, i.e. the file is the n-th patch."""
+
+    patch_uuid: UUID
+    """UUID representing a certain state of the data in the dataset."""
+
+    prev_patch: Optional[UUID]
+    """UUID of the previous patch UUID, so that that predecessor container is required."""
+
+    data_hashsum: Annotated[str, Field(regex=r"^\w+:\w+$")]
+    """Hashsum to verity integrity of the HDF5 data after the user block."""
+
+    @classmethod
+    def create(
+        cls, prev: Optional[IH5UserBlock] = None, path: Optional[Path] = None
+    ) -> IH5UserBlock:
+        """Create a new user block for a base or patch container.
+
+        If `prev` is None, will return a new base container block.
+        Otherwise, will return a block linking back to the passed `prev` block.
+
+        If `path` is passed, will set `_filename` attribute.
+        """
+        ret = cls(
+            patch_uuid=uuid1(),
+            dataset_uuid=uuid1() if prev is None else prev.dataset_uuid,
+            patch_index=0 if prev is None else prev.patch_index + 1,
+            prev_patch=None if prev is None else prev.patch_uuid,
+            data_hashsum=f"{HASH_ALG}:toBeComputed",
+        )
+        if path is not None:
+            ret._filename = path
+        return ret
+
+    @classmethod
+    def read_head_raw(cls, stream, ub_size: int) -> Optional[Tuple[int, str]]:
+        """Try reading user block.
+
+        Args:
+            stream: the open binary file stream
+            ub_size: number of bytes to read
+
+        Returns:
+            (user block size claimed in block, embedded data until first NUL byte)
+            or None, if block does not look right.
+        """
+        stream.seek(0)
+        probe = stream.read(ub_size)
+        dat = probe.decode("utf-8").split("\n")
+        if len(dat) != 3 or dat[0] != FORMAT_MAGIC_STR:
+            return None
+        return (int(dat[1]), dat[2][: dat[2].find("\x00")])  # read until first NUL byte
+
+    @classmethod
+    def load(cls, filename: Path) -> IH5UserBlock:
+        """Load a user block of the given HDF5 file."""
+        with open(filename, "rb") as f:
+            # try smallest valid UB size first
+            head = cls.read_head_raw(f, 512)
+            if head is None:
+                raise ValueError(f"{filename}: it doesn't look like a valid IH5 file!")
+            if head[0] > 512:  # if stored user block size is bigger, re-read
+                head = cls.read_head_raw(f, head[0])
+                assert head is not None
+        ret = IH5UserBlock.parse_obj(json.loads(head[1]))
+        ret._userblock_size = head[0]
+        ret._filename = filename
+        return ret
+
+    def save(self, filename: Path):
+        """Save this object in the user block of the given HDF5 file."""
+        dat_str = f"{FORMAT_MAGIC_STR}\n{self._userblock_size}\n{self.json()}"
+        data = dat_str.encode("utf-8")
+        assert len(data) < USER_BLOCK_SIZE
+        with open(filename, "r+b") as f:
+            # check that this HDF file actually has a user block
+            check = f.read(4)
+            if check == b"\x89HDF":
+                raise ValueError(f"{filename}: no user block reserved, can't write!")
+            f.seek(0)
+            f.write(data)
+            f.write(b"\x00")  # mark end of the data
+
+
+class IH5Dataset:
+    """
+    Class representing a dataset, which consists of a collection of immutable files.
+
+    One file is a base container (with no linked predecessor state),
     the remaining files are a linear sequence of patch containers.
 
     Runtime invariants:
         * all files of an instance are open for reading (until `close()` is called)
         * all files in `_files` are in patch index order
         * at most one file is open in writable mode (if any, it is the last one)
-        * a `writable` file is available after `create` or `create_patch` was called
+        * modifications are possible only after `create` or `create_patch` was called
           and until `commit` or `discard` was called, and at no other time
-        * the `writable` file, if present, is either the base container
-          or the most recent patch
 
     Only creation of and access to containers is supported.
     Renaming or deleting a container collection is not supported.
-    For this, use `ArdiemDataset.find_containers` and apply standard tools.
+    For this, use `IH5Dataset.find_containers` and apply standard tools.
     """
 
     # Characters that may appear in a dataset name.
@@ -75,134 +181,76 @@ class ArdiemDataset:
     # NOTE: the first symbol of these must be one NOT in ALLOWED_NAME_CHARS!
     # This constraint is needed for correctly filtering filenames
     PATCH_INFIX = ".p"
-    FILE_EXT = ".rdm.h5"
-
-    # the magic string we use to identify a valid container
-    FORMAT_MAGIC_STR = "ardiem_v1"
-    # algorithm to use and prepend to a hashsum
-    HASH_ALG = "sha256"
-
-    # attribute names as constants (to avoid typos)
-    FORMAT = "format"
-    DATASET_UUID = "dataset_uuid"
-    CONTAINER_UUID = "container_uuid"
-    PATCH_INDEX = "patch_index"
-    PREV_PATCH = "prev_patch"
-    PREV_HASHSUM = "prev_hashsum"
+    FILE_EXT = ".ih5"
 
     @classmethod
     def _is_valid_dataset_name(cls, name: str) -> bool:
         """Return whether a dataset name is valid."""
         return re.match(f"^[{cls.ALLOWED_NAME_CHARS}]+$", name) is not None
 
+    def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
+        """Return the parsed user block of a container file."""
+        f = obj if isinstance(obj, h5py.File) else self._files[obj]
+        return self._ublocks[Path(f.filename)]
+
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
         path = Path(self._files[0].filename).parent
-        patch_index = self._patch_index(self._files[-1]) + 1
+        patch_index = self._ublock(-1).patch_index + 1
         res = f"{path}/{self.name}{self.PATCH_INFIX}{patch_index}{self.FILE_EXT}"
         return Path(res)
 
     @classmethod
-    def _patch_index(cls, f: h5py.File) -> int:
-        """Return patch index of a container file (or throw exception)."""
-        try:
-            return f.attrs[cls.PATCH_INDEX].item()  # type: ignore
-        except KeyError:
-            raise ValueError(f"{f.filename}: attribute missing: '{cls.PATCH_INDEX}'")
+    def _new_container(cls, path: Path) -> h5py.File:
+        """Initialize a fresh container file with reserved user block."""
+        # create if does not exist, fail if it does
+        return h5py.File(path, mode="x", userblock_size=USER_BLOCK_SIZE)
 
-    @classmethod
-    def _get_uuid(cls, f: h5py.File, atr: str) -> UUID:
-        """Return a UUID root attr value in container file (or throw exception)."""
-        try:
-            return UUID(f.attrs.get(atr, ""))
-        except ValueError:
-            raise ValueError(f"{f.filename}: attribute missing or invalid: '{atr}'")
-
-    @classmethod
-    def _init_container(cls, path: Path, prev: Optional[h5py.File] = None) -> h5py.File:
-        """Initialize a container file with the minimal required attributes.
-
-        Takes actual file path and optionally an open predecessor container file object.
-        Returns a writable container file object.
-        Used to init both new datasets as well as patches.
-        """
-        container = h5py.File(path, "x")  # create if does not exist, fail if it does
-        container.attrs[cls.FORMAT] = cls.FORMAT_MAGIC_STR
-        container.attrs[cls.CONTAINER_UUID] = str(uuid1())
-        if prev is None:
-            container.attrs[cls.DATASET_UUID] = str(uuid1())
-            container.attrs[cls.PATCH_INDEX] = 0
-        else:
-            container.attrs[cls.DATASET_UUID] = prev.attrs[cls.DATASET_UUID]
-            container.attrs[cls.PATCH_INDEX] = cls._patch_index(prev) + 1
-            container.attrs[cls.PREV_PATCH] = prev.attrs[cls.CONTAINER_UUID]
-            chksum = hashsum(open(prev.filename, "rb"), cls.HASH_ALG)
-            container.attrs[cls.PREV_HASHSUM] = f"{cls.HASH_ALG}:{chksum}"
-        return container
-
-    def _check_container(self, file: h5py.File, prev: Optional[h5py.File] = None):
+    def _check_ublock(self, ub: IH5UserBlock, prev: Optional[IH5UserBlock] = None):
         """Check given container file.
 
-        If prev is given, assumes a patch container, otherwise base container.
-
-        Assumption: `_files` are initialized and sorted in patch order.
+        If `prev` block is given, assumes that `ub` is from a patch container,
+        otherwise from base container.
         """
-        # check magic format marker
-        if file.attrs.get(self.FORMAT, None) != self.FORMAT_MAGIC_STR:
-            msg = f"attr '{self.FORMAT}' missing or invalid!"
-            raise ValueError(f"{file.filename}: {msg}")
-        # check presence of container uuid (will throw on failure)
-        self._get_uuid(file, self.CONTAINER_UUID)
         # check presence+validity of dataset uuid (should be the same for all)
-        if self._get_uuid(file, self.DATASET_UUID) != self.uuid:
-            msg = f"attr '{self.DATASET_UUID}' inconsistent! Mixed up datasets?"
-            raise ValueError(f"{file.filename}: {msg}")
+        if ub.dataset_uuid != self.uuid:
+            msg = "'dataset_uuid' inconsistent! Mixed up datasets?"
+            raise ValueError(f"{ub._filename}: {msg}")
+
+        # hash must match with HDF5 content (i.e. integrity check)
+        chksum = compute_hashsum(ub._filename, skip_bytes=USER_BLOCK_SIZE)
+        if ub.data_hashsum != chksum:
+            msg = "file has been modified, stored and computed checksum are different!"
+            raise ValueError(f"{ub._filename}: {msg}")
 
         # check patch chain structure
         if prev is None:
-            if self._patch_index(file) != 0:
-                msg = "base container must have index 0!"
-                raise ValueError(f"{file.filename}: {msg}")
-            if self.PREV_PATCH in file.attrs:
-                msg = f"base container must not have attribute '{self.PREV_PATCH}'!"
-                raise ValueError(f"{file.filename}: {msg}")
-            if self.PREV_HASHSUM in file.attrs:
-                msg = f"base container must not have attribute '{self.PREV_HASHSUM}'!"
-                raise ValueError(f"{file.filename}: {msg}")
+            if ub.prev_patch is not None:
+                msg = "base container must not have attribute 'prev_patch'!"
+                raise ValueError(f"{ub._filename}: {msg}")
         else:
-            if self._patch_index(file) != self._patch_index(prev) + 1:
-                msg = "patch container must have incremented index from predecessor!"
-                raise ValueError(f"{file.filename}: {msg}")
-            if self.PREV_PATCH not in file.attrs:
-                msg = f"Patch must have an attribute '{self.PREV_PATCH}'!"
-                raise ValueError(f"{file.filename}: {msg}")
-            if self.PREV_HASHSUM not in file.attrs:
-                msg = f"Patch must have an attribute '{self.PREV_HASHSUM}'!"
-                raise ValueError(f"{file.filename}: {msg}")
+            if ub.patch_index <= prev.patch_index:
+                msg = "patch container must have greater index than predecessor!"
+                raise ValueError(f"{ub._filename}: {msg}")
+            if ub.prev_patch is None:
+                msg = "Patch must have an attribute 'prev_patch'!"
+                raise ValueError(f"{ub._filename}: {msg}")
 
             # claimed predecessor uuid must match with the predecessor by index
             # (can compare as strings directly, as we checked those already)
-            file_prevpatch = file.attrs[self.PREV_PATCH]
-            prev_uuid = prev.attrs[self.CONTAINER_UUID]
-            if file_prevpatch != prev_uuid:
-                msg = f"Patch for {file_prevpatch} != previous container {prev_uuid}"
-                raise ValueError(f"{file.filename}: {msg}")
+            if ub.prev_patch != prev.patch_uuid:
+                msg = f"Patch for {ub.prev_patch}, but predecessor is {prev.patch_uuid}"
+                raise ValueError(f"{ub._filename}: {msg}")
 
-            # container hash must match (i.e. predecessor integrity check)
-            chksum = hashsum(open(prev.filename, "rb"), self.HASH_ALG)
-            if file.attrs[self.PREV_HASHSUM] != f"{self.HASH_ALG}:{chksum}":
-                msg = f"Patch not applicable as {prev.filename} was modified!"
-                raise ValueError(f"{file.filename}: {msg}")
-
-    def _root_group(self) -> ArdiemGroup:
-        return ArdiemGroup(self._files)
+    def _root_group(self) -> IH5Group:
+        return IH5Group(self._files)
 
     # ---- public attributes and interface ----
 
     @property
     def uuid(self) -> UUID:
         """Return the common dataset UUID of the set of containers."""
-        return self._get_uuid(self._files[0], self.DATASET_UUID)
+        return self._ublock(0).dataset_uuid
 
     @property
     def name(self) -> str:
@@ -225,24 +273,25 @@ class ArdiemDataset:
             raise ValueError("Cannot open empty list of containers!")
 
         self._has_writable: bool = False
+        self._ublocks = {path: IH5UserBlock.load(path) for path in paths}
         self._files: List[h5py.File] = [h5py.File(path, "r") for path in paths]
         # sort files by patch index order (important!)
         # if something is wrong with the indices, this will throw an exception.
-        self._files.sort(key=self._patch_index)
+        self._files.sort(key=lambda f: self._ublock(f).patch_index)
 
-        # check containers
-        self._check_container(self._files[0])  # check base
+        # check containers and relationship to each other
+        # first check base container (assumed to be the one with smallest index)
+        self._check_ublock(self._ublock(0))
         for i in range(1, len(self._files)):  # check patches
-            self._check_container(self._files[i], self._files[i - 1])
+            self._check_ublock(self._ublock(i), self._ublock(i - 1))
 
         # additional sanity check: container uuids must be all distinct
-        cn_uuids = {self._get_uuid(f, self.CONTAINER_UUID) for f in self._files}
+        cn_uuids = {self._ublock(f).patch_uuid for f in self._files}
         if len(cn_uuids) != len(self._files):
-            msg = f"some '{self.CONTAINER_UUID}' is not unique, bad file set!"
-            raise ValueError(f"{msg}")
+            raise ValueError("Some patch_uuid is not unique, invalid file set!")
 
     @classmethod
-    def create(cls, dataset: Union[Path, str]) -> ArdiemDataset:
+    def create(cls, dataset: Union[Path, str]) -> IH5Dataset:
         """Create a new dataset consisting of a base container.
 
         The base container is exposed as the `writable` container.
@@ -252,9 +301,10 @@ class ArdiemDataset:
             raise ValueError(f"Invalid dataset name: '{dataset.name}'")
 
         path = Path(f"{dataset}{cls.FILE_EXT}")
-        ret = ArdiemDataset.__new__(ArdiemDataset)
+        ret = IH5Dataset.__new__(IH5Dataset)
         ret._has_writable = True
-        ret._files = [cls._init_container(path)]
+        ret._files = [cls._new_container(path)]
+        ret._ublocks = {path: IH5UserBlock.create(prev=None, path=path)}
         return ret
 
     @classmethod
@@ -280,7 +330,7 @@ class ArdiemDataset:
         return paths
 
     @classmethod
-    def open(cls, dataset: Path) -> ArdiemDataset:
+    def open(cls, dataset: Path) -> IH5Dataset:
         """Open a dataset for read access.
 
         This method uses `find_containers` to infer the correct file set.
@@ -291,42 +341,42 @@ class ArdiemDataset:
         return cls(paths)
 
     def close(self) -> None:
-        """Close all containers that belong to that dataset.
+        """Commit changes and close all containers that belong to that dataset.
 
         After this, the object may not be used anymore.
         """
+        if self._has_writable:
+            self.commit()
         for f in self._files:
             f.close()
         self._files.clear()
         self._has_writable = False
 
     def create_patch(self) -> None:
-        """Create a new patch.
-
-        The patch file will be the new `writable` container.
-        """
+        """Create a new patch container to enable writing to the dataset."""
         if self._has_writable:
             raise ValueError("There already exists a writable container, commit first!")
 
         path = self._next_patch_filepath()
-        self._files.append(self._init_container(path, self._files[-1]))
+        self._ublocks[path] = IH5UserBlock.create(prev=self._ublock(-1), path=path)
+        self._files.append(self._new_container(path))
         self._has_writable = True
 
     def discard_patch(self) -> None:
         """Discard the current writable patch container."""
         if not self._has_writable:
             raise ValueError("Dataset is read-only, nothing to discard!")
-        cfile = self._files[-1]
-        if self.PREV_PATCH not in cfile.attrs:
+        if self._ublock(-1).prev_patch is None:
             raise ValueError("Cannot discard base container! Just delete the file!")
             # reason: the base container provides dataset_uuid,
             # destroying it makes this object inconsistent / breaks invariants
 
-        self._files.pop()
-        self._has_writable = False
+        cfile = self._files.pop()
         fn = cfile.filename
+        del self._ublocks[Path(fn)]
         cfile.close()
         Path(fn).unlink()
+        self._has_writable = False
 
     def commit(self) -> None:
         """Complete the current writable container (base or patch) for the dataset.
@@ -339,23 +389,21 @@ class ArdiemDataset:
         if not self._has_writable:
             raise ValueError("Dataset is read-only, nothing to commit!")
         cfile = self._files[-1]
+        filepath = Path(cfile.filename)
+        cfile.close()  # must close it now, as we will write outside of HDF5 next
 
-        # check the new container (works for base as well as patch)
-        pidx = self._patch_index(cfile)
-        prev = self._files[-2] if pidx > 0 else None
-        self._check_container(cfile, prev)  # throws on failure
+        # compute checksum, write user block
+        chksum = compute_hashsum(filepath, skip_bytes=USER_BLOCK_SIZE)
+        self._ublocks[filepath].data_hashsum = chksum
+        self._ublocks[filepath].save(filepath)
 
         # TODO: here we would plug in more checks for the
         # fine-grained format... delegate to subclass function?
         # this should use the overlay to check the "resulting" dataset!
 
-        # TODO: use h5diff to shrink patches?
-
-        # reopen the writable file as read-only
-        fn = cfile.filename
-        cfile.close()
+        # reopen the container file now as read-only
+        self._files[-1] = h5py.File(filepath, "r")
         self._has_writable = False
-        self._files[-1] = h5py.File(fn, "r")
 
     # ---- context manager support (i.e. to use `with`) ----
 
@@ -363,6 +411,7 @@ class ArdiemDataset:
         return self
 
     def __exit__(self, ex_type, ex_value, ex_traceback):
+        # this will ensure that commit() is called and the files are closed
         self.close()
 
     # ---- pass through group methods to an implicit root group instance ----
@@ -373,6 +422,9 @@ class ArdiemDataset:
 
     def create_group(self, gpath: str):
         return self._root_group().create_group(gpath)
+
+    def __iter__(self):
+        return iter(self._root_group())
 
     def __contains__(self, key):
         return key in self._root_group()
