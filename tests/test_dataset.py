@@ -5,7 +5,7 @@ import h5py
 import numpy as np
 import pytest
 
-from ardiem_container.dataset import IH5Dataset, IH5UserBlock
+from ardiem_container.ih5 import IH5Dataset, IH5UserBlock
 
 
 def test_open_empty_dataset():

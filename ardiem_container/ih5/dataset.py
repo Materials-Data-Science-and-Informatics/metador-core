@@ -24,8 +24,8 @@ import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
+from ..util import hashsum
 from .overlay import IH5Group, IH5Value
-from .util import hashsum
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"

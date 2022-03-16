@@ -15,17 +15,6 @@ import numpy as np
 # TODO: overlay maybe also could support symlinks as a special kind of value
 
 
-def _latest_container_idx(files, gpath) -> Optional[int]:
-    """Return latest patch index where the group/dataset was overwritten/created."""
-    idx = None
-    for i in reversed(range(len(files))):
-        if _node_is_virtual(files[i][gpath]):
-            idx = i
-        else:
-            return i  # some patch overrides the group
-    return idx
-
-
 # dataset value marking a deleted group, dataset or attribute
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 
@@ -119,7 +108,7 @@ class IH5Node:
         pref = self._gpath if self._gpath != "/" else ""
         return path if path[0] == "/" else f"{pref}/{path}"
 
-    def _inspect_path(self, path):
+    def _inspect_path(self, path):  # pragma: no cover
         """Print the path node of all containers where the path is contained in."""
         print(f"Path {path}:")
         for j in range(len(self._files)):
@@ -260,7 +249,7 @@ class IH5InnerNode(IH5Node):
             or the root node (if absolute) followed by all successive
             children along the requested path that exist.
         """
-        curr = IH5Group(self._files) if path[0] == "/" else self
+        curr: IH5InnerNode = IH5Group(self._files) if path[0] == "/" else self
 
         ret: List[IH5Node] = [curr]
         if path == "/":  # special case
@@ -279,7 +268,7 @@ class IH5InnerNode(IH5Node):
             ret.append(curr)
             # catch invalid access, e.g. /foo is dataset, user accesses /foo/bar:
             if not is_last_seg and isinstance(curr, IH5Value):
-                raise ValueError(f"Cannot access path inside a dataset: {curr._gpath}")
+                raise ValueError(f"Cannot access path inside a value: {curr._gpath}")
         # return path index sequence
         return ret
 
@@ -327,17 +316,21 @@ class IH5InnerNode(IH5Node):
             if val is not None:
                 return val
             if isinstance(curr, IH5Group):
-                stack += curr._get_children()
+                stack += reversed(curr._get_children())
 
     def visit(self, func: Callable[[str], Optional[Any]]) -> Any:
-        self.visititems(lambda x, _: func(x))
+        return self.visititems(lambda x, _: func(x))
 
     def __setitem__(self, key: str, val):
         self._check_key(key)
         if self._is_read_only():
             raise ValueError(f"Cannot set '{key}', create a patch first!")
         if _is_del_mark(val):
-            raise ValueError(f"Assigning '{val}' is forbidden, cannot write!")
+            raise ValueError(f"Value '{val}' is forbidden, cannot assign!")
+        if isinstance(val, IH5Node):
+            raise ValueError("Hard links are not supported, cannot assign!")
+        if isinstance(val, h5py.SoftLink) or isinstance(val, h5py.ExternalLink):
+            raise ValueError("SymLink and ExternalLink not supported, cannot assign!")
 
         if self._attrs:
             # if path does not exist in current patch, just create "virtual node"
@@ -443,17 +436,45 @@ class IH5Value(IH5Node):
         if self._is_read_only():
             raise ValueError(f"Cannot set '{key}', create a patch first!")
         if self._cidx != self._last_idx:
-            raise ValueError("This node is not from the latest patch, cannot write!")
+            raise ValueError(f"Cannot set '{key}', node is not from the latest patch!")
         # if we're in the latest patch, allow writing as usual (pass through)
-        self._files[self._cidx][self._gpath][key] = val  # type: ignore
+        self._files[-1][self._gpath][key] = val  # type: ignore
+
+    def copy_into_patch(self):
+        """Copy the most recent value at this path into the current patch.
+
+        This is useful e.g. for editing inside a complex value, such as an array.
+        """
+        if self._is_read_only():
+            raise ValueError("Cannot copy, create a patch first!")
+        if self._cidx == self._last_idx:
+            raise ValueError("Cannot copy, this node is already from latest patch!")
+        # copy value from older container to current patch
+        self._files[-1][self._gpath] = self[()]
 
 
 class IH5Group(IH5InnerNode):
     """`IH5Node` representing a `h5py.Group`."""
 
+    @classmethod
+    def _latest_container_idx(cls, files, gpath) -> Optional[int]:
+        """Return latest patch index where the group/dataset was overwritten/created.
+
+        Returns None if not found or most recent value is a deletion mark.
+        """
+        idx = None
+        for i in reversed(range(len(files))):
+            if _node_is_del_mark(files[i][gpath]):
+                return None
+            elif _node_is_virtual(files[i][gpath]):
+                idx = i
+            else:
+                return i  # some patch overrides the group
+        return idx
+
     def __init__(self, files, gpath: str = "/", creation_idx: Optional[int] = None):
         if creation_idx is None:
-            creation_idx = _latest_container_idx(files, gpath)
+            creation_idx = self._latest_container_idx(files, gpath)
             assert (
                 creation_idx is not None
             )  # this is only used with '/' (always exists)
