@@ -17,20 +17,15 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 from uuid import UUID, uuid1
 
 import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
-from .overlay import IH5Group
+from .overlay import IH5Group, IH5Value
 from .util import hashsum
-
-# TODO: merge() to merge containers into a new dataset
-# should keep patch number and patch uuid of last merged container
-# should keep prev_uuid of first merged container
-# should recompute the hashsum
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
@@ -138,11 +133,28 @@ class IH5UserBlock(BaseModel):
         ret._filename = filename
         return ret
 
-    def save(self, filename: Path):
-        """Save this object in the user block of the given HDF5 file."""
+    def merge(self, other: IH5UserBlock, target: Path) -> IH5UserBlock:
+        """Merge this user block with another one.
+
+        This userblock must be the first one in a merged patch sequence,
+        while the argument must be the userblock from the last one.
+        """
+        ret = self.copy()
+        ret.patch_index = other.patch_index
+        ret.patch_uuid = other.patch_uuid
+        ret._filename = target
+        ret.data_hashsum = ""  # to be computed
+        return ret
+
+    def save(self, filename: Optional[Path] = None):
+        """Save this object in the user block of the given HDF5 file.
+
+        If no path is given, will save back to file this block was loaded from.
+        """
         dat_str = f"{FORMAT_MAGIC_STR}\n{self._userblock_size}\n{self.json()}"
         data = dat_str.encode("utf-8")
         assert len(data) < USER_BLOCK_SIZE
+        filename = filename or self._filename
         with open(filename, "r+b") as f:
             # check that this HDF file actually has a user block
             check = f.read(4)
@@ -188,10 +200,10 @@ class IH5Dataset:
         """Return whether a dataset name is valid."""
         return re.match(f"^[{cls.ALLOWED_NAME_CHARS}]+$", name) is not None
 
-    def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
-        """Return the parsed user block of a container file."""
-        f = obj if isinstance(obj, h5py.File) else self._files[obj]
-        return self._ublocks[Path(f.filename)]
+    @classmethod
+    def _base_filename(cls, dataset_path: Path) -> Path:
+        """Given a dataset path, return path to canonical base container name."""
+        return Path(f"{dataset_path}{cls.FILE_EXT}")
 
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
@@ -199,6 +211,11 @@ class IH5Dataset:
         patch_index = self._ublock(-1).patch_index + 1
         res = f"{path}/{self.name}{self.PATCH_INFIX}{patch_index}{self.FILE_EXT}"
         return Path(res)
+
+    def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
+        """Return the parsed user block of a container file."""
+        f = obj if isinstance(obj, h5py.File) else self._files[obj]
+        return self._ublocks[Path(f.filename)]
 
     @classmethod
     def _new_container(cls, path: Path) -> h5py.File:
@@ -224,11 +241,7 @@ class IH5Dataset:
             raise ValueError(f"{ub._filename}: {msg}")
 
         # check patch chain structure
-        if prev is None:
-            if ub.prev_patch is not None:
-                msg = "base container must not have attribute 'prev_patch'!"
-                raise ValueError(f"{ub._filename}: {msg}")
-        else:
+        if prev is not None:
             if ub.patch_index <= prev.patch_index:
                 msg = "patch container must have greater index than predecessor!"
                 raise ValueError(f"{ub._filename}: {msg}")
@@ -263,7 +276,12 @@ class IH5Dataset:
         """List of container filenames this dataset consists of."""
         return [Path(f.filename) for f in self._files]
 
-    def __init__(self, paths: List[Path]):
+    @property
+    def read_only(self) -> bool:
+        """Return whether this dataset is read-only at the moment."""
+        return not self._has_writable
+
+    def __init__(self, paths: List[Path], allow_baseless: bool = False):
         """Open a dataset consisting of a base container + possible set of patches.
 
         Expects a set of full file paths forming a valid dataset.
@@ -279,10 +297,16 @@ class IH5Dataset:
         # if something is wrong with the indices, this will throw an exception.
         self._files.sort(key=lambda f: self._ublock(f).patch_index)
 
-        # check containers and relationship to each other
-        # first check base container (assumed to be the one with smallest index)
+        # check containers and relationship to each other:
+
+        # check first container (it could be a base container and it has no predecessor)
+        if not allow_baseless and self._ublock(0).prev_patch is not None:
+            msg = "base container must not have attribute 'prev_patch'!"
+            raise ValueError(f"{self._ublock(0)._filename}: {msg}")
         self._check_ublock(self._ublock(0))
-        for i in range(1, len(self._files)):  # check patches
+
+        # check successive patches
+        for i in range(1, len(self._files)):
             self._check_ublock(self._ublock(i), self._ublock(i - 1))
 
         # additional sanity check: container uuids must be all distinct
@@ -300,7 +324,7 @@ class IH5Dataset:
         if not cls._is_valid_dataset_name(dataset.name):
             raise ValueError(f"Invalid dataset name: '{dataset.name}'")
 
-        path = Path(f"{dataset}{cls.FILE_EXT}")
+        path = cls._base_filename(dataset)
         ret = IH5Dataset.__new__(IH5Dataset)
         ret._has_writable = True
         ret._files = [cls._new_container(path)]
@@ -405,6 +429,37 @@ class IH5Dataset:
         self._files[-1] = h5py.File(filepath, "r")
         self._has_writable = False
 
+    def merge(self, target: Path) -> Path:
+        """Given a path with a dataset name, merge current dataset into new container.
+
+        Returns full filename of the single resulting container file.
+        """
+        if self._has_writable:
+            raise ValueError("Cannot merge, please commit or discard your changes!")
+
+        with IH5Dataset.create(target) as ds:
+            for k, v in self.attrs.items():  # copy root attributes
+                ds.attrs[k] = v
+
+            def copy_children(name, node):
+                if isinstance(node, IH5Group):
+                    ds.create_group(node._gpath)
+                elif isinstance(node, IH5Value):
+                    ds[node._gpath] = node[()]
+                new_atrs = ds[node._gpath].attrs  # copy node attributes
+                for k, v in node.attrs.items():
+                    new_atrs[k] = v
+
+            self.visititems(copy_children)
+
+            cfile = ds.containers[0]  # store filename to override userblock afterwards
+        # compute new merged userblock and store it
+        ub = self._ublock(0).merge(self._ublock(-1), cfile)
+        chksum = compute_hashsum(cfile, skip_bytes=USER_BLOCK_SIZE)
+        ub.data_hashsum = chksum
+        ub.save()
+        return cfile
+
     # ---- context manager support (i.e. to use `with`) ----
 
     def __enter__(self):
@@ -420,8 +475,14 @@ class IH5Dataset:
     def attrs(self):
         return self._root_group().attrs
 
-    def create_group(self, gpath: str):
+    def create_group(self, gpath: str) -> IH5Group:
         return self._root_group().create_group(gpath)
+
+    def visit(self, func: Callable[[str], Optional[Any]]) -> Any:
+        return self._root_group().visit(func)
+
+    def visititems(self, func: Callable[[str, object], Optional[Any]]) -> Any:
+        return self._root_group().visititems(func)
 
     def __iter__(self):
         return iter(self._root_group())

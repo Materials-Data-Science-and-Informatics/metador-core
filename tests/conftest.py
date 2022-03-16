@@ -11,12 +11,30 @@ def ds_dir(tmpdir_factory):
 
 
 @pytest.fixture
-def tmp_ds_path(ds_dir):
+def tmp_ds_path_factory(ds_dir):
+    """Return a dataset name generator to be used for creating datasets.
+
+    All containers of all datasets will be cleaned up after completing the test.
+    """
+    names = []
+
+    def fresh_name():
+        name = secrets.token_hex(4)
+        names.append(name)
+        return Path(ds_dir / name)
+
+    yield fresh_name
+
+    # clean up
+    for name in names:
+        for file in Path(ds_dir).glob(f"{name}*"):
+            file.unlink()
+
+
+@pytest.fixture
+def tmp_ds_path(tmp_ds_path_factory):
     """Generate a dataset name to be used for creating datasets.
 
     All containers will be cleaned up after completing the test.
     """
-    name = secrets.token_hex(4)
-    yield Path(ds_dir / name)
-    for file in Path(ds_dir).glob("name*"):
-        file.unlink()
+    return tmp_ds_path_factory()

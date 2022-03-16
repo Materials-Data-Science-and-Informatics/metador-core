@@ -7,7 +7,7 @@ groups and attributes to the correct path.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import h5py
 import numpy as np
@@ -53,7 +53,7 @@ def _node_is_virtual(node) -> bool:
 
 @dataclass(frozen=True)
 class IH5Node:
-    """An overlay node stands in for a group, dataset or attribute manager.
+    """An overlay node wraps a group, dataset or attribute manager.
 
     It takes care of finding the correct container to look for the data
     and helps with patching data in a new patch container.
@@ -79,7 +79,7 @@ class IH5Node:
             raise ValueError("List of opened dataset containers must be non-empty!")
         if not self._gpath:
             raise ValueError("Path must be non-empty!")
-        if not (0 <= self._cidx < len(self._files)):
+        if not (0 <= self._cidx <= self._last_idx):
             raise ValueError("Creation index must be in index range of file list!")
 
     def __hash__(self):
@@ -94,6 +94,30 @@ class IH5Node:
     def _last_idx(self):
         """Index of the latest container."""
         return len(self._files) - 1
+
+    def _is_read_only(self) -> bool:
+        """Return true if the newest container is read-only and nothing can be written."""
+        return self._files[-1].mode == "r"
+
+    def _rel_path(self, path: str):
+        """Return relative path based on current location if given path is absolute.
+
+        If relative, returns the path back unchanged.
+        """
+        if path[0] != "/":
+            return path
+        if path.find(self._gpath) != 0:
+            raise RuntimeError("Invalid usage, cannot strip non-matching prefix!")
+        start_idx = len(self._gpath) + int(self._gpath != "/")
+        return path[start_idx:]
+
+    def _abs_path(self, path: str):
+        """Return absolute path based on current location if given path is relative.
+
+        If absolute, returns the path back unchanged.
+        """
+        pref = self._gpath if self._gpath != "/" else ""
+        return path if path[0] == "/" else f"{pref}/{path}"
 
     def _inspect_path(self, path):
         """Print the path node of all containers where the path is contained in."""
@@ -142,14 +166,6 @@ class IH5InnerNode(IH5Node):
         if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
 
-    def _abs_path(self, path: str):
-        """Return absolute path based on current location if given path is relative.
-
-        If absolute, returns the path back unchanged.
-        """
-        pref = self._gpath if self._gpath != "/" else ""
-        return path if path[0] == "/" else f"{pref}/{path}"
-
     def _get_child_raw(self, key: str, cidx: int) -> Any:
         """Return given child (dataset, group, attribute) from given container."""
         if self._attrs:
@@ -196,16 +212,27 @@ class IH5InnerNode(IH5Node):
                     children[k] = min(children[k], i)
 
         # return resulting child nodes / attributes (without the deleted ones)
+        # in alphabetical order,
         # in case of attributes, also excludes special SUBST marker attribute
         return {
             k: idx
-            for k, idx in children.items()
+            for k, idx in sorted(children.items(), key=lambda x: x[0])
             if (not self._attrs or not k == SUBST_KEY)
             and not _node_is_del_mark(self._get_child_raw(k, idx))
         }
 
-    def _create_group(self, gpath):
+    def _get_children(self) -> List[Any]:
+        """Get alphabetically ordered list of child nodes."""
+        return [
+            self._get_child(self._abs_path(k), idx)
+            for k, idx in self._children().items()
+        ]
+
+    def _create_group(self, gpath) -> IH5Group:
         """Create group, overwriting whatever was at that path."""
+        if self._is_read_only():
+            raise ValueError(f"Cannot create group '{gpath}', create a patch first!")
+
         path = self._abs_path(gpath)
         nodes = self._node_seq(gpath)
         if not isinstance(nodes[-1], IH5Group):
@@ -223,8 +250,10 @@ class IH5InnerNode(IH5Node):
         if len(self._files) > 1:
             self._files[-1][path].attrs[SUBST_KEY] = h5py.Empty(None)
 
+        return IH5Group(self._files, path, self._last_idx)
+
     def _node_seq(self, path: str) -> List[IH5Node]:
-        """Return node sequence (node per path prefix) to given path.
+        """Return node sequence (one node per path prefix) to given path.
 
         Returns:
             Sequence starting with the current node (if path is relative)
@@ -279,11 +308,9 @@ class IH5InnerNode(IH5Node):
         ):
             return False  # something at that path in most recent container exists
 
-        pathlen = len(nodes[-1]._gpath)
-        suf_segs = path[pathlen:].lstrip("/").split("/")
-
         # most recent entity is a deletion marker or not existing?
         if nodes[-1]._gpath != path or _node_is_del_mark(nodes[-1]):
+            suf_segs = nodes[-1]._rel_path(path).split("/")
             # create "overwrite" group in most recent patch...
             self._create_group(f"{nodes[-1]._gpath}/{suf_segs[0]}")
             # ... and create (nested) virtual group node(s), if needed
@@ -292,49 +319,64 @@ class IH5InnerNode(IH5Node):
 
         return True
 
+    def visititems(self, func: Callable[[str, object], Optional[Any]]) -> Any:
+        stack = list(reversed(self._get_children()))
+        while stack:
+            curr = stack.pop()
+            val = func(self._rel_path(curr._gpath), curr)
+            if val is not None:
+                return val
+            if isinstance(curr, IH5Group):
+                stack += curr._get_children()
+
+    def visit(self, func: Callable[[str], Optional[Any]]) -> Any:
+        self.visititems(lambda x, _: func(x))
+
     def __setitem__(self, key: str, val):
         self._check_key(key)
+        if self._is_read_only():
+            raise ValueError(f"Cannot set '{key}', create a patch first!")
         if _is_del_mark(val):
             raise ValueError(f"Assigning '{val}' is forbidden, cannot write!")
-        try:
-            if self._attrs:
-                # if path does not exist in current patch, just create "virtual node"
-                if self._gpath not in self._files[-1]:
-                    self._files[-1].create_group(self._gpath)
-                # deletion marker at `key` (if set) is overwritten automatically here
-                # so no need to worry about removing it before assigning `val`
-                self._files[-1][self._gpath].attrs[key] = val
-            else:
-                path = self._abs_path(key)
 
-                fidx = self._find(path)
-                if fidx is not None:
-                    prev_val = self._get_child(path, fidx)
-                    if isinstance(prev_val, IH5Group):
-                        raise ValueError("Path is a group, cannot overwrite with data!")
+        if self._attrs:
+            # if path does not exist in current patch, just create "virtual node"
+            if self._gpath not in self._files[-1]:
+                self._files[-1].create_group(self._gpath)
+            # deletion marker at `key` (if set) is overwritten automatically here
+            # so no need to worry about removing it before assigning `val`
+            self._files[-1][self._gpath].attrs[key] = val
+        else:
+            path = self._abs_path(key)
+            fidx = self._find(path)
+            if fidx is not None:
+                prev_val = self._get_child(path, fidx)
+                if isinstance(prev_val, IH5Group) or isinstance(prev_val, IH5Value):
+                    raise ValueError("Path exists, in order to replace - delete first!")
 
-                if path in self._files[-1] and _node_is_del_mark(
-                    self._get_child_raw(path, self._last_idx)
-                ):
-                    # remove deletion marker in latest patch, if set
-                    del self._files[-1][path]
-                elif path not in self._files[-1]:
-                    # create path and overwrite-group in latest patch
-                    self._create_virtual(path)
-                    assert path in self._files[-1]
-                    del self._files[-1][path]
+            if path in self._files[-1] and _node_is_del_mark(
+                self._get_child_raw(path, self._last_idx)
+            ):
+                # remove deletion marker in latest patch, if set
+                del self._files[-1][path]
+            elif path not in self._files[-1]:
+                # create path and overwrite-group in latest patch
+                self._create_virtual(path)
+                assert path in self._files[-1]
+                del self._files[-1][path]
 
-                # assign new value
-                self._files[-1][path] = val
-
-        except (RuntimeError, ValueError):
-            raise ValueError("Dataset not writable! Create a patch in order to write!")
+            # assign new value
+            self._files[-1][path] = val
 
     def __delitem__(self, key: str):
         self._check_key(key)
+        if self._is_read_only():
+            raise ValueError(f"Cannot delete '{key}', create a patch first!")
+
         found_cidx = self._find(key)
         if found_cidx is None or _node_is_del_mark(self._get_child(key, found_cidx)):
-            raise KeyError(f"Cannot delete, '{key}' does not exist!")
+            raise KeyError(f"Cannot delete '{key}', it does not exist!")
+
         # remove the entity if it is found in newest container,
         # mark the path as deleted if doing a patch and not working on base container
         found_in_latest = found_cidx == self._last_idx
@@ -398,8 +440,10 @@ class IH5Value(IH5Node):
         return self._files[self._cidx][self._gpath][key]  # type: ignore
 
     def __setitem__(self, key, val):
+        if self._is_read_only():
+            raise ValueError(f"Cannot set '{key}', create a patch first!")
         if self._cidx != self._last_idx:
-            raise ValueError("This value is not from the latest patch, cannot write!")
+            raise ValueError("This node is not from the latest patch, cannot write!")
         # if we're in the latest patch, allow writing as usual (pass through)
         self._files[self._cidx][self._gpath][key] = val  # type: ignore
 
@@ -419,9 +463,9 @@ class IH5Group(IH5InnerNode):
     def attrs(self):
         return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
-    def create_group(self, gpath):
+    def create_group(self, gpath) -> IH5Group:
         """Create a group (overrides whatever was at the path in previous versions)."""
-        self._create_group(gpath)
+        return self._create_group(gpath)
 
 
 class IH5AttributeManager(IH5InnerNode):
