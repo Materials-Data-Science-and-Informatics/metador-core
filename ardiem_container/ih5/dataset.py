@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import re
+from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID, uuid1
 
 import h5py
@@ -37,8 +38,10 @@ USER_BLOCK_SIZE: Final[int] = 512
 # algorithm to use and prepend to a hashsum
 HASH_ALG = "sha256"
 
+hashsum_str = Annotated[str, Field(regex=r"^" + HASH_ALG + r":\w+$")]
 
-def compute_hashsum(filename: Path, skip_bytes: int = 0) -> str:
+
+def hashsum_file(filename: Path, skip_bytes: int = 0) -> str:
     """Compute hashsum of HDF5 file (ignoring the first `skip_bytes`)."""
     with open(filename, "rb") as f:
         f.seek(skip_bytes)
@@ -73,8 +76,11 @@ class IH5UserBlock(BaseModel):
     prev_patch: Optional[UUID]
     """UUID of the previous patch UUID, so that that predecessor container is required."""
 
-    data_hashsum: Annotated[str, Field(regex=r"^\w+:\w+$")]
+    hdf5_hashsum: hashsum_str
     """Hashsum to verity integrity of the HDF5 data after the user block."""
+
+    is_stub: bool
+    """True if file has the structure of another container, without actual data inside."""
 
     @classmethod
     def create(
@@ -92,7 +98,8 @@ class IH5UserBlock(BaseModel):
             dataset_uuid=uuid1() if prev is None else prev.dataset_uuid,
             patch_index=0 if prev is None else prev.patch_index + 1,
             prev_patch=None if prev is None else prev.patch_uuid,
-            data_hashsum=f"{HASH_ALG}:toBeComputed",
+            hdf5_hashsum=f"{HASH_ALG}:toBeComputed",
+            is_stub=False,
         )
         if path is not None:
             ret._filename = path
@@ -143,7 +150,7 @@ class IH5UserBlock(BaseModel):
         ret.patch_index = other.patch_index
         ret.patch_uuid = other.patch_uuid
         ret._filename = target
-        ret.data_hashsum = ""  # to be computed
+        ret.hdf5_hashsum = ""  # to be computed
         return ret
 
     def save(self, filename: Optional[Path] = None):
@@ -163,6 +170,9 @@ class IH5UserBlock(BaseModel):
             f.seek(0)
             f.write(data)
             f.write(b"\x00")  # mark end of the data
+
+
+T = TypeVar("T", bound="IH5Dataset")
 
 
 class IH5Dataset:
@@ -235,8 +245,8 @@ class IH5Dataset:
             raise ValueError(f"{ub._filename}: {msg}")
 
         # hash must match with HDF5 content (i.e. integrity check)
-        chksum = compute_hashsum(ub._filename, skip_bytes=USER_BLOCK_SIZE)
-        if ub.data_hashsum != chksum:
+        chksum = hashsum_file(ub._filename, skip_bytes=USER_BLOCK_SIZE)
+        if ub.hdf5_hashsum != chksum:
             msg = "file has been modified, stored and computed checksum are different!"
             raise ValueError(f"{ub._filename}: {msg}")
 
@@ -253,6 +263,12 @@ class IH5Dataset:
             # (can compare as strings directly, as we checked those already)
             if ub.prev_patch != prev.patch_uuid:
                 msg = f"Patch for {ub.prev_patch}, but predecessor is {prev.patch_uuid}"
+                raise ValueError(f"{ub._filename}: {msg}")
+
+            # we only allow to write patches on top of stubs,
+            # but not have stubs on top of something else.
+            if ub.is_stub:
+                msg = "Found stub patch container, only base container may be a stub!"
                 raise ValueError(f"{ub._filename}: {msg}")
 
     def _root_group(self) -> IH5Group:
@@ -277,6 +293,10 @@ class IH5Dataset:
         return [Path(f.filename) for f in self._files]
 
     @property
+    def ih5meta(self) -> List[IH5UserBlock]:
+        return [self._ublock(i) for i in range(len(self._files))]
+
+    @property
     def read_only(self) -> bool:
         """Return whether this dataset is read-only at the moment."""
         return not self._has_writable
@@ -291,7 +311,7 @@ class IH5Dataset:
             raise ValueError("Cannot open empty list of containers!")
 
         self._has_writable: bool = False
-        self._ublocks = {path: IH5UserBlock.load(path) for path in paths}
+        self._ublocks = {Path(path): IH5UserBlock.load(path) for path in paths}
         self._files: List[h5py.File] = [h5py.File(path, "r") for path in paths]
         # sort files by patch index order (important!)
         # if something is wrong with the indices, this will throw an exception.
@@ -315,7 +335,7 @@ class IH5Dataset:
             raise ValueError("Some patch_uuid is not unique, invalid file set!")
 
     @classmethod
-    def create(cls, dataset: Union[Path, str]) -> IH5Dataset:
+    def create(cls: Type[T], dataset: Union[Path, str]) -> T:
         """Create a new dataset consisting of a base container.
 
         The base container is exposed as the `writable` container.
@@ -325,7 +345,7 @@ class IH5Dataset:
             raise ValueError(f"Invalid dataset name: '{dataset.name}'")
 
         path = cls._base_filename(dataset)
-        ret = IH5Dataset.__new__(IH5Dataset)
+        ret = cls.__new__(cls)
         ret._has_writable = True
         ret._files = [cls._new_container(path)]
         ret._ublocks = {path: IH5UserBlock.create(prev=None, path=path)}
@@ -354,14 +374,14 @@ class IH5Dataset:
         return paths
 
     @classmethod
-    def open(cls, dataset: Path) -> IH5Dataset:
+    def open(cls: Type[T], dataset: Path) -> T:
         """Open a dataset for read access.
 
         This method uses `find_containers` to infer the correct file set.
         """
         paths = cls.find_containers(dataset)
         if not paths:
-            raise ValueError(f"No containers found for dataset: {dataset}")
+            raise FileNotFoundError(f"No containers found for dataset: {dataset}")
         return cls(paths)
 
     def close(self) -> None:
@@ -386,21 +406,25 @@ class IH5Dataset:
         self._files.append(self._new_container(path))
         self._has_writable = True
 
-    def discard_patch(self) -> None:
-        """Discard the current writable patch container."""
-        if not self._has_writable:
-            raise ValueError("Dataset is read-only, nothing to discard!")
-        if self._ublock(-1).prev_patch is None:
-            raise ValueError("Cannot discard base container! Just delete the file!")
-            # reason: the base container provides dataset_uuid,
-            # destroying it makes this object inconsistent / breaks invariants
-
+    def _delete_latest_container(self) -> None:
+        """Discard the current writable container (patch or base)."""
         cfile = self._files.pop()
         fn = cfile.filename
         del self._ublocks[Path(fn)]
         cfile.close()
         Path(fn).unlink()
         self._has_writable = False
+
+    def discard_patch(self) -> None:
+        """Discard the current writable patch container."""
+        if not self._has_writable:
+            raise ValueError("Dataset is read-only, nothing to discard!")
+        if len(self._files) == 1:
+            raise ValueError("Cannot discard base container! Just delete the file!")
+            # reason: the base container provides dataset_uuid,
+            # destroying it makes this object inconsistent / breaks invariants
+            # so if this is done, it should not be used anymore.
+        return self._delete_latest_container()
 
     def commit(self) -> None:
         """Complete the current writable container (base or patch) for the dataset.
@@ -417,13 +441,9 @@ class IH5Dataset:
         cfile.close()  # must close it now, as we will write outside of HDF5 next
 
         # compute checksum, write user block
-        chksum = compute_hashsum(filepath, skip_bytes=USER_BLOCK_SIZE)
-        self._ublocks[filepath].data_hashsum = chksum
+        chksum = hashsum_file(filepath, skip_bytes=USER_BLOCK_SIZE)
+        self._ublocks[filepath].hdf5_hashsum = chksum
         self._ublocks[filepath].save(filepath)
-
-        # TODO: here we would plug in more checks for the
-        # fine-grained format... delegate to subclass function?
-        # this should use the overlay to check the "resulting" dataset!
 
         # reopen the container file now as read-only
         self._files[-1] = h5py.File(filepath, "r")
@@ -436,8 +456,10 @@ class IH5Dataset:
         """
         if self._has_writable:
             raise ValueError("Cannot merge, please commit or discard your changes!")
+        if any(map(lambda x: x.is_stub, self.ih5meta)):
+            raise ValueError("Cannot merge, files contain a stub!")
 
-        with IH5Dataset.create(target) as ds:
+        with self.create(target) as ds:
             for k, v in self.attrs.items():  # copy root attributes
                 ds.attrs[k] = v
 
@@ -455,8 +477,8 @@ class IH5Dataset:
             cfile = ds.containers[0]  # store filename to override userblock afterwards
         # compute new merged userblock and store it
         ub = self._ublock(0).merge(self._ublock(-1), cfile)
-        chksum = compute_hashsum(cfile, skip_bytes=USER_BLOCK_SIZE)
-        ub.data_hashsum = chksum
+        chksum = hashsum_file(cfile, skip_bytes=USER_BLOCK_SIZE)
+        ub.hdf5_hashsum = chksum
         ub.save()
         return cfile
 
@@ -507,3 +529,95 @@ class IH5Dataset:
 
     def items(self):
         return self._root_group().items()
+
+
+# ---- Skeletons and Stubs ----
+
+IH5TypeSkeleton = Dict[str, Tuple[Union[None, Type[IH5Group], Type[IH5Value]], Any]]
+
+
+def ih5_type_skeleton(ds) -> IH5TypeSkeleton:
+    """Return mapping from all paths in a IH5 dataset to their type.
+
+    Attribute paths have the shape /a/b/.../n@attr
+
+    First component of type tuple is IH5Group, IH5Value or None.
+    Second component is more detailed type for attribute values and IH5Values.
+    """
+    ret: IH5TypeSkeleton = {}
+    for k, v in ds.attrs.items():
+        ret[f"@{k}"] = (None, type(v))
+
+    def add_paths(name, node):
+        if isinstance(node, IH5Value):
+            typ = (type(node), type(node[()]))
+        else:
+            typ = (type(node), None)
+        ret[name] = typ
+        for k, v in node.attrs.items():
+            ret[f"{name}@{k}"] = (None, type(v))
+
+    ds.visititems(add_paths)
+    return ret
+
+
+class IH5SkeletonEnum(str, Enum):
+    """The skeleton is a mapping of entity paths to entity type."""
+
+    value = "v"
+    group = "g"
+    attribute = "a"
+
+
+def skel_enum(v):
+    if v[0] == IH5Group:
+        return IH5SkeletonEnum.group
+    elif v[0] == IH5Value:
+        return IH5SkeletonEnum.value
+    else:
+        return IH5SkeletonEnum.attribute
+
+
+def ih5_skeleton(ds: IH5Dataset) -> Dict[str, str]:
+    """Create a skeleton capturing the raw structure of a IH5 dataset."""
+    return {k: skel_enum(v).value for k, v in ih5_type_skeleton(ds).items()}
+
+
+def create_stub_base(
+    dataset: Union[Path, str],
+    ub: IH5UserBlock,
+    skel: Dict[str, str],
+) -> IH5Dataset:
+    """Create a stub base container for a dataset.
+
+    The stub is based on the user block of a real IH5 dataset
+    and the skeleton of the overlay structure (as given by ih5_skeleton).
+
+    Patches done on top of the stub are compatible with the original dataset.
+    """
+    dataset = Path(dataset)  # in case it was a str
+    ds = IH5Dataset.create(dataset)
+    # overwrite user block of fresh dataset, mark it as a base container stub
+    ds._ublocks[Path(ds._files[0].filename)] = ub.copy(
+        update={"is_stub": True, "prev_patch": None}
+    )
+    # create structure based on skeleton
+    for k, v in skel.items():
+        if v == IH5SkeletonEnum.group:
+            if k not in ds:
+                ds.create_group(k)
+        elif v == IH5SkeletonEnum.value:
+            ds[k] = h5py.Empty(None)
+        elif v == IH5SkeletonEnum.attribute:
+            k, atr = k.split("@")  # split off attribute name
+            k = k or "/"  # special case - root attributes
+            if k not in ds:
+                ds[k] = h5py.Empty(None)
+            ds[k].attrs[atr] = h5py.Empty(None)
+        else:
+            raise ValueError(f"Invalid skeleton entry: {k} -> {v}")
+
+    # fix changes, return resulting opened read-only dataset stub
+    ds.commit()  # this will also add the stub hashsum, completing the stub userblock
+    assert ds.read_only
+    return ds

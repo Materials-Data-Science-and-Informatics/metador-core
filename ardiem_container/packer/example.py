@@ -11,25 +11,24 @@ is registered as a packer plugin called `example`.)
 """
 
 from pathlib import Path
-from typing import Dict
+from typing import Optional
 
-from ardiem_container.dataset import IH5Dataset
-from ardiem_container.packer import ArdiemPacker
+from . import ArdiemPacker, DirDiff, IH5Dataset, ValidationErrors
 
 
 class ExamplePacker(ArdiemPacker):
     @staticmethod
-    def check_directory(data_dir: Path) -> Dict[str, str]:
+    def check_directory(data_dir: Path) -> ValidationErrors:
         print("called check_directory")
         # TODO: dirschema
         return {}
 
     @staticmethod
-    def check_container(container: IH5Dataset) -> Dict[str, str]:
+    def check_dataset(dataset: IH5Dataset) -> ValidationErrors:
         print("called check_container")
         # TODO: dirschema
         return {}
 
     @staticmethod
-    def pack_directory(data_dir: Path, container: IH5Dataset, update: bool):
+    def pack_directory(data_dir: Path, dataset: IH5Dataset, update: Optional[DirDiff]):
         print("called pack_directory")

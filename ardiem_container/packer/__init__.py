@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict
+from typing import Optional
 
 from ..dataset import IH5Dataset
+from ..util import DirDiff, ValidationErrors
 
 
 class ArdiemPacker(ABC):
@@ -23,16 +24,18 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def check_directory(data_dir: Path) -> Dict[str, str]:
+    def check_directory(data_dir: Path) -> ValidationErrors:
         """Check whether the given directory is suitable for packing with this plugin.
 
-        This method will be called before `pack_directory`.
+        This method will be called before `pack_directory` and MUST detect
+        all problems (such as missing or invalid data or metadata) that can be
+        expected to be fixed by the user in preparation for the packing.
 
         Args:
             data_dir: Directory containing all the data to be packed
 
         Returns:
-            {} if there are no problems and the directory can be packed.
+            Empty dict if there are no problems and the directory can be packed.
 
             Otherwise, a dict mapping file paths (relative to `dir`) to error
             messages.
@@ -45,41 +48,48 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def pack_directory(data_dir: Path, dataset: IH5Dataset, update: bool):
+    def pack_directory(data_dir: Path, dataset: IH5Dataset, diff: Optional[DirDiff]):
         """Pack a directory into an Ardiem IH5 dataset or update it.
 
         It is assumed that `data_dir` is suitable (according to `check_directory`).
-        The container file will be overwritten, if it already exists.
 
-        No files in `dir` will be created or modified.
+        The passed in dataset is already in writable mode.
+
+        Files in `data_dir` MUST NOT be created, deleted or modified.
+        The `dataset.commit()` MUST NOT be called by the packer.
+
+        IH5Values that are already pre-existing in the passed dataset
+        MUST NOT be read or be relied on for generating a patch,
+        as they could be dummy stubs.
+
+        If the dataset to be created is fresh, `diff` will be `None`.
+        Otherwise, it will contain information about changed paths
+        and a patch MUST be generated creating only structures in the dataset
+        that are relevant to the changed files and directories.
+
+        In order to abort packing, and exception must be raised.
 
         Args:
             data_dir: Directory containing all the data to be packed
-            container: IH5 dataset to pack the data into
-            update: if true, this is a non-empty dataset to be updated
+            container: Ardiem IH5 dataset to pack the data into or update
+            diff: if true, this is a non-empty dataset to be updated
         """
-
-    # TODO: what if packing fails? maybe need ArdiemPackerException
-    # and must ensure clean-up of partial container file
-
-    # TODO: maybe useful to provide a "build directory" for caching something
-    # to speedup container creation. Where does it live? how is it managed?
-    # For now, we'll support no caching for simplicity's sake.
 
     @staticmethod
     @abstractmethod
-    def check_container(dataset: IH5Dataset) -> Dict[str, str]:
+    def check_dataset(dataset: IH5Dataset) -> ValidationErrors:
         """Check a dataset assembled by this plugin whether it is in order.
 
-        This clearly must be the case immediately after `pack_directory` and
-        can be used to verify the internal container structure in case that
-        e.g. the user manually modified it.
+        This method MUST succeed on a dataset that was created or updated using
+        `pack_directory` and it will be used to verify the internal container
+        structure to check whether a possibly unknown dataset is compatible
+        with this packer, e.g. before creating a patch.
 
         Args:
             dataset: The dataset to be verified
 
         Returns:
-            {} if there are no problems with the container.
+            Empty dict if there are no problems with the container.
 
             Otherwise, a dict mapping dataset paths to error messages.
 

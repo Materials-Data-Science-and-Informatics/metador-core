@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from ardiem_container.ih5 import IH5Dataset, IH5Group, IH5Value
+from ardiem_container.ih5.dataset import ih5_type_skeleton
 from ardiem_container.ih5.overlay import DEL_VALUE, SUBST_KEY, IH5InnerNode, IH5Node
 
 
@@ -53,25 +54,6 @@ def dummy_ds_factory(tmp_ds_path_factory):
     yield get_ds
     for ds in datasets:
         ds.close()
-
-
-def skeleton(ds):
-    """Return all paths (groups, data and attribute values)."""
-    ret = {}
-    for k, v in ds.attrs.items():
-        ret[f"@{k}"] = type(v).__name__
-
-    def add_paths(name, node):
-        if isinstance(node, IH5Value):
-            typ = (type(node), type(node[()]))
-        else:
-            typ = type(node)
-        ret[name] = typ
-        for k, v in node.attrs.items():
-            ret[f"{name}@{k}"] = type(v)
-
-    ds.visititems(add_paths)
-    return ret
 
 
 # --------
@@ -159,6 +141,7 @@ def test_latest_container_idx(tmp_ds_path):
 def test_visit(tmp_ds_path):
     with IH5Dataset.create(tmp_ds_path) as ds:
         ds["grp/foo/bar"] = 123
+        ds.attrs["rootattr"] = "yay"  # type: ignore
         ds["grp/foo/bar"].attrs["someattr"] = "value"  # type: ignore
         ds.create_group("grp/qux")
 
@@ -177,12 +160,13 @@ def test_visit(tmp_ds_path):
         lst.clear()
         ds.visit(lst.append)
         assert lst == ["grp", "grp/foo", "grp/foo/bar", "grp/qux"]
-        assert skeleton(ds) == {
-            "grp": IH5Group,
-            "grp/foo": IH5Group,
+        assert ih5_type_skeleton(ds) == {
+            "@rootattr": (None, str),
+            "grp": (IH5Group, None),
+            "grp/foo": (IH5Group, None),
             "grp/foo/bar": (IH5Value, np.int64),
-            "grp/foo/bar@someattr": str,
-            "grp/qux": IH5Group,
+            "grp/foo/bar@someattr": (None, str),
+            "grp/qux": (IH5Group, None),
         }
 
 
@@ -362,13 +346,13 @@ def test_create_access_relative_absolute(tmp_ds_path):
         nested["/moredata"] = 456
         ds.commit()
 
-        assert skeleton(ds) == {
+        assert ih5_type_skeleton(ds) == {
             "moredata": (IH5Value, np.int64),
-            "nested": IH5Group,
+            "nested": (IH5Group, None),
             "nested/data": (IH5Value, np.int64),
-            "nested/data@key": str,
-            "nested/deep": IH5Group,
-            "toplevel": IH5Group,
+            "nested/data@key": (None, str),
+            "nested/deep": (IH5Group, None),
+            "toplevel": (IH5Group, None),
         }
         # access from inside using absolute or relative path
         assert ds["nested"]["data"]._gpath == "/nested/data"
@@ -456,12 +440,12 @@ def test_clear_all_override(dummy_ds_factory):
         ds.create_group("b/b")
 
         # only the new stuff should be there
-        assert skeleton(ds) == {
-            "a": IH5Group,
-            "b": IH5Group,
+        assert ih5_type_skeleton(ds) == {
+            "a": (IH5Group, None),
+            "b": (IH5Group, None),
             "b/a": (IH5Value, np.int64),
-            "b/a@atr": str,
-            "b/b": IH5Group,
+            "b/a@atr": (None, str),
+            "b/b": (IH5Group, None),
         }
 
     # fully clear and refill within the same patch

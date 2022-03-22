@@ -5,7 +5,7 @@ PACKER_GROUP = "ardiem_packer"
 Group in which packer plugin entry-points are registered.
 """
 
-available = {
+ardiem_packers = {
     ep.name: ep.load() for ep in pkg_resources.iter_entry_points(group=PACKER_GROUP)
 }
 """

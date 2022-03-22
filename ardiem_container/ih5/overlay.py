@@ -6,6 +6,7 @@ groups and attributes to the correct path.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
@@ -152,6 +153,8 @@ class IH5InnerNode(IH5Node):
         """
         if key == "":
             raise ValueError("Invalid empty path!")
+        if re.match(r"^[A-Za-z0-9\-_/]+$", key) is None:
+            raise ValueError("Invalid key: Only letters, numbers, - and _ are allowed!")
         if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
 

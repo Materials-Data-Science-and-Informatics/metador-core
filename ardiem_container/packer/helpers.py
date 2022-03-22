@@ -3,10 +3,6 @@
 import os
 from pathlib import Path
 
-# TODO: directory comparison helper function
-# (to help creating updates from changes in a directory)
-# should simplify implementation of shallow patches in the packers
-
 
 def norm_symlink(base: Path, syml: Path) -> str:
     """

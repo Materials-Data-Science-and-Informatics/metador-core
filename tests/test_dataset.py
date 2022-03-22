@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from ardiem_container.ih5 import IH5Dataset, IH5UserBlock
+from ardiem_container.ih5.dataset import create_stub_base, ih5_skeleton
 
 
 def test_open_empty_dataset():
@@ -28,8 +29,15 @@ def test_open_nonexisting_dataset_name(ds_dir):
     # not existing yet -> cannot open
     ds_path = ds_dir / "nonexisting"
     assert IH5Dataset.find_containers(ds_path) == []
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         IH5Dataset.open(ds_path)
+
+
+def test_create_existing_fail(tmp_ds_path):
+    with IH5Dataset.create(tmp_ds_path):
+        pass
+    with pytest.raises(FileExistsError):
+        IH5Dataset.create(tmp_ds_path)
 
 
 def test_create_open(tmp_ds_path):
@@ -41,7 +49,7 @@ def test_create_open(tmp_ds_path):
     assert len(IH5Dataset.find_containers(tmp_ds_path)) == 1
     assert str(ds.containers[0]).find(str(tmp_ds_path)) == 0
     assert ds.name == tmp_ds_path.name
-    assert ds.uuid == ds._ublock(0).dataset_uuid
+    assert ds.uuid == ds.ih5meta[0].dataset_uuid
 
     # add some data
     ds["foo"] = "bar"
@@ -210,7 +218,7 @@ def test_open_scrambled_filenames(tmp_ds_path):
             ds.create_patch()
             ds.commit()
         files = ds.containers
-        uuids = [ds._ublock(i).patch_uuid for i in range(4)]
+        uuids = [ds.ih5meta[i].patch_uuid for i in range(4)]
 
     # permutate the files
     order = [3, 0, 2, 1]
@@ -222,7 +230,7 @@ def test_open_scrambled_filenames(tmp_ds_path):
     # check that the files were re-ordered back into the correct order
     with IH5Dataset(newfiles) as ds:
         for i in range(4):
-            assert ds._ublock(i).patch_uuid == uuids[i]
+            assert ds.ih5meta[i].patch_uuid == uuids[i]
 
 
 def test_check_baseless_fileset_open(tmp_ds_path):
@@ -261,7 +269,13 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
 
         with pytest.raises(ValueError):  # not read-only -> calling merge shall fail
             ds.merge(target)
+
         ds.commit()
+
+        ds._ublock(-1).is_stub = True
+        with pytest.raises(ValueError):  # stub patch -> should fail
+            ds.merge(target)
+        ds._ublock(-1).is_stub = False
 
         # now merge dataset and compare contents to original
         merged_file = ds.merge(target)
@@ -272,7 +286,7 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
             assert ds2._ublock(0).patch_index == ds._ublock(-1).patch_index
             assert ds2._ublock(0).patch_uuid == ds._ublock(-1).patch_uuid
             assert ds2._ublock(0).prev_patch is None
-            assert ds2._ublock(0).data_hashsum.find("sha256:") == 0
+            assert ds2._ublock(0).hdf5_hashsum.find("sha256:") == 0
 
             # check data
             orig_nodes, copy_nodes = [], []
@@ -307,6 +321,91 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
         assert ds["qux/new_entry"][()] == b"amazing data"  # type: ignore
 
 
+def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
+    # create a little normal dataset with multiple patches
+    dsname = tmp_ds_path_factory()
+    stubname = tmp_ds_path_factory()
+    with IH5Dataset.create(dsname) as ds:
+        ds["foo/bar"] = [1, 2, 3]
+        ds.commit()
+        ds.create_patch()
+        ds["foo/bar"].attrs["qux"] = 42  # type: ignore
+        ds["data"] = "interesting data"
+        ds.commit()
+        ds.create_patch()
+        ds["data"].attrs["key"] = "value"  # type: ignore
+        ds["foo/muh"] = 1337
+        ds["foo/tokill"] = "this will be deleted"
+        ds.commit()
+
+        ds_files = ds.containers
+        ds_ub = ds.ih5meta[-1]
+        ds_sk = ih5_skeleton(ds)
+
+        # create the stub
+        stub = create_stub_base(stubname, ds_ub, ds_sk)
+        assert ds_ub.dataset_uuid == stub.ih5meta[0].dataset_uuid
+        assert ds_ub.patch_uuid == stub.ih5meta[0].patch_uuid
+        assert ds_ub.patch_index == stub.ih5meta[0].patch_index
+        assert stub.ih5meta[0].is_stub
+        assert ih5_skeleton(stub) == ds_sk
+
+        # create patch on top of stub
+        stub.create_patch()
+        del stub["foo/tokill"]
+        del stub["foo/bar"]
+        stub["/foo/bar/blub"] = True
+        stub["data"].attrs["key2"] = "othervalue"
+        stub["foo/bar"].attrs["qax"] = 987  # type: ignore
+        stub.commit()
+
+        assert len(stub.containers) == 2
+        stub_files = stub.containers
+        stub_skel = ih5_skeleton(stub)
+        assert stub_skel == {
+            "data": "v",
+            "data@key": "a",
+            "data@key2": "a",
+            "foo": "g",
+            "foo/bar": "g",
+            "foo/bar@qax": "a",
+            "foo/bar/blub": "v",
+            "foo/muh": "v",
+        }
+
+    # open real dataset with new patch in stub
+    with IH5Dataset([*ds_files, stub_files[-1]]) as ds:
+        # first success is that it even opens without complaining.
+        # now check that it's the same skeleton with the real data:
+        assert ih5_skeleton(ds) == stub_skel
+        # check the attributes are merged and values look as expeted
+        assert set(ds["data"].attrs.keys()) == set(["key", "key2"])
+        assert set(ds["foo/bar"].attrs.keys()) == set(["qax"])
+        assert "foo/muh" in ds
+        assert "foo/bar/blub" in ds
+
+
+def test_valid_stub_ok(tmp_ds_path_factory):
+    with IH5Dataset.create(tmp_ds_path_factory()) as ds:
+        ds_ub = ds.ih5meta[-1]
+        with pytest.raises(ValueError):
+            skel = {
+                "foo@atr": "a",  # first creates the attribute...
+                "foo": "v",  # ...then explicitly value
+                "qux/bar": "v",  # ... first implicitly create group
+                "qux": "g",  # ...then explicitly
+            }
+            # in this order it still should work fine
+            create_stub_base(tmp_ds_path_factory(), ds_ub, skel)
+
+
+def test_invalid_stub_fail(tmp_ds_path_factory):
+    with IH5Dataset.create(tmp_ds_path_factory()) as ds:
+        ds_ub = ds.ih5meta[-1]
+        with pytest.raises(ValueError):
+            create_stub_base(tmp_ds_path_factory(), ds_ub, {"foo": "invalid"})
+
+
 # --------
 # check that exceptions are correctly triggered by manipulating data into invalid states
 
@@ -330,7 +429,7 @@ def test_check_ublock_inconsistent_checksum_fail(tmp_ds_path):
         ds.create_patch()
         ds.commit()
         ub = ds._ublock(-1)
-        ub.data_hashsum = (
+        ub.hdf5_hashsum = (
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         )
         ub.save(ub._filename)
@@ -395,6 +494,18 @@ def test_check_ublock_multiple_same_patch_uuid_fail(tmp_ds_path):
         ds.commit()
         ds.create_patch()
         ds._ublock(1).patch_uuid = ds._ublock(0).patch_uuid
+        ds.commit()
+
+    with pytest.raises(ValueError):
+        IH5Dataset.open(tmp_ds_path)
+
+
+def test_check_ublock_patch_stub_fail(tmp_ds_path):
+    # make that there are multiple files with the same patch UUID
+    with IH5Dataset.create(tmp_ds_path) as ds:
+        ds.commit()
+        ds.create_patch()
+        ds._ublock(1).is_stub = True
         ds.commit()
 
     with pytest.raises(ValueError):
