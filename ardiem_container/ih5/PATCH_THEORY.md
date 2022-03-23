@@ -193,3 +193,23 @@ This imposes the following small **restrictions on "regular" HDF5 file contents*
 * there MUST NOT be a dataset or attribute with value `np.void(b'\x7f')` (ASCII-DEL)
 
 We expect that this will not affect any imaginable realistic use cases, though.
+
+## Patching over Stubs
+
+We also provide the possibility to create an auxiliary **stub base container**.
+It mimics a real dataset by having its metadata (with an additional `is_stub` flag set),
+contain all paths and attributes that are included in the container, but no actual data.
+
+The use of such a stub is to be a foundation for creating patches without having the
+complete dataset locally available. The stub can be constructed from only the information
+stored in the most recent user block and a **skeleton** of existing paths and attributes
+inside the container.
+
+**Patches created on top of a stub are compatible with the real dataset**, so the patch
+can be created locally without having the full dataset and then be uploaded to the
+same location where the dataset is actually stored in order to update the remote dataset.
+
+The stub containers may not be used for merging the data for obvious reasons.
+Also, accessing a stub-based patch will only allow to see data added in the patch - for
+every non-overridden path there will be just a placeholder "stub" where the data would be
+located in the real dataset the stub is based on.

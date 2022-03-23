@@ -30,13 +30,14 @@ from .overlay import IH5Group, IH5Value
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
+"""Magic value at the beginning of the file to detect that an HDF5 file is valid IH5."""
 
-# space to reserve at beginning of each HDF5 file in bytes.
-# must be a power of 2 and at least 512 (required by HDF5)
 USER_BLOCK_SIZE: Final[int] = 512
+"""Space to reserve at beginning of each HDF5 file in bytes.
+Must be a power of 2 and at least 512 (required by HDF5)."""
 
-# algorithm to use and prepend to a hashsum
 HASH_ALG = "sha256"
+"""Algorithm to use and string to prepend to a resulting hashsum."""
 
 hashsum_str = Annotated[str, Field(regex=r"^" + HASH_ALG + r":\w+$")]
 
@@ -106,7 +107,7 @@ class IH5UserBlock(BaseModel):
         return ret
 
     @classmethod
-    def read_head_raw(cls, stream, ub_size: int) -> Optional[Tuple[int, str]]:
+    def _read_head_raw(cls, stream, ub_size: int) -> Optional[Tuple[int, str]]:
         """Try reading user block.
 
         Args:
@@ -129,11 +130,11 @@ class IH5UserBlock(BaseModel):
         """Load a user block of the given HDF5 file."""
         with open(filename, "rb") as f:
             # try smallest valid UB size first
-            head = cls.read_head_raw(f, 512)
+            head = cls._read_head_raw(f, 512)
             if head is None:
                 raise ValueError(f"{filename}: it doesn't look like a valid IH5 file!")
             if head[0] > 512:  # if stored user block size is bigger, re-read
-                head = cls.read_head_raw(f, head[0])
+                head = cls._read_head_raw(f, head[0])
                 assert head is not None
         ret = IH5UserBlock.parse_obj(json.loads(head[1]))
         ret._userblock_size = head[0]
@@ -145,6 +146,7 @@ class IH5UserBlock(BaseModel):
 
         This userblock must be the first one in a merged patch sequence,
         while the argument must be the userblock from the last one.
+        The result is the userblock for a merged dataset, lacking just the hashsum.
         """
         ret = self.copy()
         ret.patch_index = other.patch_index
@@ -156,7 +158,8 @@ class IH5UserBlock(BaseModel):
     def save(self, filename: Optional[Path] = None):
         """Save this object in the user block of the given HDF5 file.
 
-        If no path is given, will save back to file this block was loaded from.
+        If no path is given, will save back to file this block belongs to
+        (stored in the `_filename` attribute).
         """
         dat_str = f"{FORMAT_MAGIC_STR}\n{self._userblock_size}\n{self.json()}"
         data = dat_str.encode("utf-8")
@@ -183,15 +186,16 @@ class IH5Dataset:
     the remaining files are a linear sequence of patch containers.
 
     Runtime invariants:
-        * all files of an instance are open for reading (until `close()` is called)
-        * all files in `_files` are in patch index order
-        * at most one file is open in writable mode (if any, it is the last one)
-        * modifications are possible only after `create` or `create_patch` was called
-          and until `commit` or `discard` was called, and at no other time
+
+    * all files of an instance are open for reading (until `close()` is called)
+    * all files in `_files` are in patch index order
+    * at most one file is open in writable mode (if any, it is the last one)
+    * modifications are possible only after `create` or `create_patch` was called
+        and until `commit` or `discard_patch` was called, and at no other time
 
     Only creation of and access to containers is supported.
     Renaming or deleting a container collection is not supported.
-    For this, use `IH5Dataset.find_containers` and apply standard tools.
+    For this, use `find_containers` and apply standard tools.
     """
 
     # Characters that may appear in a dataset name.
@@ -495,15 +499,19 @@ class IH5Dataset:
 
     @property
     def attrs(self):
+        """See [h5py.Group.attrs](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.attrs)."""
         return self._root_group().attrs
 
     def create_group(self, gpath: str) -> IH5Group:
+        """See [h5py.Group.create_group](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.create_group)."""
         return self._root_group().create_group(gpath)
 
     def visit(self, func: Callable[[str], Optional[Any]]) -> Any:
+        """See [h5py.Group.visit](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.visit)."""
         return self._root_group().visit(func)
 
     def visititems(self, func: Callable[[str, object], Optional[Any]]) -> Any:
+        """See [h5py.Group.visititems](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.visititems)."""
         return self._root_group().visititems(func)
 
     def __iter__(self):
@@ -539,10 +547,11 @@ IH5TypeSkeleton = Dict[str, Tuple[Union[None, Type[IH5Group], Type[IH5Value]], A
 def ih5_type_skeleton(ds) -> IH5TypeSkeleton:
     """Return mapping from all paths in a IH5 dataset to their type.
 
-    Attribute paths have the shape /a/b/.../n@attr
+    The attributes are represented as special paths with the shape `a/b/.../n@attr`,
+    pointing to the attribute named `attr` at the path `a/b/.../n`.
 
-    First component of type tuple is IH5Group, IH5Value or None.
-    Second component is more detailed type for attribute values and IH5Values.
+    First component of type tuple is `IH5Group`, `IH5Value` or `None`.
+    Second component is more detailed type for attribute values and `IH5Value`s.
     """
     ret: IH5TypeSkeleton = {}
     for k, v in ds.attrs.items():
@@ -564,23 +573,24 @@ def ih5_type_skeleton(ds) -> IH5TypeSkeleton:
 class IH5SkeletonEnum(str, Enum):
     """The skeleton is a mapping of entity paths to entity type."""
 
-    value = "v"
-    group = "g"
-    attribute = "a"
+    val = "v"
+    grp = "g"
+    atr = "a"
 
 
-def skel_enum(v):
+def cls_to_skel_enum(v: Any) -> IH5SkeletonEnum:
+    """Convert class object to corresponding enum instance."""
     if v[0] == IH5Group:
-        return IH5SkeletonEnum.group
+        return IH5SkeletonEnum.grp
     elif v[0] == IH5Value:
-        return IH5SkeletonEnum.value
+        return IH5SkeletonEnum.val
     else:
-        return IH5SkeletonEnum.attribute
+        return IH5SkeletonEnum.atr
 
 
 def ih5_skeleton(ds: IH5Dataset) -> Dict[str, str]:
     """Create a skeleton capturing the raw structure of a IH5 dataset."""
-    return {k: skel_enum(v).value for k, v in ih5_type_skeleton(ds).items()}
+    return {k: cls_to_skel_enum(v).value for k, v in ih5_type_skeleton(ds).items()}
 
 
 def create_stub_base(
@@ -591,9 +601,10 @@ def create_stub_base(
     """Create a stub base container for a dataset.
 
     The stub is based on the user block of a real IH5 dataset
-    and the skeleton of the overlay structure (as given by ih5_skeleton).
+    and the skeleton of the overlay structure (as returned by `ih5_skeleton`).
 
-    Patches done on top of the stub are compatible with the original dataset.
+    Patches created on top of the stub are compatible with the original dataset
+    whose metadata the stub is based on.
     """
     dataset = Path(dataset)  # in case it was a str
     ds = IH5Dataset.create(dataset)
@@ -603,12 +614,12 @@ def create_stub_base(
     )
     # create structure based on skeleton
     for k, v in skel.items():
-        if v == IH5SkeletonEnum.group:
+        if v == IH5SkeletonEnum.grp:
             if k not in ds:
                 ds.create_group(k)
-        elif v == IH5SkeletonEnum.value:
+        elif v == IH5SkeletonEnum.val:
             ds[k] = h5py.Empty(None)
-        elif v == IH5SkeletonEnum.attribute:
+        elif v == IH5SkeletonEnum.atr:
             k, atr = k.split("@")  # split off attribute name
             k = k or "/"  # special case - root attributes
             if k not in ds:

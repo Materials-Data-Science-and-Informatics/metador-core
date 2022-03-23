@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from ..dataset import IH5Dataset
+from ..ih5.dataset import IH5Dataset
 from ..util import DirDiff, ValidationErrors
 
 
