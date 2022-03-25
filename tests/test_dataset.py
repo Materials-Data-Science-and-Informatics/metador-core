@@ -34,10 +34,27 @@ def test_open_nonexisting_dataset_name(ds_dir):
 
 
 def test_create_existing_fail(tmp_ds_path):
+    # by default, will not overwrite
     with IH5Dataset.create(tmp_ds_path):
         pass
     with pytest.raises(FileExistsError):
         IH5Dataset.create(tmp_ds_path)
+
+
+def test_create_existing_overwrite(tmp_ds_path):
+    # if overwrite=True, will kill _all_ connected files if a dataset exists
+    with IH5Dataset.create(tmp_ds_path) as ds:
+        for _ in range(3):
+            ds.commit()
+            ds.create_patch()
+        old_ds_uuid = ds.uuid
+
+    with IH5Dataset.create(tmp_ds_path, overwrite=True) as ds:
+        pass
+
+    with IH5Dataset.open(tmp_ds_path) as ds:
+        assert ds.uuid != old_ds_uuid
+        assert len(ds.containers) == 1
 
 
 def test_create_open(tmp_ds_path):
@@ -406,6 +423,39 @@ def test_invalid_stub_fail(tmp_ds_path_factory):
             create_stub_base(tmp_ds_path_factory(), ds_ub, {"foo": "invalid"})
 
 
+def test_clear_empty(tmp_ds_path):
+    with IH5Dataset.create(tmp_ds_path) as ds:
+        assert ds.is_empty
+        ds.attrs["atr"] = "value"
+        assert not ds.is_empty
+        ds._clear()  # clear "for real"
+        assert ds.is_empty
+
+        ds.attrs["atr"] = "value"
+        ds.commit()
+        ds.create_patch()
+        ds["foo"] = "bar"
+        ds.commit()
+        ds.create_patch()
+        assert not ds.is_empty
+        ds._clear()  # clear in overlay
+        assert ds.is_empty
+
+
+def test_delete_dataset(tmp_ds_path):
+    # check that deleting closes and removes all files
+    with IH5Dataset.create(tmp_ds_path) as ds:
+        for _ in range(3):
+            ds.commit()
+            ds.create_patch()
+
+        files = ds.containers
+        ds.delete()
+        assert ds._files is None
+        for file in files:
+            assert not file.is_file()
+
+
 # --------
 # check that exceptions are correctly triggered by manipulating data into invalid states
 
@@ -510,3 +560,20 @@ def test_check_ublock_patch_stub_fail(tmp_ds_path):
 
     with pytest.raises(ValueError):
         IH5Dataset.open(tmp_ds_path)
+
+
+def test_not_open_fail(tmp_ds_path_factory):
+    ds = IH5Dataset.create(tmp_ds_path_factory())
+    ds.close()
+
+    def assert_ex(f):
+        with pytest.raises(ValueError) as e:
+            f()
+        assert str(e).lower().find("not open") >= 0
+
+    # check that public methods fail gracefully when dataset not open
+    assert_ex(lambda: ds.create_patch())
+    assert_ex(lambda: ds.discard_patch())
+    assert_ex(lambda: ds.commit())
+    assert_ex(lambda: ds.merge(tmp_ds_path_factory()))
+    assert_ex(lambda: ds.delete())

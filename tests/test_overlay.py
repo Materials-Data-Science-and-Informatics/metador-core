@@ -459,3 +459,27 @@ def test_clear_all_override(dummy_ds_factory):
     ds.commit()
     ds.create_patch()
     create_and_verify()
+
+
+def test_not_open_fail(dummy_ds_factory):
+    ds = dummy_ds_factory(flat=False, commit=False)
+    a = ds["a"]
+    ds.close()
+
+    def assert_ex(f):
+        with pytest.raises(ValueError) as e:
+            f()
+        assert str(e).lower().find("not open") >= 0
+
+    # check that public methods fail gracefully when dataset not open
+    assert_ex(lambda: a.__delitem__("b"))
+    assert_ex(lambda: a.__setitem__("x/y", "z"))
+    assert_ex(lambda: a["b"])
+    assert_ex(lambda: a.attrs)
+    assert_ex(lambda: a.keys())
+    assert_ex(lambda: a.values())
+    assert_ex(lambda: a.items())
+    assert_ex(lambda: a.create_group("some_group"))
+    assert_ex(lambda: a.visit(print))
+    assert_ex(lambda: "b" in a)
+    assert_ex(lambda: iter(a))

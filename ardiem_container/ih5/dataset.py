@@ -275,8 +275,19 @@ class IH5Dataset:
                 msg = "Found stub patch container, only base container may be a stub!"
                 raise ValueError(f"{ub._filename}: {msg}")
 
+    def _expect_open(self):
+        if self._files is None:
+            raise ValueError("Dataset is not open!")
+
     def _root_group(self) -> IH5Group:
         return IH5Group(self._files)
+
+    def _clear(self):
+        """Clear all contents."""
+        for k in self.attrs.keys():
+            del self.attrs[k]
+        for k in self.keys():
+            del self[k]
 
     # ---- public attributes and interface ----
 
@@ -304,6 +315,11 @@ class IH5Dataset:
     def read_only(self) -> bool:
         """Return whether this dataset is read-only at the moment."""
         return not self._has_writable
+
+    @property
+    def is_empty(self) -> bool:
+        """Return whether this dataset currently contains any data."""
+        return len(set(self.attrs.keys()) | set(self.keys())) == 0
 
     def __init__(self, paths: List[Path], allow_baseless: bool = False):
         """Open a dataset consisting of a base container + possible set of patches.
@@ -339,7 +355,7 @@ class IH5Dataset:
             raise ValueError("Some patch_uuid is not unique, invalid file set!")
 
     @classmethod
-    def create(cls: Type[T], dataset: Union[Path, str]) -> T:
+    def create(cls: Type[T], dataset: Union[Path, str], **kwargs) -> T:
         """Create a new dataset consisting of a base container.
 
         The base container is exposed as the `writable` container.
@@ -347,8 +363,14 @@ class IH5Dataset:
         dataset = Path(dataset)  # in case it was a str
         if not cls._is_valid_dataset_name(dataset.name):
             raise ValueError(f"Invalid dataset name: '{dataset.name}'")
-
         path = cls._base_filename(dataset)
+
+        # if overwrite flag is set, check and remove old dataset if present
+        overwrite = kwargs.get("overwrite", False)
+        if overwrite and path.is_file():
+            cls.open(dataset).delete()
+
+        # create new container
         ret = cls.__new__(cls)
         ret._has_writable = True
         ret._files = [cls._new_container(path)]
@@ -393,15 +415,20 @@ class IH5Dataset:
 
         After this, the object may not be used anymore.
         """
+        if self._files is None:
+            return  # nothing to do
+
         if self._has_writable:
             self.commit()
         for f in self._files:
             f.close()
         self._files.clear()
+        self._files = None  # type: ignore
         self._has_writable = False
 
     def create_patch(self) -> None:
         """Create a new patch container to enable writing to the dataset."""
+        self._expect_open()
         if self._has_writable:
             raise ValueError("There already exists a writable container, commit first!")
 
@@ -421,6 +448,7 @@ class IH5Dataset:
 
     def discard_patch(self) -> None:
         """Discard the current writable patch container."""
+        self._expect_open()
         if not self._has_writable:
             raise ValueError("Dataset is read-only, nothing to discard!")
         if len(self._files) == 1:
@@ -438,6 +466,7 @@ class IH5Dataset:
         After this, continuing to edit the writable container is prohibited.
         Instead, it is added to the dataset as a read-only base container or patch.
         """
+        self._expect_open()
         if not self._has_writable:
             raise ValueError("Dataset is read-only, nothing to commit!")
         cfile = self._files[-1]
@@ -458,6 +487,7 @@ class IH5Dataset:
 
         Returns full filename of the single resulting container file.
         """
+        self._expect_open()
         if self._has_writable:
             raise ValueError("Cannot merge, please commit or discard your changes!")
         if any(map(lambda x: x.is_stub, self.ih5meta)):
@@ -485,6 +515,17 @@ class IH5Dataset:
         ub.hdf5_hashsum = chksum
         ub.save()
         return cfile
+
+    def delete(self):
+        """Irreversibly(!) delete all containers this dataset consists of.
+
+        This object is invalid after this operation.
+        """
+        self._expect_open()
+        files = self.containers
+        self.close()
+        for file in files:
+            file.unlink()
 
     # ---- context manager support (i.e. to use `with`) ----
 

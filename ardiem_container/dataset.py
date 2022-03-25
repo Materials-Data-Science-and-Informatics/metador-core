@@ -50,7 +50,7 @@ class ManifestFile(BaseModel):
     patch_uuid: UUID
     patch_index: int
 
-    hashsums: Optional[DirHashsums]  # computed with dir_hashsums
+    hashsums: DirHashsums  # computed with dir_hashsums
     skeleton: Dict[str, str]  # computed with ih5_skeleton
 
     @classmethod
@@ -64,23 +64,9 @@ class ManifestFile(BaseModel):
             dataset_uuid=ub.dataset_uuid,
             patch_uuid=ub.patch_uuid,
             patch_index=ub.patch_index,
-            hashsums=None,
+            hashsums={},
             skeleton={},
         )
-
-    @classmethod
-    def infer(cls, ds: IH5Dataset) -> ManifestFile:
-        """Create a manifest file based on a IH5 dataset.
-
-        Like `create`, but will create a skeleton, and have dummy hashsum dict.
-        This means, we pretend that the original data directory was "empty".
-        This should make the next patch create a possibly redundant, but
-        at least correct and complete container (i.e. as if it was a fresh dataset).
-        """
-        ret = cls.create(ds.ih5meta[-1])
-        ret.skeleton = ih5_skeleton(ds)
-        ret.hashsums = {}  # says "data dir was empty" so next patch adds all data anew
-        return ret
 
     def to_userblock(self) -> IH5UserBlock:
         """Return a stub userblock based on information stored in manifest."""
@@ -107,9 +93,9 @@ class ArdiemDataset:
 
     _name: Path
     _dataset: Optional[IH5Dataset]
-    _manifest: ManifestFile
+    _manifest: Optional[ManifestFile]
 
-    MANIFEST_EXT = ".manifest.json"
+    MANIFEST_EXT = f"{IH5Dataset.FILE_EXT}mf.json"
 
     @property
     def name(self) -> Path:
@@ -120,7 +106,7 @@ class ArdiemDataset:
         return self._dataset
 
     @property
-    def manifest(self) -> ManifestFile:
+    def manifest(self) -> Optional[ManifestFile]:
         return self._manifest
 
     @classmethod
@@ -137,8 +123,8 @@ class ArdiemDataset:
         This can be used to write patches without having the original containers
         (if doing so, a stub container the patch is based on will be also created).
 
-        If infer_manifest=True, will allow to load a dataset without manifest file
-        and will infer a valid manifest from the dataset. This can be used to patch
+        If infer_manifest=True, will allow to load a dataset without manifest file.
+        In this case a manifest will inferred from the dataset. This can be used to patch
         the dataset even if the original manifest file was irreversibly lost.
         The next patch in that case will be effectively a full base container,
         but will carry on the metadata of the original dataset.
@@ -166,12 +152,8 @@ class ArdiemDataset:
         if not only_manifest:
             ret._dataset = IH5Dataset.open(dataset)
 
-        # now infer usable manifest based on dataset files if we haven't one already
-        if ret._manifest is None and infer_manifest:
-            ret._manifest = ManifestFile.infer(ret.dataset)
-
-        # if we have both containers and a manifest, check that they match
-        if not only_manifest:
+        # if we have containers and also a real manifest, check that they match
+        if not only_manifest and not infer_manifest:
             if (
                 ret.dataset._ublock(-1).dataset_uuid != ret.manifest.dataset_uuid
                 or ret.dataset._ublock(-1).patch_uuid != ret.manifest.patch_uuid
@@ -223,9 +205,8 @@ class ArdiemDataset:
         ret = cls.__new__(cls)
         ret._name = target
         ret._dataset = IH5Dataset.create(target)  # fresh IH5 dataset
-        # create new manifest file based on new container
-        ret._manifest = ManifestFile.create(ret._dataset.ih5meta[-1])
-        # call packer. creation = update from empty dataset
+        ret._manifest = None
+        # call packer. creation = "update" from empty dataset
         ret.update(data_dir, packer)
         return ret
 
@@ -239,8 +220,20 @@ class ArdiemDataset:
         this will also create a stub container that is based on the
         structural skeleton embedded in the initial manifest file.
 
+        If there is a dataset, but no manifest, the resulting patch will be
+        essentially a fresh dataset, but have the metadata of an updated version.
+
         The update is created using given `packer` class on the `data_dir`.
         """
+        # if anything goes wrong, we restore the old manifest
+        old_manifest = self._manifest
+        # if there is no manifest provided, we take an empty hashsum list
+        missing_manifest = True
+        old_hashsums: DirHashsums = {}
+        if old_manifest is not None:
+            missing_manifest = False
+            old_hashsums = old_manifest.hashsums
+
         # check that the directory is suitable for the packer
         errs = packer.check_directory(data_dir)
         if errs:
@@ -248,31 +241,41 @@ class ArdiemDataset:
 
         # create a stub for the patch, if containers are missing
         if self._dataset is None:
+            assert self._manifest is not None
             st_ub = self._manifest.to_userblock()  # userblock for the stub
             self._dataset = create_stub_base(self.name, st_ub, self._manifest.skeleton)
-
         assert self._dataset is not None
-        if self._dataset.read_only:
-            self._dataset.create_patch()
-            self._manifest = ManifestFile.create(self._dataset.ih5meta[-1])
 
+        fresh = True  # initially assume that we are building a fresh dataset
+        if self._dataset.read_only:
+            # read-only can only mean that we opened an existing dataset (or stub)
+            # so we are doing a non-trivial patch -> not fresh, must create patch
+            fresh = False
+            self._dataset.create_patch()
+        if missing_manifest:  # if there was no manifest provided -> clear dataset
+            self._dataset._clear()  # so the packer can treat it like a fresh dataset
+            fresh = True  # reset to true (previous if could have been executed)
+        assert fresh == self._dataset.is_empty
+
+        # prepare new manifest file
+        self._manifest = ManifestFile.create(self._dataset.ih5meta[-1])
         # compute hashsums and diff of directory (the packer will get the diff)
-        old_hashsums = self._manifest.hashsums
         self._manifest.hashsums = dir_hashsums(data_dir, HASH_ALG)
         diff = DirDiff.compare(old_hashsums, self._manifest.hashsums)
 
-        # run packer... which must run through without throwing exceptions
+        assert not self._dataset.read_only
         try:
-            packer.pack_directory(data_dir, self._dataset, diff)
+            # run packer... which must run through without throwing exceptions
+            packer.pack_directory(data_dir, self._dataset, fresh, diff)
+            # verify general container constraints that all packers must satisfy
+            errs = self.check(packer)
+            if errs:
+                raise ValidationError(errs)
         except Exception as e:
+            # kill the new patch, restore old state
             self._dataset._delete_latest_container()
+            self._manifest = old_manifest
             raise e
-
-        # verify general container constraints that all packers must satisfy
-        errs = self.check(packer)
-        if errs:
-            self._dataset._delete_latest_container()
-            raise ValidationError(errs)
 
         # if execution was not interrupted by now, we can commit the packed changes
         self._dataset.commit()

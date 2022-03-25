@@ -30,5 +30,7 @@ class ExamplePacker(ArdiemPacker):
         return {}
 
     @staticmethod
-    def pack_directory(data_dir: Path, dataset: IH5Dataset, update: Optional[DirDiff]):
+    def pack_directory(
+        data_dir: Path, dataset: IH5Dataset, fresh: bool, diff: Optional[DirDiff]
+    ):
         print("called pack_directory")

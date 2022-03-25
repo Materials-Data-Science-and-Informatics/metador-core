@@ -89,6 +89,11 @@ class IH5Node:
         """Return true if the newest container is read-only and nothing can be written."""
         return self._files[-1].mode == "r"
 
+    def _expect_open(self):
+        """Check that the dataset is open (if it was closed, the files are gone)."""
+        if not self._files:
+            raise ValueError("Dataset is not open!")
+
     def _rel_path(self, path: str):
         """Return relative path based on current location if given path is absolute.
 
@@ -183,6 +188,8 @@ class IH5InnerNode(IH5Node):
         For groups, the returned number is to be treated as the lower bound, i.e.
         the child creation_idx to recursively get the descendents.
         """
+        self._expect_open()
+
         children: Dict[str, int] = {}
         is_virtual: Dict[str, bool] = {}
         for i in reversed(range(self._cidx, len(self._files))):
@@ -312,6 +319,7 @@ class IH5InnerNode(IH5Node):
         return True
 
     def visititems(self, func: Callable[[str, object], Optional[Any]]) -> Any:
+        self._expect_open()
         stack = list(reversed(self._get_children()))
         while stack:
             curr = stack.pop()
@@ -325,6 +333,7 @@ class IH5InnerNode(IH5Node):
         return self.visititems(lambda x, _: func(x))
 
     def __setitem__(self, key: str, val):
+        self._expect_open()
         self._check_key(key)
         if self._is_read_only():
             raise ValueError(f"Cannot set '{key}', create a patch first!")
@@ -365,6 +374,7 @@ class IH5InnerNode(IH5Node):
             self._files[-1][path] = val
 
     def __delitem__(self, key: str):
+        self._expect_open()
         self._check_key(key)
         if self._is_read_only():
             raise ValueError(f"Cannot delete '{key}', create a patch first!")
@@ -392,6 +402,7 @@ class IH5InnerNode(IH5Node):
                 self._files[-1][path] = DEL_VALUE
 
     def __getitem__(self, key: str):
+        self._expect_open()
         self._check_key(key)
         found_cidx = self._find(key)
         if found_cidx is None:
@@ -426,6 +437,7 @@ class IH5Value(IH5Node):
 
     @property
     def attrs(self):
+        self._expect_open()
         return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
     # for a dataset, instead of paths the numpy data is indexed. at this level
@@ -433,9 +445,11 @@ class IH5Value(IH5Node):
 
     def __getitem__(self, key):
         # just pass through dataset indexing to underlying dataset
+        self._expect_open()
         return self._files[self._cidx][self._gpath][key]  # type: ignore
 
     def __setitem__(self, key, val):
+        self._expect_open()
         if self._is_read_only():
             raise ValueError(f"Cannot set '{key}', create a patch first!")
         if self._cidx != self._last_idx:
@@ -448,6 +462,7 @@ class IH5Value(IH5Node):
 
         This is useful e.g. for editing inside a complex value, such as an array.
         """
+        self._expect_open()
         if self._is_read_only():
             raise ValueError("Cannot copy, create a patch first!")
         if self._cidx == self._last_idx:
@@ -485,10 +500,12 @@ class IH5Group(IH5InnerNode):
 
     @property
     def attrs(self):
+        self._expect_open()
         return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
     def create_group(self, gpath) -> IH5Group:
         """Create a group (overrides whatever was at the path in previous versions)."""
+        self._expect_open()
         return self._create_group(gpath)
 
 
