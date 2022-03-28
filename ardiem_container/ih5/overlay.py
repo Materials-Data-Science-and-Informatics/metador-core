@@ -13,9 +13,6 @@ from typing import Any, Callable, Dict, List, Optional
 import h5py
 import numpy as np
 
-# TODO: overlay maybe also could support symlinks as a special kind of value
-
-
 # dataset value marking a deleted group, dataset or attribute
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 
@@ -408,6 +405,12 @@ class IH5InnerNode(IH5Node):
         if found_cidx is None:
             raise KeyError(f"Cannot get item, '{key}' does not exist!")
         return self._get_child(key, found_cidx)
+
+    def get(self, key: str, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def __contains__(self, key: str):
         self._check_key(key)

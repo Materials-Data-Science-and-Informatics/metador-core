@@ -1,7 +1,6 @@
 """Dummy packers for testing."""
 import inspect
 from pathlib import Path
-from typing import Optional
 
 from . import ArdiemPacker, DirDiff, IH5Dataset, ValidationErrors
 
@@ -21,9 +20,7 @@ class DummyPacker(ArdiemPacker):
         return {}  # no errors
 
     @staticmethod
-    def pack_directory(
-        data_dir: Path, dataset: IH5Dataset, fresh: bool, diff: Optional[DirDiff]
-    ):
+    def pack_directory(data_dir: Path, diff: DirDiff, dataset: IH5Dataset, fresh: bool):
         print(f"called: {inspect.currentframe().f_code.co_name}")  # type: ignore
         print(f"from {data_dir} to {dataset._files[-1].filename} (fresh={fresh})")
         print(diff)

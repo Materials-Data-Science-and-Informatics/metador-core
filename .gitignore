@@ -1,6 +1,7 @@
 # don't add test containers
 *.ih5
-*.manifest.json
+*.ih5mf.json
+tmp*/
 
 # don't add custom python shell scratchpad file
 scratch.py

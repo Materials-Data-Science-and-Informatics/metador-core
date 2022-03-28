@@ -18,15 +18,26 @@ from .ih5.dataset import (
 from .packer import ArdiemPacker
 from .util import DirDiff, DirHashsums, ValidationErrors, dir_hashsums
 
-# TODO: should the hashsum file be hashed itself
+# TODO: should the manifest file be hashed itself,
 # and listed as sidecar as "sidecar UUID -> hashsum" in user block?
-# that way a container knows its "original" manifest file
+# that way a container could recognize its "original" manifest file
+
+# TODO: common check_directory method for standardized common metadata?
 
 
 class ValidationError(ValueError):
     """Exception when dataset validation fails."""
 
     pass
+
+
+def _join_errs(errs: ValidationErrors, more_errs: ValidationErrors) -> ValidationErrors:
+    for k, v in more_errs.items():
+        if k not in errs:
+            errs[k] = v
+        else:
+            errs[k] += v
+    return errs
 
 
 class ManifestFile(BaseModel):
@@ -111,7 +122,17 @@ class ArdiemDataset:
 
     @classmethod
     def _manifest_filepath(cls, dataset: Path) -> Path:
+        """Return filename of manifest based on prefix path of dataset."""
         return Path(f"{dataset}{cls.MANIFEST_EXT}")
+
+    @classmethod
+    def _manifest_match(cls, mf: ManifestFile, ub: IH5UserBlock) -> bool:
+        """Check that a manifest matches a certain patch."""
+        return (
+            ub.dataset_uuid == mf.dataset_uuid
+            and ub.patch_uuid == mf.patch_uuid
+            and ub.patch_index == mf.patch_index
+        )
 
     @classmethod
     def open(cls, dataset: Path, **kwargs) -> ArdiemDataset:
@@ -123,16 +144,17 @@ class ArdiemDataset:
         This can be used to write patches without having the original containers
         (if doing so, a stub container the patch is based on will be also created).
 
-        If infer_manifest=True, will allow to load a dataset without manifest file.
+        If missing_manifest=True, will allow to load a dataset without manifest file.
         In this case a manifest will inferred from the dataset. This can be used to patch
         the dataset even if the original manifest file was irreversibly lost.
         The next patch in that case will be effectively a full base container,
         but will carry on the metadata of the original dataset.
         """
         only_manifest = kwargs.get("only_manifest", False)
-        infer_manifest = kwargs.get("infer_manifest", False)
-        if only_manifest and infer_manifest:
-            raise ValueError("only_manifest and infer_manifest are mutually exclusive!")
+        missing_manifest = kwargs.get("missing_manifest", False)
+        if only_manifest and missing_manifest:
+            msg = "only_manifest and missing_manifest are mutually exclusive!"
+            raise ValueError(msg)
 
         ret = cls.__new__(cls)
         ret._name = dataset
@@ -141,10 +163,9 @@ class ArdiemDataset:
 
         hsfp = cls._manifest_filepath(dataset)
         if not hsfp.is_file():
-            if not infer_manifest:
-                raise ValidationError(
-                    f"Manifest file '{hsfp}' does not exist! Dataset incomplete!"
-                )
+            if not missing_manifest:
+                msg = f"Manifest file '{hsfp}' does not exist! Dataset incomplete!"
+                raise ValidationError(msg)
         else:  # load the existing manifest file
             ret._manifest = ManifestFile.parse_file(hsfp)
 
@@ -153,11 +174,9 @@ class ArdiemDataset:
             ret._dataset = IH5Dataset.open(dataset)
 
         # if we have containers and also a real manifest, check that they match
-        if not only_manifest and not infer_manifest:
-            if (
-                ret.dataset._ublock(-1).dataset_uuid != ret.manifest.dataset_uuid
-                or ret.dataset._ublock(-1).patch_uuid != ret.manifest.patch_uuid
-            ):
+        if not only_manifest and not missing_manifest:
+            assert ret._manifest is not None and ret._dataset is not None
+            if not cls._manifest_match(ret._manifest, ret._dataset._ublock(-1)):
                 ret.dataset.close()
                 msg = f"Manifest file '{hsfp}' does not match latest HDF5 container!"
                 raise ValidationError(msg)
@@ -171,26 +190,38 @@ class ArdiemDataset:
         self._manifest = None  # type: ignore
         self._name = None  # type: ignore
 
-    def check_common(self) -> ValidationErrors:
+    def check_dataset_common(self) -> ValidationErrors:
         """Check dataset constraints and invariants that are packer-independent."""
         assert self.dataset is not None
-        # return {"/": ["fail"]}
         return {}
 
-    def check(self, packer: Optional[ArdiemPacker]) -> ValidationErrors:
+    def check_directory_common(self, data_dir: Path) -> ValidationErrors:
+        """Check directory constraints and invariants that are packer-independent."""
+        return {}
+
+    def check_directory(
+        self, data_dir: Path, packer: Optional[ArdiemPacker]
+    ) -> ValidationErrors:
+        """Check the structure of the directory.
+
+        Will always perform the packer-independent checks. If a packer is provided,
+        will also run the packer-specific directory checks.
+        """
+        errs = self.check_directory_common(data_dir)
+        if packer is not None:
+            _join_errs(errs, packer.check_directory(data_dir))
+        return errs
+
+    def check_dataset(self, packer: Optional[ArdiemPacker]) -> ValidationErrors:
         """Check the structure of the dataset.
 
         Will always perform the packer-independent checks. If a packer is provided,
         will also run the packer-specific dataset checks.
         """
         assert self.dataset is not None
-        errs = self.check_common()
+        errs = self.check_dataset_common()
         if packer is not None:
-            for k, v in packer.check_dataset(self.dataset).items():
-                if k not in errs:
-                    errs[k] = v
-                else:
-                    errs[k] += v
+            _join_errs(errs, packer.check_dataset(self.dataset))
         return errs
 
     @classmethod
@@ -210,7 +241,7 @@ class ArdiemDataset:
         ret.update(data_dir, packer)
         return ret
 
-    def update(self, data_dir: Path, packer: ArdiemPacker) -> ArdiemDataset:
+    def update(self, data_dir: Path, packer: ArdiemPacker):
         """Update a dataset by writing a patch.
 
         Will create a new patch and update (overwrite!) the manifest file.
@@ -225,7 +256,7 @@ class ArdiemDataset:
 
         The update is created using given `packer` class on the `data_dir`.
         """
-        # if anything goes wrong, we restore the old manifest
+        # if anything goes wrong, we can restore the old manifest later
         old_manifest = self._manifest
         # if there is no manifest provided, we take an empty hashsum list
         missing_manifest = True
@@ -235,8 +266,10 @@ class ArdiemDataset:
             old_hashsums = old_manifest.hashsums
 
         # check that the directory is suitable for the packer
-        errs = packer.check_directory(data_dir)
+        errs = self.check_directory(data_dir, packer)
         if errs:
+            if self._dataset and not self._dataset.read_only:  # fresh dataset?
+                self._dataset._delete_latest_container()  # destroy it completely
             raise ValidationError(errs)
 
         # create a stub for the patch, if containers are missing
@@ -257,18 +290,26 @@ class ArdiemDataset:
             fresh = True  # reset to true (previous if could have been executed)
         assert fresh == self._dataset.is_empty
 
+        # when patching a dataset, ensure that dataset is valid according to packer
+        if not fresh:
+            errs = self.check_dataset(packer)
+            if errs:
+                self._dataset._delete_latest_container()  # kill the new base or patch
+                raise ValidationError(errs)
+
         # prepare new manifest file
         self._manifest = ManifestFile.create(self._dataset.ih5meta[-1])
         # compute hashsums and diff of directory (the packer will get the diff)
         self._manifest.hashsums = dir_hashsums(data_dir, HASH_ALG)
         diff = DirDiff.compare(old_hashsums, self._manifest.hashsums)
+        assert diff is not None  # it must always return a top-level diff object
 
         assert not self._dataset.read_only
         try:
             # run packer... which must run through without throwing exceptions
-            packer.pack_directory(data_dir, self._dataset, fresh, diff)
+            packer.pack_directory(data_dir, diff, self._dataset, fresh)
             # verify general container constraints that all packers must satisfy
-            errs = self.check(packer)
+            errs = self.check_dataset(packer)
             if errs:
                 raise ValidationError(errs)
         except Exception as e:
@@ -278,14 +319,14 @@ class ArdiemDataset:
             raise e
 
         # if execution was not interrupted by now, we can commit the packed changes
+        assert not self._dataset.read_only  # expect that packer did not commit
         self._dataset.commit()
         assert self._dataset.read_only
 
         # update skeleton with resulting dataset
         self._manifest.skeleton = ih5_skeleton(self._dataset)
-
-        # as everything is fine, finally (over)write manifest file...
+        # as everything is fine, finally (over)write manifest file on disk...
         with open(self._manifest_filepath(self.name), "w") as f:
             f.write(self._manifest.json())
             f.flush()
-        return self  # ...and return the packed dataset
+        # success - this object is now the updated dataset

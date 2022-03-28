@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
 
 from ..ih5.dataset import IH5Dataset
 from ..util import DirDiff, ValidationErrors
@@ -81,21 +80,19 @@ class ArdiemPacker(ABC):
 
     @staticmethod
     @abstractmethod
-    def pack_directory(
-        data_dir: Path, dataset: IH5Dataset, fresh: bool, diff: Optional[DirDiff]
-    ):
+    def pack_directory(data_dir: Path, diff: DirDiff, dataset: IH5Dataset, fresh: bool):
         """Pack a directory into an Ardiem IH5 dataset or update it.
 
         The `data_dir` is assumed to be suitable (according to `check_directory`).
+
+        The structure `diff` contains information about changed paths.
 
         The `dataset` is assumed to be already in writable mode.
 
         The flag `fresh` indicates whether this is a new dataset.
 
-        The structure `diff` contains information about changed paths.
-
         If `fresh=True`, the `diff` tree will have all files and directories
-        inside `data_dir` listed as 'added' entities and `dataset` will be empty.
+        inside `data_dir` listed as 'added' and `dataset` will be empty.
         Otherwise, `dataset` will be valid for this packer according to `check_dataset`
         and `diff` will have a non-trivial structure (in case of changes in `data_dir`).
 
