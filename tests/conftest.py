@@ -1,4 +1,5 @@
 import secrets
+import shutil
 from pathlib import Path
 
 import pytest
@@ -6,15 +7,15 @@ import pytest
 
 @pytest.fixture(scope="session")
 def ds_dir(tmpdir_factory):
-    """Create a fresh temporary directory for datasets created in the tests."""
-    return tmpdir_factory.mktemp("test_datasets")
+    """Create a fresh temporary directory for records created in the tests."""
+    return tmpdir_factory.mktemp("test_records")
 
 
 @pytest.fixture
 def tmp_ds_path_factory(ds_dir):
-    """Return a dataset name generator to be used for creating datasets.
+    """Return a record name generator to be used for creating records.
 
-    All containers of all datasets will be cleaned up after completing the test.
+    All containers of all records will be cleaned up after completing the test.
     """
     names = []
 
@@ -27,13 +28,16 @@ def tmp_ds_path_factory(ds_dir):
 
     # clean up
     for name in names:
-        for file in Path(ds_dir).glob(f"{name}*"):
-            file.unlink()
+        for path in Path(ds_dir).glob(f"{name}*"):
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
 
 
 @pytest.fixture
 def tmp_ds_path(tmp_ds_path_factory):
-    """Generate a dataset name to be used for creating datasets.
+    """Generate a record name to be used for creating records.
 
     All containers will be cleaned up after completing the test.
     """

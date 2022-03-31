@@ -1,16 +1,16 @@
 """
-Management of immutable HDF5 container datasets.
+Management of immutable HDF5 container records.
 
-A dataset consists of a base container and a number of patch containers.
-This allows a dataset to work in settings where files are immutable, but still
+A record consists of a base container and a number of patch containers.
+This allows a record to work in settings where files are immutable, but still
 provide a structured way of updating data stored inside.
 
 Both base containers and patches are HDF5 files that are linked together
 by some special attributes in the container root.
-`IH5Dataset` is a class that wraps such a set of files. It features
-* support for dataset creation and updating
+`IH5Record` is a class that wraps such a set of files. It features
+* support for record creation and updating
 * automatic handling of the patch mechanism (i.e., creating/finding corresponding files)
-* transparent access to data in the dataset (possibly spanning multiple files)
+* transparent access to data in the record (possibly spanning multiple files)
 """
 from __future__ import annotations
 
@@ -25,8 +25,9 @@ import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
-from ..util import hashsum
-from .overlay import IH5Group, IH5Value
+from ..hashutils import HASH_ALG, hashsum
+from ..metadata import hashsum_str
+from .overlay import IH5Dataset, IH5Group
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
@@ -35,11 +36,6 @@ FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
 USER_BLOCK_SIZE: Final[int] = 512
 """Space to reserve at beginning of each HDF5 file in bytes.
 Must be a power of 2 and at least 512 (required by HDF5)."""
-
-HASH_ALG = "sha256"
-"""Algorithm to use and string to prepend to a resulting hashsum."""
-
-hashsum_str = Annotated[str, Field(regex=r"^" + HASH_ALG + r":\w+$")]
 
 
 def hashsum_file(filename: Path, skip_bytes: int = 0) -> str:
@@ -65,14 +61,14 @@ class IH5UserBlock(BaseModel):
     _userblock_size: int = PrivateAttr(default=USER_BLOCK_SIZE)
     """User block size claimed in the block itself (second line)."""
 
-    dataset_uuid: UUID
-    """UUID linking together multiple HDF5 files that form a (patched) dataset."""
+    record_uuid: UUID
+    """UUID linking together multiple HDF5 files that form a (patched) record."""
 
     patch_index: Annotated[int, Field(ge=0)]
     """Index with the current revision number, i.e. the file is the n-th patch."""
 
     patch_uuid: UUID
-    """UUID representing a certain state of the data in the dataset."""
+    """UUID representing a certain state of the data in the record."""
 
     prev_patch: Optional[UUID]
     """UUID of the previous patch UUID, so that that predecessor container is required."""
@@ -96,7 +92,7 @@ class IH5UserBlock(BaseModel):
         """
         ret = cls(
             patch_uuid=uuid1(),
-            dataset_uuid=uuid1() if prev is None else prev.dataset_uuid,
+            record_uuid=uuid1() if prev is None else prev.record_uuid,
             patch_index=0 if prev is None else prev.patch_index + 1,
             prev_patch=None if prev is None else prev.patch_uuid,
             hdf5_hashsum=f"{HASH_ALG}:toBeComputed",
@@ -146,7 +142,7 @@ class IH5UserBlock(BaseModel):
 
         This userblock must be the first one in a merged patch sequence,
         while the argument must be the userblock from the last one.
-        The result is the userblock for a merged dataset, lacking just the hashsum.
+        The result is the userblock for a merged record, lacking just the hashsum.
         """
         ret = self.copy()
         ret.patch_index = other.patch_index
@@ -175,12 +171,12 @@ class IH5UserBlock(BaseModel):
             f.write(b"\x00")  # mark end of the data
 
 
-T = TypeVar("T", bound="IH5Dataset")
+T = TypeVar("T", bound="IH5Record")
 
 
-class IH5Dataset:
+class IH5Record:
     """
-    Class representing a dataset, which consists of a collection of immutable files.
+    Class representing a record, which consists of a collection of immutable files.
 
     One file is a base container (with no linked predecessor state),
     the remaining files are a linear sequence of patch containers.
@@ -198,11 +194,11 @@ class IH5Dataset:
     For this, use `find_containers` and apply standard tools.
     """
 
-    # Characters that may appear in a dataset name.
+    # Characters that may appear in a record name.
     # (to be put into regex [..] symbol braces)
     ALLOWED_NAME_CHARS = r"A-Za-z0-9\-"
 
-    # filenames for a dataset named NAME are of the shape:
+    # filenames for a record named NAME are of the shape:
     # NAME[<PATCH_INFIX>.*]?<FILE_EXT>
     # NOTE: the first symbol of these must be one NOT in ALLOWED_NAME_CHARS!
     # This constraint is needed for correctly filtering filenames
@@ -210,14 +206,14 @@ class IH5Dataset:
     FILE_EXT = ".ih5"
 
     @classmethod
-    def _is_valid_dataset_name(cls, name: str) -> bool:
-        """Return whether a dataset name is valid."""
+    def _is_valid_record_name(cls, name: str) -> bool:
+        """Return whether a record name is valid."""
         return re.match(f"^[{cls.ALLOWED_NAME_CHARS}]+$", name) is not None
 
     @classmethod
-    def _base_filename(cls, dataset_path: Path) -> Path:
-        """Given a dataset path, return path to canonical base container name."""
-        return Path(f"{dataset_path}{cls.FILE_EXT}")
+    def _base_filename(cls, record_path: Path) -> Path:
+        """Given a record path, return path to canonical base container name."""
+        return Path(f"{record_path}{cls.FILE_EXT}")
 
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
@@ -243,9 +239,9 @@ class IH5Dataset:
         If `prev` block is given, assumes that `ub` is from a patch container,
         otherwise from base container.
         """
-        # check presence+validity of dataset uuid (should be the same for all)
-        if ub.dataset_uuid != self.uuid:
-            msg = "'dataset_uuid' inconsistent! Mixed up datasets?"
+        # check presence+validity of record uuid (should be the same for all)
+        if ub.record_uuid != self.uuid:
+            msg = "'record_uuid' inconsistent! Mixed up records?"
             raise ValueError(f"{ub._filename}: {msg}")
 
         # hash must match with HDF5 content (i.e. integrity check)
@@ -277,7 +273,7 @@ class IH5Dataset:
 
     def _expect_open(self):
         if self._files is None:
-            raise ValueError("Dataset is not open!")
+            raise ValueError("record is not open!")
 
     def _root_group(self) -> IH5Group:
         return IH5Group(self._files)
@@ -293,18 +289,18 @@ class IH5Dataset:
 
     @property
     def uuid(self) -> UUID:
-        """Return the common dataset UUID of the set of containers."""
-        return self._ublock(0).dataset_uuid
+        """Return the common record UUID of the set of containers."""
+        return self._ublock(0).record_uuid
 
     @property
     def name(self) -> str:
-        """Inferred name of dataset (i.e. common filename prefix of the containers)."""
+        """Inferred name of record (i.e. common filename prefix of the containers)."""
         path = Path(self._files[0].filename)
         return path.name.split(self.FILE_EXT)[0].split(self.PATCH_INFIX)[0]
 
     @property
     def containers(self) -> List[Path]:
-        """List of container filenames this dataset consists of."""
+        """List of container filenames this record consists of."""
         return [Path(f.filename) for f in self._files]
 
     @property
@@ -313,18 +309,18 @@ class IH5Dataset:
 
     @property
     def read_only(self) -> bool:
-        """Return whether this dataset is read-only at the moment."""
+        """Return whether this record is read-only at the moment."""
         return not self._has_writable
 
     @property
     def is_empty(self) -> bool:
-        """Return whether this dataset currently contains any data."""
+        """Return whether this record currently contains any data."""
         return len(set(self.attrs.keys()) | set(self.keys())) == 0
 
     def __init__(self, paths: List[Path], allow_baseless: bool = False):
-        """Open a dataset consisting of a base container + possible set of patches.
+        """Open a record consisting of a base container + possible set of patches.
 
-        Expects a set of full file paths forming a valid dataset.
+        Expects a set of full file paths forming a valid record.
         Will throw an exception in case of a detected inconsistency.
         """
         if not paths:
@@ -355,20 +351,20 @@ class IH5Dataset:
             raise ValueError("Some patch_uuid is not unique, invalid file set!")
 
     @classmethod
-    def create(cls: Type[T], dataset: Union[Path, str], **kwargs) -> T:
-        """Create a new dataset consisting of a base container.
+    def create(cls: Type[T], record: Union[Path, str], **kwargs) -> T:
+        """Create a new record consisting of a base container.
 
         The base container is exposed as the `writable` container.
         """
-        dataset = Path(dataset)  # in case it was a str
-        if not cls._is_valid_dataset_name(dataset.name):
-            raise ValueError(f"Invalid dataset name: '{dataset.name}'")
-        path = cls._base_filename(dataset)
+        record = Path(record)  # in case it was a str
+        if not cls._is_valid_record_name(record.name):
+            raise ValueError(f"Invalid record name: '{record.name}'")
+        path = cls._base_filename(record)
 
-        # if overwrite flag is set, check and remove old dataset if present
+        # if overwrite flag is set, check and remove old record if present
         overwrite = kwargs.get("overwrite", False)
         if overwrite and path.is_file():
-            cls.open(dataset).delete()
+            cls.delete(record)
 
         # create new container
         ret = cls.__new__(cls)
@@ -378,40 +374,40 @@ class IH5Dataset:
         return ret
 
     @classmethod
-    def find_containers(cls, dataset: Path) -> List[Path]:
-        """Return container names that look like they belong to the same dataset.
+    def find_containers(cls, record: Path) -> List[Path]:
+        """Return container names that look like they belong to the same record.
 
         This operation is based on purely syntactic pattern matching on file names.
         Given a path `/foo/bar`, it will find all containers in directory
         `/foo` whose name starts with `bar` followed by the correct file extension(s),
         such as `/foo/bar.rdm.h5` and `/foo/bar.p01.rdm.h5`.
         """
-        dataset = Path(dataset)  # in case it was a str
-        if not cls._is_valid_dataset_name(dataset.name):
-            raise ValueError(f"Invalid dataset name: '{dataset.name}'")
+        record = Path(record)  # in case it was a str
+        if not cls._is_valid_record_name(record.name):
+            raise ValueError(f"Invalid record name: '{record.name}'")
 
-        dataset = Path(dataset)  # in case it was a str
-        globstr = f"{dataset.name}*{cls.FILE_EXT}"  # rough wildcard pattern
+        record = Path(record)  # in case it was a str
+        globstr = f"{record.name}*{cls.FILE_EXT}"  # rough wildcard pattern
         # filter out possible false positives (i.e. foobar* matching foo* as well)
         paths = []
-        for p in dataset.parent.glob(globstr):
-            if re.match(f"^{dataset.name}[^{cls.ALLOWED_NAME_CHARS}]", p.name):
+        for p in record.parent.glob(globstr):
+            if re.match(f"^{record.name}[^{cls.ALLOWED_NAME_CHARS}]", p.name):
                 paths.append(p)
         return paths
 
     @classmethod
-    def open(cls: Type[T], dataset: Path) -> T:
-        """Open a dataset for read access.
+    def open(cls: Type[T], record: Path) -> T:
+        """Open a record for read access.
 
         This method uses `find_containers` to infer the correct file set.
         """
-        paths = cls.find_containers(dataset)
+        paths = cls.find_containers(record)
         if not paths:
-            raise FileNotFoundError(f"No containers found for dataset: {dataset}")
+            raise FileNotFoundError(f"No containers found for record: {record}")
         return cls(paths)
 
     def close(self) -> None:
-        """Commit changes and close all containers that belong to that dataset.
+        """Commit changes and close all containers that belong to that record.
 
         After this, the object may not be used anymore.
         """
@@ -427,7 +423,7 @@ class IH5Dataset:
         self._has_writable = False
 
     def create_patch(self) -> None:
-        """Create a new patch container to enable writing to the dataset."""
+        """Create a new patch container to enable writing to the record."""
         self._expect_open()
         if self._has_writable:
             raise ValueError("There already exists a writable container, commit first!")
@@ -450,25 +446,25 @@ class IH5Dataset:
         """Discard the current writable patch container."""
         self._expect_open()
         if not self._has_writable:
-            raise ValueError("Dataset is read-only, nothing to discard!")
+            raise ValueError("Record is read-only, nothing to discard!")
         if len(self._files) == 1:
             raise ValueError("Cannot discard base container! Just delete the file!")
-            # reason: the base container provides dataset_uuid,
+            # reason: the base container provides record_uuid,
             # destroying it makes this object inconsistent / breaks invariants
             # so if this is done, it should not be used anymore.
         return self._delete_latest_container()
 
     def commit(self) -> None:
-        """Complete the current writable container (base or patch) for the dataset.
+        """Complete the current writable container (base or patch) for the record.
 
         Will perform checks on the new container and throw an exception on failure.
 
         After this, continuing to edit the writable container is prohibited.
-        Instead, it is added to the dataset as a read-only base container or patch.
+        Instead, it is added to the record as a read-only base container or patch.
         """
         self._expect_open()
         if not self._has_writable:
-            raise ValueError("Dataset is read-only, nothing to commit!")
+            raise ValueError("Record is read-only, nothing to commit!")
         cfile = self._files[-1]
         filepath = Path(cfile.filename)
         cfile.close()  # must close it now, as we will write outside of HDF5 next
@@ -483,7 +479,7 @@ class IH5Dataset:
         self._has_writable = False
 
     def merge(self, target: Path) -> Path:
-        """Given a path with a dataset name, merge current dataset into new container.
+        """Given a path with a record name, merge current record into new container.
 
         Returns full filename of the single resulting container file.
         """
@@ -500,7 +496,7 @@ class IH5Dataset:
             def copy_children(name, node):
                 if isinstance(node, IH5Group):
                     ds.create_group(node._gpath)
-                elif isinstance(node, IH5Value):
+                elif isinstance(node, IH5Dataset):
                     ds[node._gpath] = node[()]
                 new_atrs = ds[node._gpath].attrs  # copy node attributes
                 for k, v in node.attrs.items():
@@ -516,15 +512,13 @@ class IH5Dataset:
         ub.save()
         return cfile
 
-    def delete(self):
-        """Irreversibly(!) delete all containers this dataset consists of.
+    @classmethod
+    def delete(cls, record: Path):
+        """Irreversibly(!) delete all containers matching the record path.
 
         This object is invalid after this operation.
         """
-        self._expect_open()
-        files = self.containers
-        self.close()
-        for file in files:
+        for file in cls.find_containers(record):
             file.unlink()
 
     # ---- context manager support (i.e. to use `with`) ----
@@ -542,6 +536,10 @@ class IH5Dataset:
     def attrs(self):
         """See [h5py.Group.attrs](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.attrs)."""
         return self._root_group().attrs
+
+    def create_dataset(self, gpath: str, *args, **kwargs) -> IH5Dataset:
+        """See [h5py.Group.create_group](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.create_group)."""
+        return self._root_group().create_dataset(gpath, *args, **kwargs)
 
     def create_group(self, gpath: str) -> IH5Group:
         """See [h5py.Group.create_group](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.create_group)."""
@@ -570,6 +568,9 @@ class IH5Dataset:
     def __getitem__(self, key):
         return self._root_group()[key]
 
+    def get(self, key: str, default=None):
+        return self._root_group().get(key, default)
+
     def keys(self):
         return self._root_group().keys()
 
@@ -582,24 +583,24 @@ class IH5Dataset:
 
 # ---- Skeletons and Stubs ----
 
-IH5TypeSkeleton = Dict[str, Tuple[Union[None, Type[IH5Group], Type[IH5Value]], Any]]
+IH5TypeSkeleton = Dict[str, Tuple[Union[None, Type[IH5Group], Type[IH5Dataset]], Any]]
 
 
 def ih5_type_skeleton(ds) -> IH5TypeSkeleton:
-    """Return mapping from all paths in a IH5 dataset to their type.
+    """Return mapping from all paths in a IH5 record to their type.
 
     The attributes are represented as special paths with the shape `a/b/.../n@attr`,
     pointing to the attribute named `attr` at the path `a/b/.../n`.
 
-    First component of type tuple is `IH5Group`, `IH5Value` or `None`.
-    Second component is more detailed type for attribute values and `IH5Value`s.
+    First component of type tuple is `IH5Group`, `IH5Dataset` or `None`.
+    Second component is more detailed type for attribute values and `IH5Dataset`s.
     """
     ret: IH5TypeSkeleton = {}
     for k, v in ds.attrs.items():
         ret[f"@{k}"] = (None, type(v))
 
     def add_paths(name, node):
-        if isinstance(node, IH5Value):
+        if isinstance(node, IH5Dataset):
             typ = (type(node), type(node[()]))
         else:
             typ = (type(node), None)
@@ -623,33 +624,33 @@ def cls_to_skel_enum(v: Any) -> IH5SkeletonEnum:
     """Convert class object to corresponding enum instance."""
     if v[0] == IH5Group:
         return IH5SkeletonEnum.grp
-    elif v[0] == IH5Value:
+    elif v[0] == IH5Dataset:
         return IH5SkeletonEnum.val
     else:
         return IH5SkeletonEnum.atr
 
 
-def ih5_skeleton(ds: IH5Dataset) -> Dict[str, str]:
-    """Create a skeleton capturing the raw structure of a IH5 dataset."""
+def ih5_skeleton(ds: IH5Record) -> Dict[str, str]:
+    """Create a skeleton capturing the raw structure of a IH5 record."""
     return {k: cls_to_skel_enum(v).value for k, v in ih5_type_skeleton(ds).items()}
 
 
 def create_stub_base(
-    dataset: Union[Path, str],
+    record: Union[Path, str],
     ub: IH5UserBlock,
     skel: Dict[str, str],
-) -> IH5Dataset:
-    """Create a stub base container for a dataset.
+) -> IH5Record:
+    """Create a stub base container for a record.
 
-    The stub is based on the user block of a real IH5 dataset
+    The stub is based on the user block of a real IH5 record
     and the skeleton of the overlay structure (as returned by `ih5_skeleton`).
 
-    Patches created on top of the stub are compatible with the original dataset
+    Patches created on top of the stub are compatible with the original record
     whose metadata the stub is based on.
     """
-    dataset = Path(dataset)  # in case it was a str
-    ds = IH5Dataset.create(dataset)
-    # overwrite user block of fresh dataset, mark it as a base container stub
+    record = Path(record)  # in case it was a str
+    ds = IH5Record.create(record)
+    # overwrite user block of fresh record, mark it as a base container stub
     ds._ublocks[Path(ds._files[0].filename)] = ub.copy(
         update={"is_stub": True, "prev_patch": None}
     )
@@ -669,7 +670,7 @@ def create_stub_base(
         else:
             raise ValueError(f"Invalid skeleton entry: {k} -> {v}")
 
-    # fix changes, return resulting opened read-only dataset stub
+    # fix changes, return resulting opened read-only record stub
     ds.commit()  # this will also add the stub hashsum, completing the stub userblock
     assert ds.read_only
     return ds

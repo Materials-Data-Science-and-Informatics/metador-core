@@ -13,38 +13,50 @@
 
 General purpose functionality and infrastructure for managing Ardiem containers.
 
-# Immutable HDF5 (IH5) datasets
+# Immutable HDF5 (IH5) records
 
-`IH5Dataset` is an (almost) drop-in replacement for and wrapper of
+`IH5Record` is an (almost) drop-in replacement for and wrapper of
 [h5py](https://docs.h5py.org/en/latest/index.html) to manage
-layered immutable datasets consisting of a series of patches.
+layered immutable records consisting of a series of patches.
 (See [here](./ardiem_container/ih5/PATCH_THEORY.md) for technical details of the design)
 
-When needed, a `IH5Dataset` can be flattened down into a single file
+When needed, a `IH5Record` can be flattened down into a single file
 for applications where the IH5 API cannot be used to inspect the
-multi-file datasets.
+multi-file records.
 
-# Ardiem-specific IH5 dataset packing and validation infrastructure
+# Ardiem-specific IH5 record packing and validation infrastructure
 
-`ArdiemDataset` is based on `IH5Dataset` and extends it with
+`ArdiemRecord` is based on `IH5Record` and extends it with
 
-* entry-point based plugin system for packaging datasets from directories
+* entry-point based plugin system for packaging records from directories
 * support for creating patches without having the full latest container locally
 * validation of general and plugin-specific data and metadata constraints
-* dataset upload to and download from Invenio RDM through
+* record upload to and download from Invenio RDM through
   [iridium](https://github.com/Materials-Data-Science-and-Informatics/iridium) (**TODO**)
 
 ## Getting Started
 
 As a user, you can install this package just as any other package into your current
-Python environment using
+Python environment using:
 ```
-$ pip install git+https://github.com/Materials-Data-Science-and-Informatics/ardiem-container.git
+$ pip install ardiem-container@git+https://github.com/Materials-Data-Science-and-Informatics/ardiem-container.git
 ```
+
 As usual, it is highly recommended that you use a
 [virtual environment](https://stackoverflow.com/questions/41573587/what-is-the-difference-between-venv-pyvenv-pyenv-virtualenv-virtualenvwrappe)
 to ensure isolation of dependencies between unrelated projects
 (or use `poetry` as described further below, which automatically takes care of this).
+
+## Compatibility and Known Issues
+
+This package supports Python `>=3.8`.
+
+There was a mysterious bug when using inside Jupyter `6.4.6`,
+but there are no known problems when upgrading to Jupyter `6.4.10`.
+
+If you encounter any problems, ensure that your bug is reproducible in a simple and
+minimal standalone Python script that is runnable in a venv with this package installed
+and can demonstrate your issue.
 
 ## Development
 

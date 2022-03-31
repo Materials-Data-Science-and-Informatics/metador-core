@@ -1,7 +1,7 @@
 r"""
-Overlay wrappers to access a virtual dataset consisting of a base container + patches.
+Overlay wrappers to access a virtual record consisting of a base container + patches.
 
-The wrappers take care of dispatching requests to datasets,
+The wrappers take care of dispatching requests to records,
 groups and attributes to the correct path.
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ class IH5Node:
     It takes care of finding the correct container to look for the data
     and helps with patching data in a new patch container.
 
-    It essentially lifts the interface of h5py from a single file to an IH5 dataset
+    It essentially lifts the interface of h5py from a single file to an IH5 record
     that may consist of a base container file and a number of patch containers.
     """
 
@@ -53,7 +53,7 @@ class IH5Node:
     """List of open containers in patch order (the actual data store)."""
 
     _gpath: str
-    """Location in dataset this node represents."""
+    """Location in record this node represents."""
 
     _cidx: int
     """Left boundary index for lookups, i.e. this node will not consider
@@ -63,7 +63,7 @@ class IH5Node:
     def __post_init__(self):
         """Instantiate an overlay node."""
         if not self._files:
-            raise ValueError("List of opened dataset containers must be non-empty!")
+            raise ValueError("List of opened record containers must be non-empty!")
         if not self._gpath:
             raise ValueError("Path must be non-empty!")
         if not (0 <= self._cidx <= self._last_idx):
@@ -87,9 +87,9 @@ class IH5Node:
         return self._files[-1].mode == "r"
 
     def _expect_open(self):
-        """Check that the dataset is open (if it was closed, the files are gone)."""
+        """Check that the record is open (if it was closed, the files are gone)."""
         if not self._files:
-            raise ValueError("Dataset is not open!")
+            raise ValueError("Record is not open!")
 
     def _rel_path(self, path: str):
         """Return relative path based on current location if given path is absolute.
@@ -125,8 +125,8 @@ class IH5Node:
 class IH5InnerNode(IH5Node):
     """Common Group and AttributeManager overlay with familiar dict-like interface.
 
-    Will grant either access to child datasets/subgroups,
-    or to the attributes attached to the group/dataset at a path in a dataset.
+    Will grant either access to child records/subgroups,
+    or to the attributes attached to the group/dataset at a path in a record.
     """
 
     def __init__(
@@ -155,10 +155,12 @@ class IH5InnerNode(IH5Node):
         """
         if key == "":
             raise ValueError("Invalid empty path!")
-        if re.match(r"^[A-Za-z0-9\-_/]+$", key) is None:
-            raise ValueError("Invalid key: Only letters, numbers, - and _ are allowed!")
+        if key.find("@") >= 0:  # that's an attribute separator
+            raise ValueError(f"Invalid symbol '@' in key: '{key}'!")
         if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
+        if re.match(r"^[!-~]+$", key) is None:
+            raise ValueError("Invalid key: Only printable ASCII is allowed!")
 
     def _get_child_raw(self, key: str, cidx: int) -> Any:
         """Return given child (dataset, group, attribute) from given container."""
@@ -174,14 +176,14 @@ class IH5InnerNode(IH5Node):
         if isinstance(val, h5py.Group):
             return IH5Group(self._files, path, cidx)
         elif isinstance(val, h5py.Dataset):
-            return IH5Value(self._files, path, cidx)
+            return IH5Dataset(self._files, path, cidx)
         else:
             return val
 
     def _children(self) -> Dict[str, int]:
         """Return dict mapping from a child name to the most recent overriding patch idx.
 
-        For datasets, dereferencing the child path in that container will give the data.
+        For records, dereferencing the child path in that container will give the data.
         For groups, the returned number is to be treated as the lower bound, i.e.
         the child creation_idx to recursively get the descendents.
         """
@@ -248,6 +250,17 @@ class IH5InnerNode(IH5Node):
 
         return IH5Group(self._files, path, self._last_idx)
 
+    def _create_dataset(
+        self, gpath, shape=None, dtype=None, data=None, **kwargs
+    ) -> IH5Dataset:
+        unknown_kwargs = set(kwargs.keys()) - set(["compression", "compression_opts"])
+        if unknown_kwargs:
+            raise ValueError(f"Unkown kwargs: {unknown_kwargs}")
+        self._files[-1].create_dataset(
+            gpath, shape=shape, dtype=dtype, data=data, **kwargs
+        )
+        return self[gpath]
+
     def _node_seq(self, path: str) -> List[IH5Node]:
         """Return node sequence (one node per path prefix) to given path.
 
@@ -273,8 +286,8 @@ class IH5InnerNode(IH5Node):
                 return ret  # not found -> return current prefix
             curr = curr._get_child(seg, nxt_cidx)  # proceed to child
             ret.append(curr)
-            # catch invalid access, e.g. /foo is dataset, user accesses /foo/bar:
-            if not is_last_seg and isinstance(curr, IH5Value):
+            # catch invalid access, e.g. /foo is record, user accesses /foo/bar:
+            if not is_last_seg and isinstance(curr, IH5Dataset):
                 raise ValueError(f"Cannot access path inside a value: {curr._gpath}")
         # return path index sequence
         return ret
@@ -353,7 +366,7 @@ class IH5InnerNode(IH5Node):
             fidx = self._find(path)
             if fidx is not None:
                 prev_val = self._get_child(path, fidx)
-                if isinstance(prev_val, IH5Group) or isinstance(prev_val, IH5Value):
+                if isinstance(prev_val, IH5Group) or isinstance(prev_val, IH5Dataset):
                     raise ValueError("Path exists, in order to replace - delete first!")
 
             if path in self._files[-1] and _node_is_del_mark(
@@ -368,7 +381,7 @@ class IH5InnerNode(IH5Node):
                 del self._files[-1][path]
 
             # assign new value
-            self._files[-1][path] = val
+            self._create_dataset(path, data=val)
 
     def __delitem__(self, key: str):
         self._expect_open()
@@ -382,10 +395,9 @@ class IH5InnerNode(IH5Node):
 
         # remove the entity if it is found in newest container,
         # mark the path as deleted if doing a patch and not working on base container
-        found_in_latest = found_cidx == self._last_idx
         has_patches = len(self._files) > 1
         if self._attrs:
-            if found_in_latest:
+            if found_cidx == self._last_idx:
                 del self._files[-1][self._gpath].attrs[key]
             if has_patches:
                 if self._gpath not in self._files[-1]:  # no node at path in latest?
@@ -393,7 +405,7 @@ class IH5InnerNode(IH5Node):
                 self._files[-1][self._gpath].attrs[key] = DEL_VALUE  # mark deleted
         else:
             path = self._abs_path(key)
-            if found_in_latest:
+            if path in self._files[-1]:
                 del self._files[-1][path]
             if has_patches:
                 self._files[-1][path] = DEL_VALUE
@@ -432,7 +444,7 @@ class IH5InnerNode(IH5Node):
         return self._dict().items()
 
 
-class IH5Value(IH5Node):
+class IH5Dataset(IH5Node):
     """`IH5Node` representing a `h5py.Dataset`, i.e. a leaf of the tree."""
 
     def __init__(self, files, gpath, creation_idx):
@@ -507,9 +519,12 @@ class IH5Group(IH5InnerNode):
         return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
     def create_group(self, gpath) -> IH5Group:
-        """Create a group (overrides whatever was at the path in previous versions)."""
         self._expect_open()
         return self._create_group(gpath)
+
+    def create_dataset(self, gpath, *args, **kwargs) -> IH5Dataset:
+        self._expect_open()
+        return self._create_dataset(gpath, *args, **kwargs)
 
 
 class IH5AttributeManager(IH5InnerNode):
