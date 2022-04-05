@@ -465,6 +465,19 @@ def test_get(tmp_ds_path):
         assert ds.get("foo")[()] == 456
 
 
+def test_create_dataset(tmp_ds_path):
+    # relative and absolute paths for create_dataset + pass through arguments
+    with IH5Record.create(tmp_ds_path) as ds:
+        foo = ds.create_group("foo")
+        foo.create_dataset(
+            "bar", data=[1, 2, 3], compression="gzip", compression_opts=9
+        )
+        foo.create_dataset("/baz", data=1)
+        assert "bar" in foo
+        assert "foo/bar" in ds
+        assert "/baz" in ds
+
+
 # --------
 # check that exceptions are correctly triggered by manipulating data into invalid states
 

@@ -13,6 +13,8 @@ from typing import Any, Callable, Dict, List, Optional
 import h5py
 import numpy as np
 
+# TODO: maybe support track_order in create_group? possibly useful but messy to implement
+
 # dataset value marking a deleted group, dataset or attribute
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 
@@ -256,10 +258,11 @@ class IH5InnerNode(IH5Node):
         unknown_kwargs = set(kwargs.keys()) - set(["compression", "compression_opts"])
         if unknown_kwargs:
             raise ValueError(f"Unkown kwargs: {unknown_kwargs}")
+        path = self._abs_path(gpath)
         self._files[-1].create_dataset(
-            gpath, shape=shape, dtype=dtype, data=data, **kwargs
+            path, shape=shape, dtype=dtype, data=data, **kwargs
         )
-        return self[gpath]
+        return self[path]
 
     def _node_seq(self, path: str) -> List[IH5Node]:
         """Return node sequence (one node per path prefix) to given path.
