@@ -1,11 +1,52 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Tuple
 
 from ..hashutils import DiffObjType  # noqa: F401
 from ..hashutils import PathStatus  # noqa: F401
-from ..hashutils import DirDiff, ValidationErrors
+from ..hashutils import DirDiff
 from ..ih5.record import IH5Record
+
+
+class ArdiemValidationErrors(ValueError):
+    """Structure to collect record or directory validation errors.
+
+    Returned from validation functions and thrown in other contexts.
+    """
+
+    errors: Dict[str, List[Any]]
+    """Common type used to collect errors.
+
+    Maps path in container or directory to list of errors with that path.
+
+    The list should contain either strings or other such dicts,
+    but Python type checkers are unable to understand recursive types.
+    """
+
+    def __init__(self, errs: Dict[str, Any] = {}):
+        self.errors = errs
+
+    def __bool__(self):
+        return bool(self.errors)
+
+    def __repr__(self):
+        return repr(self.errors)
+
+    def join(self, more_errs: ArdiemValidationErrors) -> ArdiemValidationErrors:
+        errs = self.errors.copy()
+        for k, v in more_errs.errors.items():
+            if k not in errs:
+                errs[k] = v
+            else:
+                errs[k] += v
+        return ArdiemValidationErrors(errs)
+
+    def add(self, k, v):
+        if k not in self.errors:
+            self.errors[k] = []
+        self.errors[k].append(v)
 
 
 class ArdiemPacker(ABC):
@@ -19,55 +60,54 @@ class ArdiemPacker(ABC):
     and such plugins can be easily developed independently from the rest
     of the Ardiem tooling, as long as this interface is honored.
 
-    Carefully read the documentation for the required methods
+    Carefully read the documentation for the required attributes and methods
     and implement them for your use-case in a subclass.
     See `ardiem_container.packer.example` for an example plugin.
     """
 
+    PACKER_ID: str
+    """The unique packer ID.
+
+    This MUST be equal to the declared entry-point under which this class is
+    registered in the Python package it is contained in.
+    """
+
+    PACKER_VERSION: Tuple[int, int, int]
+    """The current version the packer.
+
+    Tuple corresponds to a version string, i.e. (1,2,4) means "1.2.4".
+
+    A packer MUST be able to update records created by a packer with the same id,
+    same MAJOR version and the current or an earlier MINOR version.
+
+    More formally, the version list [MAJOR, MINOR, REVISION]
+    MUST adhere to the following contract:
+
+    1. increasing MAJOR means a break in backwards-compatibility
+    for older datasets (i.e. new packer cannot work with old records),
+
+    2. increasing MINOR means a break in forward-compatibility
+    for newer datasets (i.e. older packers will not work with newer records),
+
+    3. increasing REVISION does not affect compatibility
+    for datasets with the same MAJOR and MINOR version.
+
+    When the packer is updated, the version MUST increase in a suitable way.
+
+    This means, the REVISION version should increase for e.g. bugfixes that do
+    not change the structure or metadata stored in the dataset,
+    MINOR should increase whenever from now on older versions would not be able
+    to produce a valid update for a dataset created with this version,
+    but upgrading older existing datasets with this version still works.
+    Finally, MAJOR version is increased when all compatibility guarantees are off.
+
+    It SHOULD be possible to convert datasets from one MAJOR version to the next
+    using a possibly interactive external migration script.
+    """
+
     @classmethod
     @abstractmethod
-    def packer_id(cls) -> str:
-        """Return the unique packer ID string.
-
-        This MUST be equal to the declared entry-point under which this class is
-        registered in the Python package it is contained in.
-        """
-
-    @classmethod
-    @abstractmethod
-    def packer_version(cls) -> List[int]:
-        """Return the current version the packer.
-
-        The returned list corresponds to a version string, i.e. [1,2,4] means "1.2.4".
-
-        A packer MUST be able to update records with the same MAJOR version
-        and the current or earlier MINOR versions.
-
-        More formally, the version list [MAJOR, MINOR, REVISION]
-        MUST adhere to the following contract:
-
-        1. increasing MAJOR means a break in backwards-compatibility
-        for older datasets (i.e. new packer cannot work with old records),
-
-        2. increasing MINOR means a break in forward-compatibility
-        for newer datasets (i.e. older packers will not work with newer records),
-
-        3. increasing REVISION does not affect compatibility
-        for datasets with the same MAJOR and MINOR version.
-
-        When this packer is updated, the version MUST increase in a suitable way.
-
-        This means, the REVISION version should increase for e.g. bugfixes that do
-        not change the structure or metadata stored in the dataset,
-        MINOR should increase whenever from now on older versions would not be able
-        to produce a valid update for a dataset created with this version,
-        but upgrading old datasets with this version still works.
-        Finally, MAJOR version is increased when all compatibility guarantees are off.
-        """
-
-    @classmethod
-    @abstractmethod
-    def check_directory(cls, data_dir: Path) -> ValidationErrors:
+    def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
         """Check whether the given directory is suitable for packing with this plugin.
 
         This method will be called before `pack_directory` and MUST detect
@@ -86,10 +126,10 @@ class ArdiemPacker(ABC):
             data_dir: Directory containing all the data to be packed.
 
         Returns:
-            Empty dict if there are no problems and the directory looks like it
+            ArdiemValidationErrors object initialized with
+            empty dict if there are no problems and the directory looks like it
             can be packed, assuming it stays in the state it is currently in.
-
-            Otherwise, returns a dict mapping file paths (relative to `dir`)
+            Otherwise, initialized with a dict mapping file paths (relative to `dir`)
             to lists of detected errors.
 
             The errors must be either a string (containing a human-readable summary of all
@@ -100,7 +140,7 @@ class ArdiemPacker(ABC):
 
     @classmethod
     @abstractmethod
-    def check_record(cls, record: IH5Record) -> ValidationErrors:
+    def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
         """Check whether a record is compatible with and valid according to this packer.
 
         This method MUST succeed on a record that was created or updated using
@@ -108,13 +148,18 @@ class ArdiemPacker(ABC):
         structure to check whether a possibly unknown record can be updated using
         this packer before creating a patch for the record.
 
+        This method MUST be able to work with a stub record, i.e. where datasets and
+        attribute values are `h5py.Empty` values. In case of stubs, only the
+        expected presence or absence of values is to be validated.
+        Otherwise, the metadata contents MUST be validated as well.
+
         Args:
             record: The record to be verified.
 
         Returns:
-            Empty dict if there are no problems detected in the container.
-
-            Otherwise, a dict mapping record paths to errors.
+            ArdiemValidationErrors object initialized with
+            empty dict if there are no problems detected in the container.
+            Otherwise, initialized with a dict mapping record paths to errors.
 
             The errors must be either a string (containing a human-readable summary of all
             problems with that file), or another dict with more granular error messages,
@@ -152,7 +197,7 @@ class ArdiemPacker(ABC):
         The `record.commit()` MUST NOT be called by the packer, as the caller of this
         method might perform additional postprocessing after the packing.
         Similarly, `record.create_patch()` or `record.discard_patch()` must not be
-        used. The packer gets a writable record and is only responsible for perform
+        used. The packer gets a writable record and is only responsible for performing
         the neccessary additions, deletions and modifications.
 
         3. Data-independence of updates:
@@ -183,7 +228,7 @@ class ArdiemPacker(ABC):
         it will only take care of certain files and ignore other changes. If this
         restriction is made known to users, then it is acceptable.
 
-        So if a implementing a shallow update in full generality is not feasible,
+        So if implementing "shallow updates" in full generality is not feasible,
         there are two possibilities:
 
         1. The packer can document what entities can be updated and which can not.
@@ -197,7 +242,8 @@ class ArdiemPacker(ABC):
 
         6. Exceptional termination:
         In case that packing must be aborted, and exception MUST be raised and contain
-        an error dict like in the other methods above helping to find and fix the problem.
+        an ArdiemValidationErrors object like in the other methods above helping to find
+        and fix the problem.
 
         Args:
             data_dir: Directory containing all the data to be packed

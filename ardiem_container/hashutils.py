@@ -8,15 +8,6 @@ from typing import Any, BinaryIO, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
-ValidationErrors = Dict[str, List[Any]]
-"""Common type used to collect errors.
-
-Maps path in container or directory to list of errors with that path.
-
-The list should contain either strings or other ValidationErrors dicts,
-but Python type checkers are unable to understand recursive types.
-"""
-
 _hash_alg = {
     "md5": hashlib.md5,
     "sha1": hashlib.sha1,

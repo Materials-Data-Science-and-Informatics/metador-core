@@ -111,7 +111,7 @@ class IH5Node:
         If absolute, returns the path back unchanged.
         """
         pref = self._gpath if self._gpath != "/" else ""
-        return path if path[0] == "/" else f"{pref}/{path}"
+        return path if path and path[0] == "/" else f"{pref}/{path}"
 
     def _inspect_path(self, path):  # pragma: no cover
         """Print the path node of all containers where the path is contained in."""
@@ -426,6 +426,29 @@ class IH5InnerNode(IH5Node):
             return self[key]
         except KeyError:
             return default
+
+    def value_get(self, key: str, default=None):
+        """Return value located at a leaf path (dataset or attribute).
+
+        Provides unified access to both values and attributes.
+        In case of datasets, returns unpacked dataset value.
+        Attributes are addressed after using @ as separator, i.e.
+        `/a/b@c` addresses attribute `c` at node `/a/b`.
+        """
+        paths = key.split("@")
+        ret = self.get(self._abs_path(paths[0]), default)
+        has_atr = len(paths) > 1
+        if has_atr:
+            assert isinstance(ret, IH5Group) or isinstance(ret, IH5Dataset)
+            return ret.attrs.get(paths[1], default)
+        else:
+            if isinstance(ret, IH5Group):
+                raise ValueError(f"Path '{key}' is a group!")
+            elif isinstance(ret, IH5Dataset):
+                return ret[()]
+            else:
+                return ret  # default value
+        raise RuntimeError("The impossible happened!")  # pragma: no cover
 
     def __contains__(self, key: str):
         self._check_key(key)

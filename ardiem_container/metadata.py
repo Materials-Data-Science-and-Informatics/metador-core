@@ -2,79 +2,64 @@
 
 from __future__ import annotations
 
+import json
 import os
-import re
+from json.decoder import JSONDecodeError
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
+import h5py
 import magic
-from pint import Unit
-from pint.errors import UndefinedUnitError
-from pydantic import AnyHttpUrl, BaseModel, Field
-from typing_extensions import Annotated, Literal
+from pydantic import AnyHttpUrl, BaseModel, Field, NonNegativeInt, ValidationError
+from typing_extensions import Literal
 
 from .hashutils import HASH_ALG, file_hashsum
-
-nonempty_str = Annotated[str, Field(min_length=1)]
-
-# rough regex checking a string looks like a mime-type
-mimetype_str = Annotated[str, Field(regex=r"^\S+/\S+(;\S+)*$")]
-
-# a hashsum string is to be prepended by the used algorithm
-hashsum_str = Annotated[str, Field(regex=r"^" + HASH_ALG + r":\w+$")]
+from .ih5.record import IH5Record
+from .packer import ArdiemValidationErrors
+from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 
-class PintUnit:
-    """Pydantic validator for serialized physical units that can be parsed by pint."""
-
-    # https://pydantic-docs.helpmanual.io/usage/types/#custom-data-types
-
-    UNIT_REGEX = r"^[\w */]+$"
-    """Units must be expressed out of:
-    words, spaces, multiplication, division, exponentiation."""
-
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(
-            title="Physical unit string compatible with the Python pint library.",
-            type="string",
-            examples=["meter * candela", "kilogram / second ** 2"],
-        )
-
-    @classmethod
-    def validate(cls, v) -> Unit:
-        if isinstance(v, Unit):
-            return v
-        if not isinstance(v, str):
-            raise TypeError("Expected unit as Unit or str.")
-        if re.match(cls.UNIT_REGEX, v) is None:
-            raise ValueError(f"Invalid unit: {v}")
-        try:
-            return Unit(v)
-        except (ValueError, UndefinedUnitError):
-            raise ValueError(f"Could not parse unit: {v}")
-
-
-class ExtBaseModel(BaseModel):
-    """Extended base model with custom serializers."""
+class ArdiemBaseModel(BaseModel):
+    """Extended base model with custom serializers and functions."""
 
     # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
 
     class Config:
-        json_encoders = {Unit: lambda x: str(x)}
+        json_encoders = {PintUnit.Parsed: lambda x: str(x)}
+
+    @classmethod
+    def from_record(cls, rec: IH5Record, path: str):
+        """Get JSON-serialized metadata from a record as a model instance.
+
+        If the path is not existing or cannot be parsed, will raise ArdiemValidationErrors.
+        If the path exists, but is a stub value, will return None.
+        Otherwise, will return the parsed model instance.
+        """
+        if path not in rec:
+            raise ArdiemValidationErrors({path: ["not found!"]})
+        val = None
+        try:
+            val = rec["/"].value_get(path)
+            if isinstance(val, h5py.Empty):
+                return None
+            else:
+                return cls.parse_obj(json.loads(val))
+        except ValueError:
+            raise ArdiemValidationErrors({path: ["Expected JSON, found a group!"]})
+        except (TypeError, JSONDecodeError):
+            msg = f"Cannot parse {type(val).__name__} as JSON!"
+            raise ArdiemValidationErrors({path: [msg]})
+        except (ValidationError, FileNotFoundError) as e:
+            raise ArdiemValidationErrors({path: [str(e)]})
 
 
-class PackerMeta(ExtBaseModel):
+class PackerMeta(ArdiemBaseModel):
     """Metadata of the packer that created some record."""
 
     id: nonempty_str
     """Unique identifier of the packer (the same as the entry-point name)."""
 
-    version: nonempty_str
+    version: Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
     """Version of the packer (can be different from version of the Python package)."""
 
     docs: Optional[AnyHttpUrl] = None
@@ -100,7 +85,7 @@ class PackerMeta(ExtBaseModel):
 # metadata records stored in node_meta attribute inside record
 
 
-class FileMeta(ExtBaseModel):
+class FileMeta(ArdiemBaseModel):
     """Metadata to be provided for each embedded file.
 
     The type is preferably given as mime-type, otherwise implied py file extension.
@@ -128,18 +113,18 @@ class FileMeta(ExtBaseModel):
         )
 
 
-class ColumnHead(ExtBaseModel):
+class ColumnHead(ArdiemBaseModel):
     title: nonempty_str
     unit: PintUnit
 
 
-class TableMeta(ExtBaseModel):
+class TableMeta(ArdiemBaseModel):
     type: Literal["table"]
     title: nonempty_str
     columns: List[ColumnHead]
 
 
-class NodeMeta(ExtBaseModel):
+class NodeMeta(ArdiemBaseModel):
     """Metadata attached to a node (group or HDF5 record)."""
 
     __root__: Union[FileMeta, TableMeta] = Field(..., discriminator="type")

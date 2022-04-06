@@ -1,5 +1,4 @@
 """Tests for ArdiemRecord."""
-import inspect
 from pathlib import Path
 
 import h5py
@@ -7,33 +6,37 @@ import pytest
 
 from ardiem_container.hashutils import HASH_ALG, dir_hashsums
 from ardiem_container.ih5 import IH5Record
-from ardiem_container.packer import ArdiemPacker, DirDiff, ValidationErrors
-from ardiem_container.record import ArdiemRecord, ValidationError
+from ardiem_container.packer import ArdiemPacker, ArdiemValidationErrors, DirDiff
+from ardiem_container.record import ArdiemRecord, PackerMeta
 
 
 class DummyPacker(ArdiemPacker):
     """The dummy packer."""
 
+    PACKER_ID = "dummy"
+    PACKER_VERSION = (0, 1, 0)
+
     fail_check_directory = False
     fail_check_record = False
+    fail_check_record_after_pack = False
 
     ex_check_directory = False
     ex_check_record = False
     ex_pack_directory = False
 
     @classmethod
-    def check_directory(cls, data_dir: Path) -> ValidationErrors:
-        print(f"called: {inspect.currentframe().f_code.co_name}")  # type: ignore
-        if not cls.fail_check_directory:
-            return {}
-        return {"error": ["value"]}
+    def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
+        if cls.fail_check_directory:
+            return ArdiemValidationErrors({"error": ["check_directory"]})
+        return ArdiemValidationErrors()
 
     @classmethod
-    def check_record(cls, record: IH5Record) -> ValidationErrors:
-        print(f"called: {inspect.currentframe().f_code.co_name}")  # type: ignore
-        if not cls.fail_check_record:
-            return {}
-        return {"error": ["value"]}
+    def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
+        if cls.fail_check_record:
+            return ArdiemValidationErrors({"error": ["check_record"]})
+        if cls.fail_check_record_after_pack and "fail" in record:
+            return ArdiemValidationErrors({"error": ["check_record_after_pack"]})
+        return ArdiemValidationErrors()
 
     @classmethod
     def pack_directory(
@@ -42,15 +45,19 @@ class DummyPacker(ArdiemPacker):
         if cls.ex_pack_directory:
             raise ValueError("Packing failed.")
 
-        print(f"called: {inspect.currentframe().f_code.co_name}")  # type: ignore
-        print(f"from {data_dir} to {record._files[-1].filename} (fresh={fresh})")
-        print(diff)
+        if not fresh:
+            del record["/head/packer"]
+        record["/head/packer"] = PackerMeta(id="dummy", version=(0, 1, 0)).json()
+
         # just count number of patches (base container is 0)
         if "updates" not in record.attrs:
             record.attrs["updates"] = 0
         else:
             if not isinstance(record.attrs["updates"], h5py.Empty):
                 record.attrs["updates"] = record.attrs["updates"] + 1
+
+        if cls.fail_check_record_after_pack and "fail" not in record:
+            record["fail"] = True
 
 
 def test_create_fail(tmp_ds_path, tmp_path):
@@ -150,7 +157,7 @@ def test_open_manifest_mismatch_fail(tmp_ds_path, tmp_path):
         new_mf.rename(old_manifest)
 
     # expect manifest mismatch
-    with pytest.raises(ValidationError) as e:
+    with pytest.raises(ValueError) as e:
         ArdiemRecord.open(tmp_ds_path)
     assert str(e).lower().find("match") >= 0
 
@@ -221,11 +228,59 @@ def test_packer_fail_check_directory(tmp_ds_path, tmp_path):
     (data_dir / "dummy_file").touch()
 
     DummyPacker.fail_check_directory = True
-    with pytest.raises(ValidationError) as e:
+    with pytest.raises(ArdiemValidationErrors) as e:
         ArdiemRecord.create(ds_path, data_dir, DummyPacker)
     DummyPacker.fail_check_directory = False
 
-    # got expected error
-    assert "error" in e.value.args[0]
+    # got an error
+    assert bool(e.value.errors)
     # no container created
     assert len(IH5Record.find_containers(ds_path)) == 0
+
+
+def test_update_fail_check_record(tmp_ds_path, tmp_path):
+    ds_path = tmp_ds_path
+    data_dir = tmp_path
+    (data_dir / "dummy_file").touch()
+
+    # create record
+    with ArdiemRecord.create(ds_path, data_dir, DummyPacker) as ds:
+        cfiles = ds.record.containers
+        manifest = ds.manifest
+
+    (data_dir / "dummy_file2").touch()
+
+    DummyPacker.fail_check_record = True
+    with ArdiemRecord.open(ds_path) as ds:
+        with pytest.raises(ArdiemValidationErrors):
+            ds.update(data_dir, DummyPacker)
+    DummyPacker.fail_check_record = False
+
+    # patch was not created, old manifest
+    with ArdiemRecord.open(ds_path) as ds:
+        assert ds.record.containers == cfiles
+        assert ds.manifest == manifest
+
+
+def test_update_fail_check_record_after_pack(tmp_ds_path, tmp_path):
+    ds_path = tmp_ds_path
+    data_dir = tmp_path
+    (data_dir / "dummy_file").touch()
+
+    # create record
+    with ArdiemRecord.create(ds_path, data_dir, DummyPacker) as ds:
+        cfiles = ds.record.containers
+        manifest = ds.manifest
+
+    (data_dir / "dummy_file2").touch()
+
+    DummyPacker.fail_check_record_after_pack = True
+    with ArdiemRecord.open(ds_path) as ds:
+        with pytest.raises(ArdiemValidationErrors):
+            ds.update(data_dir, DummyPacker)
+    DummyPacker.fail_check_record_after_pack = False
+
+    # patch was not created, old manifest
+    with ArdiemRecord.open(ds_path) as ds:
+        assert ds.record.containers == cfiles
+        assert ds.manifest == manifest

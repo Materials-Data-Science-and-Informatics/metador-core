@@ -8,7 +8,7 @@ from uuid import UUID, uuid1
 
 from pydantic import BaseModel
 
-from .hashutils import DirDiff, DirHashsums, ValidationErrors, dir_hashsums, rel_symlink
+from .hashutils import DirDiff, DirHashsums, dir_hashsums, rel_symlink
 from .ih5.record import (
     HASH_ALG,
     IH5Record,
@@ -16,26 +16,12 @@ from .ih5.record import (
     create_stub_base,
     ih5_skeleton,
 )
-from .packer import ArdiemPacker
+from .metadata import PackerMeta
+from .packer import ArdiemPacker, ArdiemValidationErrors
 
 # TODO: should the manifest file be hashed itself,
 # and listed as sidecar as "sidecar UUID -> hashsum" in user block?
 # that way a container could recognize its "original" manifest file
-
-
-class ValidationError(ValueError):
-    """Exception when record validation fails."""
-
-    pass
-
-
-def _join_errs(errs: ValidationErrors, more_errs: ValidationErrors) -> ValidationErrors:
-    for k, v in more_errs.items():
-        if k not in errs:
-            errs[k] = v
-        else:
-            errs[k] += v
-    return errs
 
 
 class ManifestFile(BaseModel):
@@ -61,9 +47,10 @@ class ManifestFile(BaseModel):
 
     hashsums: DirHashsums  # computed with dir_hashsums
     skeleton: Dict[str, str]  # computed with ih5_skeleton
+    packer: PackerMeta  # Metadata of the packer that created the dataset
 
     @classmethod
-    def create(cls, ub: IH5UserBlock) -> ManifestFile:
+    def create(cls, ub: IH5UserBlock, packer: Type[ArdiemPacker]) -> ManifestFile:
         """Create a manifest file based on a user block.
 
         Hashsums and skeleton must still be added to make the instance complete.
@@ -75,6 +62,7 @@ class ManifestFile(BaseModel):
             patch_index=ub.patch_index,
             hashsums={},
             skeleton={},
+            packer=PackerMeta(id=packer.PACKER_ID, version=packer.PACKER_VERSION),
         )
 
     def to_userblock(self) -> IH5UserBlock:
@@ -103,6 +91,8 @@ class ArdiemRecord:
     _path: Path
     _record: Optional[IH5Record]
     _manifest: Optional[ManifestFile]
+
+    RECORD_PACKERMETA_PATH = "/head/packer"
 
     MANIFEST_EXT = f"{IH5Record.FILE_EXT}mf.json"
 
@@ -154,7 +144,6 @@ class ArdiemRecord:
 
         only_manifest = kwargs.get("only_manifest", False)
         missing_manifest = kwargs.get("missing_manifest", False)
-        print(only_manifest, missing_manifest)
         if only_manifest and missing_manifest:
             msg = "only_manifest and missing_manifest are mutually exclusive!"
             raise ValueError(msg)
@@ -182,7 +171,7 @@ class ArdiemRecord:
             if not cls._manifest_match(ret._manifest, ret._record._ublock(-1)):
                 ret.record.close()
                 msg = f"Manifest file '{hsfp}' does not match latest HDF5 container!"
-                raise ValidationError(msg)
+                raise ValueError(msg)
 
         return ret
 
@@ -193,26 +182,29 @@ class ArdiemRecord:
         self._manifest = None  # type: ignore
         self._path = None  # type: ignore
 
-    def check_record_common(self) -> ValidationErrors:
+    def check_record_common(self) -> ArdiemValidationErrors:
         """Check record constraints and invariants that are packer-independent."""
         assert self.record is not None
-        return {}
+        errs = ArdiemValidationErrors()
+        try:
+            PackerMeta.from_record(self.record, self.RECORD_PACKERMETA_PATH)
+        except ArdiemValidationErrors as e:
+            errs = errs.join(e)
+        return errs
 
-    def check_directory_common(self, data_dir: Path) -> ValidationErrors:
+    def check_directory_common(self, data_dir: Path) -> ArdiemValidationErrors:
         """Check directory constraints and invariants that are packer-independent."""
-        errs = {}
-
-        # check symlinks inside of record
+        errs = ArdiemValidationErrors()
+        # check symlinks inside of data directory
         for path in sorted(data_dir.rglob("*")):
             key = str(path.relative_to(data_dir))
             if path.is_symlink() and rel_symlink(data_dir, path) is None:
-                errs[key] = ["Invalid out-of-data-directory symlink!"]
-
+                errs.add(key, "Invalid out-of-data-directory symlink!")
         return errs
 
     def check_directory(
         self, data_dir: Path, packer: Optional[Type[ArdiemPacker]]
-    ) -> ValidationErrors:
+    ) -> ArdiemValidationErrors:
         """Check the structure of the directory.
 
         Will always perform the packer-independent checks. If a packer is provided,
@@ -220,10 +212,12 @@ class ArdiemRecord:
         """
         errs = self.check_directory_common(data_dir)
         if packer is not None:
-            _join_errs(errs, packer.check_directory(data_dir))
+            errs = errs.join(packer.check_directory(data_dir))
         return errs
 
-    def check_record(self, packer: Optional[Type[ArdiemPacker]]) -> ValidationErrors:
+    def check_record(
+        self, packer: Optional[Type[ArdiemPacker]]
+    ) -> ArdiemValidationErrors:
         """Check the structure of the record.
 
         Will always perform the packer-independent checks. If a packer is provided,
@@ -232,8 +226,27 @@ class ArdiemRecord:
         assert self.record is not None
         errs = self.check_record_common()
         if packer is not None:
-            _join_errs(errs, packer.check_record(self.record))
+            errs = errs.join(packer.check_record(self.record))
         return errs
+
+    def check_packer_compatible(self, packer: Type[ArdiemPacker]):
+        """Check whether the packer is compatible with the record."""
+        pmeta: Optional[PackerMeta] = None
+        if self.manifest is not None:
+            pmeta = self.manifest.packer
+        else:
+            assert self.record is not None
+            if not self.record.is_empty:
+                pmeta = PackerMeta.from_record(self.record, self.RECORD_PACKERMETA_PATH)
+        if pmeta is None:
+            return  # no manifest, empty record -> fresh dataset
+        if not (
+            packer.PACKER_ID == pmeta.id
+            and packer.PACKER_VERSION[0] == pmeta.version[0]
+            and packer.PACKER_VERSION[1] >= pmeta.version[1]
+        ):
+            needs = f"{pmeta.id}>={pmeta.version}"
+            raise ValueError(f"Incompatible packer, needs {needs}!")
 
     @classmethod
     def create(
@@ -290,7 +303,7 @@ class ArdiemRecord:
         try:
             errs = self.check_directory(data_dir, packer)
             if errs:
-                raise ValidationError(errs)
+                raise errs
         except Exception as e:  # in case of any exception, cleanup and abort
             if self._record and not self._record.read_only:  # fresh record or patch?
                 self._record._delete_latest_container()  # kill it
@@ -314,15 +327,23 @@ class ArdiemRecord:
             fresh = True  # reset to true (previous if could have been executed)
         assert fresh == self._record.is_empty
 
+        # check that the packer of dataset is compatible with passed packer
+        # (based on packer info in manifest or in the record)
+        try:
+            self.check_packer_compatible(packer)
+        except ValueError as e:
+            self._record._delete_latest_container()  # kill the new base or patch
+            raise e
+
         # when patching a record, ensure that record is valid according to packer
         if not fresh:
             errs = self.check_record(packer)
             if errs:
                 self._record._delete_latest_container()  # kill the new base or patch
-                raise ValidationError(errs)
+                raise errs
 
         # prepare new manifest file
-        self._manifest = ManifestFile.create(self._record.ih5meta[-1])
+        self._manifest = ManifestFile.create(self._record.ih5meta[-1], packer)
         # compute hashsums and diff of directory (the packer will get the diff)
         self._manifest.hashsums = dir_hashsums(data_dir, HASH_ALG)
         diff = DirDiff.compare(old_hashsums, self._manifest.hashsums)
@@ -339,7 +360,7 @@ class ArdiemRecord:
             # verify general container constraints that all packers must satisfy
             errs = self.check_record(packer)
             if errs:
-                raise ValidationError(errs)
+                raise errs
         except Exception as e:
             # kill the new patch, restore old state
             self._record._delete_latest_container()

@@ -17,20 +17,20 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from ..metadata import FileMeta, PackerMeta, TableMeta
+from ..metadata import ArdiemBaseModel, FileMeta, PackerMeta, TableMeta
 from . import (
     ArdiemPacker,
+    ArdiemValidationErrors,
     DiffObjType,
     DirDiff,
     IH5Record,
     PathStatus,
-    ValidationErrors,
 )
 
 
-class ExampleMeta(BaseModel):
+class ExampleMeta(ArdiemBaseModel):
     author: str
 
 
@@ -55,50 +55,41 @@ class ExamplePacker(ArdiemPacker):
     """
 
     PACKER_ID = "example"
-    PACKER_VERSION = "1.0"
+    PACKER_VERSION = (0, 1, 0)
 
     @classmethod
-    def check_directory(cls, data_dir: Path) -> ValidationErrors:
+    def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
         print("--------")
         print("called check_directory")
-        errs = {}
+        errs = ArdiemValidationErrors()
 
         metafile = data_dir / "_meta.json"
         try:
             ExampleMeta.parse_file(metafile)
         except JSONDecodeError:
-            errs[str(metafile)] = ["Cannot parse JSON file!"]
+            errs.add(str(metafile), "Cannot parse JSON file!")
         except (ValidationError, FileNotFoundError) as e:
-            errs[str(metafile)] = [str(e)]
-
+            errs.add(str(metafile), str(e))
         return errs
 
     @classmethod
-    def check_record(cls, record: IH5Record) -> ValidationErrors:
+    def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
         print("--------")
         print("called check_container")
-        errs = {}
-
-        def add_err(k, v):
-            if k not in errs:
-                errs[k] = []
-            errs[k].append(v)
+        errs = ArdiemValidationErrors()
 
         if PACKER_META_PATH in record:
             try:
                 pmeta = PackerMeta.parse_obj(json.loads(record[PACKER_META_PATH][()]))
                 if pmeta.id != cls.PACKER_ID:
-                    msg = (
-                        f"detected packer: '{pmeta.id}' expected: '{cls.PACKER_ID}'",
-                    )
-                    add_err(PACKER_META_PATH, msg)
+                    msg = f"detected packer: '{pmeta.id}' expected: '{cls.PACKER_ID}'"
+                    errs.add(PACKER_META_PATH, msg)
             except JSONDecodeError:
-                add_err(PACKER_META_PATH, "Cannot parse JSON!")
+                errs.add(PACKER_META_PATH, "Cannot parse JSON!")
             except ValidationError as e:
-                add_err(PACKER_META_PATH, str(e))
+                errs.add(PACKER_META_PATH, str(e))
         else:
-            add_err(PACKER_META_PATH, "missing")
-
+            errs.add(PACKER_META_PATH, "missing")
         return errs
 
     @classmethod

@@ -473,9 +473,16 @@ def test_create_dataset(tmp_ds_path):
             "bar", data=[1, 2, 3], compression="gzip", compression_opts=9
         )
         foo.create_dataset("/baz", data=1)
+        ds.create_dataset("qux/quux", data=2)
         assert "bar" in foo
         assert "foo/bar" in ds
         assert "/baz" in ds
+        assert "/qux/quux" in ds
+
+        # try invalid arguments
+        with pytest.raises(ValueError) as e:
+            ds.create_dataset("newdataset", unknown="arg")
+        assert str(e).lower().find("unknown")
 
 
 # --------
