@@ -27,7 +27,7 @@ from typing_extensions import Annotated, Final
 
 from ..hashutils import HASH_ALG, hashsum
 from ..types import hashsum_str
-from .overlay import IH5Dataset, IH5Group
+from .overlay import IH5Dataset, IH5Group, Unset
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
@@ -570,6 +570,9 @@ class IH5Record:
 
     def get(self, key: str, default=None):
         return self._root_group().get(key, default)
+
+    def at(self, key: str, default=Unset):
+        return self._root_group().at(key, default)
 
     def keys(self):
         return self._root_group().keys()

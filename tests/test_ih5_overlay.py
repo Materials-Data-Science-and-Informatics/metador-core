@@ -11,7 +11,7 @@ def create_entries(node: IH5InnerNode):
     node["array"] = [0, 0, 0]
     node["bool"] = False
     node["int"] = 0
-    node["string"] = "string"
+    node["string"] = node._gpath + ("@" if node._attrs else "/") + "string"
     node["raw"] = np.void(b"raw")
 
 
@@ -144,6 +144,34 @@ def test_latest_container_idx(tmp_ds_path):
         ds["foo/bar"] = 456
         ds.commit()
         assert IH5Group._latest_container_idx(ds._files, "/foo/bar") == 2
+
+
+def test_access_with_at(dummy_ds_factory):
+    with dummy_ds_factory(flat=True, commit=True) as ds:
+        a = ds.at("a")
+        assert isinstance(a, IH5Group)
+
+        with pytest.raises(KeyError):
+            ds.at("invalid")
+        assert ds.at("invalid", None) is None
+        assert ds.at("invalid", 123) == 123
+
+        ab = a.at("b")
+        assert isinstance(ab, IH5Group)
+        assert ab._gpath == "/a/b"
+
+        bstr = ab.at("/b/string")
+        assert isinstance(bstr, bytes)
+        assert bstr == b"/b/string"
+
+        # also test attributes
+        with pytest.raises(KeyError):
+            ds.at("a@invalid")
+        assert ds.at("a@invalid", default=False) == False
+
+        bstr = ab.at("/a@string")
+        assert isinstance(bstr, str)
+        assert bstr == "/a@string"
 
 
 def test_visit(tmp_ds_path):

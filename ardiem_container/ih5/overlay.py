@@ -40,6 +40,29 @@ def _node_is_virtual(node) -> bool:
     return isinstance(node, h5py.Group) and SUBST_KEY not in node.attrs
 
 
+def new_atom():
+    """Return a fresh value that behaves like a custom `None` (singleton atomic literal).
+
+    The atom is identical (`is`) and equal (`==`) to itself and specifically not
+    identical or equal to anything else.
+
+    Creating a second instance might still possible through reflection, but this
+    is close enough to a "real" singleton atom for any practical purpose.
+    """
+
+    @dataclass(frozen=True)
+    class Atom:
+        """This class is in function scope, so each call produces a new class."""
+
+    return Atom()  # the only class instance that will ever exist
+
+
+Unset = new_atom()
+"""Unique singleton value of a fresh type behaving like `None` and used
+as a neat technical hack to distinguish between passed and unpassed parameters
+(specifically, if `None` is an allowed actual value)."""
+
+
 @dataclass(frozen=True)
 class IH5Node:
     """An overlay node wraps a group, dataset or attribute manager.
@@ -427,28 +450,30 @@ class IH5InnerNode(IH5Node):
         except KeyError:
             return default
 
-    def value_get(self, key: str, default=None):
-        """Return value located at a leaf path (dataset or attribute).
+    def at(self, key: str, default=Unset):
+        """Return a group, dataset or attribute value at a path.
 
-        Provides unified access to both values and attributes.
+        Provides unified access to both groups, values and attributes.
         In case of datasets, returns unpacked dataset value.
+
         Attributes are addressed after using @ as separator, i.e.
         `/a/b@c` addresses attribute `c` at node `/a/b`.
+
+        If the entity is not found,
+        Will return `default` if it is passed and otherwise will raise a `KeyError`.
         """
         paths = key.split("@")
         ret = self.get(self._abs_path(paths[0]), default)
-        has_atr = len(paths) > 1
-        if has_atr:
+        if len(paths) > 1:
             assert isinstance(ret, IH5Group) or isinstance(ret, IH5Dataset)
-            return ret.attrs.get(paths[1], default)
-        else:
-            if isinstance(ret, IH5Group):
-                raise ValueError(f"Path '{key}' is a group!")
-            elif isinstance(ret, IH5Dataset):
-                return ret[()]
-            else:
-                return ret  # default value
-        raise RuntimeError("The impossible happened!")  # pragma: no cover
+            ret = ret.attrs.get(paths[1], default)
+        elif isinstance(ret, IH5Dataset):
+            ret = ret[()]
+        # if the default value is not the special unique "unset" value, raise error
+        if ret is Unset:
+            raise KeyError
+        else:  # otherwise return the default value (which can also be None)
+            return ret
 
     def __contains__(self, key: str):
         self._check_key(key)

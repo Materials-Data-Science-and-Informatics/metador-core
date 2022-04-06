@@ -53,7 +53,7 @@ class ArdiemBaseModel(YamlModelMixin, BaseModel):
             raise ArdiemValidationErrors({path: ["not found!"]})
         val = None
         try:
-            val = rec["/"].value_get(path)
+            val = rec["/"].at(path)
             if isinstance(val, h5py.Empty):
                 return None
             else:
