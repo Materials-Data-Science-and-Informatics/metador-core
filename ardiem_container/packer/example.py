@@ -10,24 +10,14 @@ To develop your own packer plugin, implement a class deriving from
 is registered as a packer plugin called `example`.)
 """
 
-import json
-from json.decoder import JSONDecodeError
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas
-from pydantic import ValidationError
 
 from ..metadata import ArdiemBaseModel, FileMeta, PackerMeta, TableMeta
-from . import (
-    ArdiemPacker,
-    ArdiemValidationErrors,
-    DiffObjType,
-    DirDiff,
-    IH5Record,
-    PathStatus,
-)
+from . import ArdiemPacker, ArdiemValidationErrors, DiffNode, DirDiff, IH5Record
 
 
 class ExampleMeta(ArdiemBaseModel):
@@ -45,8 +35,8 @@ class ExamplePacker(ArdiemPacker):
 
     Both kinds of nodes will have corresponding metadata attributes attached.
 
-    The record is expected to have a _meta.json file in the record root
-    and each CSV file file.csv needs a companion metadata file file.csv_meta.json.
+    The record is expected to have a _meta.yaml file in the record root
+    and each CSV file file.csv needs a companion metadata file file.csv_meta.yaml.
 
     All symlinks inside the record will be completely ignored.
 
@@ -63,13 +53,11 @@ class ExamplePacker(ArdiemPacker):
         print("called check_directory")
         errs = ArdiemValidationErrors()
 
-        metafile = data_dir / "_meta.json"
         try:
-            ExampleMeta.parse_file(metafile)
-        except JSONDecodeError:
-            errs.add(str(metafile), "Cannot parse JSON file!")
-        except (ValidationError, FileNotFoundError) as e:
-            errs.add(str(metafile), str(e))
+            ExampleMeta.from_file(data_dir / "_meta.yaml")
+        except ArdiemValidationErrors as e:
+            errs = errs.join(e)
+
         return errs
 
     @classmethod
@@ -78,18 +66,11 @@ class ExamplePacker(ArdiemPacker):
         print("called check_container")
         errs = ArdiemValidationErrors()
 
-        if PACKER_META_PATH in record:
-            try:
-                pmeta = PackerMeta.parse_obj(json.loads(record[PACKER_META_PATH][()]))
-                if pmeta.id != cls.PACKER_ID:
-                    msg = f"detected packer: '{pmeta.id}' expected: '{cls.PACKER_ID}'"
-                    errs.add(PACKER_META_PATH, msg)
-            except JSONDecodeError:
-                errs.add(PACKER_META_PATH, "Cannot parse JSON!")
-            except ValidationError as e:
-                errs.add(PACKER_META_PATH, str(e))
-        else:
-            errs.add(PACKER_META_PATH, "missing")
+        try:
+            PackerMeta.from_record(record, PACKER_META_PATH)
+        except ArdiemValidationErrors as e:
+            errs = errs.join(e)
+
         return errs
 
     @classmethod
@@ -117,7 +98,7 @@ class ExamplePacker(ArdiemPacker):
                 print("IGNORE:", path, "(symlink)")
                 continue
 
-            if path.name.lower().endswith(".csv_meta.json"):
+            if path.name.lower().endswith(".csv_meta.yaml"):
                 # will be taken care of when the CSV file is processed
                 print("IGNORE:", path, "(sidecar file)")
                 continue
@@ -127,14 +108,14 @@ class ExamplePacker(ArdiemPacker):
             if path.name.lower().endswith(".csv"):  # for CSV files:
                 key = key[:-4]  # drop file extension for array inside record
 
-            if status == PathStatus.removed:  # entity was removed ->
+            if status == DiffNode.Status.removed:  # entity was removed ->
                 # also remove in record, if it was not a symlink (which we ignored)
-                if dnode.prev_type != DiffObjType.symlink:
+                if dnode.prev_type != DiffNode.ObjType.symlink:
                     print("DELETE:", key)
                     del record[key]
                 continue
 
-            if status == PathStatus.modified:  # changed
+            if status == DiffNode.Status.modified:  # changed
                 if dnode.prev_type == dnode.curr_type and path.is_dir():
                     continue  # a changed dir should already exist + remain in record
 
@@ -154,7 +135,7 @@ class ExamplePacker(ArdiemPacker):
                     print("CREATE:", path, "->", key, "(table)")
 
                     record[key] = pandas.read_csv(path).to_numpy()  # type: ignore
-                    metafile = Path(f"{path}_meta.json")
+                    metafile = Path(f"{path}_meta.yaml")
                     metadata = TableMeta.parse_file(metafile).json()
                     record[key].attrs["node_meta"] = metadata
 
@@ -164,7 +145,7 @@ class ExamplePacker(ArdiemPacker):
 
                     data = path.read_bytes()
                     val = np.void(data) if len(data) else h5py.Empty("b")
-                    meta = FileMeta.from_file(path).json()
+                    meta = FileMeta.for_file(path).json()
                     record[key] = val
                     record[key].attrs["node_meta"] = meta
 

@@ -95,7 +95,7 @@ class IH5UserBlock(BaseModel):
             record_uuid=uuid1() if prev is None else prev.record_uuid,
             patch_index=0 if prev is None else prev.patch_index + 1,
             prev_patch=None if prev is None else prev.patch_uuid,
-            hdf5_hashsum=f"{HASH_ALG}:toBeComputed",
+            hdf5_hashsum=f"{HASH_ALG}:0",  # to be computed
             is_stub=False,
         )
         if path is not None:

@@ -4,8 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from ..hashutils import DiffObjType  # noqa: F401
-from ..hashutils import PathStatus  # noqa: F401
+from ..hashutils import DiffNode  # noqa: F401
 from ..hashutils import DirDiff
 from ..ih5.record import IH5Record
 
@@ -93,6 +92,8 @@ class ArdiemPacker(ABC):
     for datasets with the same MAJOR and MINOR version.
 
     When the packer is updated, the version MUST increase in a suitable way.
+    As usual, whenever an earlier number is increased, the following numbers
+    are reset to zero.
 
     This means, the REVISION version should increase for e.g. bugfixes that do
     not change the structure or metadata stored in the dataset,

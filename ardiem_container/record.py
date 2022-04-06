@@ -72,7 +72,7 @@ class ManifestFile(BaseModel):
             record_uuid=self.record_uuid,
             patch_index=self.patch_index,
             prev_patch=None,
-            hdf5_hashsum=f"{HASH_ALG}:toBeComputed",
+            hdf5_hashsum=f"{HASH_ALG}:0",  # to be computed
             is_stub=True,
         )
 

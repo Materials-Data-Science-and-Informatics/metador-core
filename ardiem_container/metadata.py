@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from json.decoder import JSONDecodeError
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import List, Optional, Tuple, Union
 import h5py
 import magic
 from pydantic import AnyHttpUrl, BaseModel, Field, NonNegativeInt, ValidationError
+from pydantic_yaml import YamlModelMixin
 from typing_extensions import Literal
 
 from .hashutils import HASH_ALG, file_hashsum
@@ -19,13 +19,27 @@ from .packer import ArdiemValidationErrors
 from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 
-class ArdiemBaseModel(BaseModel):
+class ArdiemBaseModel(YamlModelMixin, BaseModel):
     """Extended base model with custom serializers and functions."""
 
     # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
 
     class Config:
         json_encoders = {PintUnit.Parsed: lambda x: str(x)}
+
+    @classmethod
+    def from_file(cls, path: Path):
+        """Get YAML- or JSON-serialized metadata from a file as a model instance.
+
+        If the path is not existing or cannot be parsed, will raise ArdiemValidationErrors.
+        Otherwise, will return the parsed model instance.
+        """
+        errs = ArdiemValidationErrors()
+        try:
+            return cls.parse_file(path)
+        except (JSONDecodeError, ValidationError, FileNotFoundError) as e:
+            errs.add(str(path), str(e))
+            raise errs
 
     @classmethod
     def from_record(cls, rec: IH5Record, path: str):
@@ -43,7 +57,7 @@ class ArdiemBaseModel(BaseModel):
             if isinstance(val, h5py.Empty):
                 return None
             else:
-                return cls.parse_obj(json.loads(val))
+                return cls.parse_raw(val)
         except ValueError:
             raise ArdiemValidationErrors({path: ["Expected JSON, found a group!"]})
         except (TypeError, JSONDecodeError):
@@ -99,8 +113,8 @@ class FileMeta(ArdiemBaseModel):
     title: Optional[nonempty_str] = None
 
     @classmethod
-    def from_file(cls, path: Path) -> FileMeta:
-        """Return expected metadata for a file.
+    def for_file(cls, path: Path) -> FileMeta:
+        """Generate and return expected metadata for a file.
 
         Will compute its hashsum and try to detect the MIME type.
         Title will be left empty.

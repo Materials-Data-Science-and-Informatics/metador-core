@@ -7,15 +7,16 @@ from pint.errors import UndefinedUnitError
 from pydantic import Field
 from typing_extensions import Annotated
 
-from .hashutils import HASH_ALG
+from .hashutils import _hash_alg
 
 nonempty_str = Annotated[str, Field(min_length=1)]
 
 # rough regex checking a string looks like a mime-type
-mimetype_str = Annotated[str, Field(regex=r"^\S+/\S+(;\S+)*$")]
+mimetype_str = Annotated[str, Field(regex=r"^[^ /;]+/[^ /;]+(;[^ /;]+)*$")]
 
 # a hashsum string is to be prepended by the used algorithm
-hashsum_str = Annotated[str, Field(regex=r"^" + HASH_ALG + r":\w+$")]
+_hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
+hashsum_str = Annotated[str, Field(regex=r"^" + _hashalg_regex + r":[0-9a-fA-F]+$")]
 
 
 class PintUnit:
@@ -26,7 +27,7 @@ class PintUnit:
     Parsed = Unit
     """Type stored in the model after validation by this class."""
 
-    UNIT_REGEX = r"^[\w */]+$"
+    UNIT_REGEX = r"^[\w ()*/]+$"
     """Units must be expressed out of:
     words, spaces, multiplication, division, exponentiation."""
 

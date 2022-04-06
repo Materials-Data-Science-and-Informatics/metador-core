@@ -16,6 +16,7 @@ jsonschema = "^4.4.0"
 Pint = "^0.18"
 python-magic = "^0.4.25"
 pandas = "^1.4.1"
+pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.17.0"
@@ -36,7 +37,10 @@ build-backend = "poetry.core.masonry.api"
 # pytest.ini replacement (pytest >= 6.0)
 [tool.pytest.ini_options]
 addopts = "--cov-report=term-missing:skip-covered"
-filterwarnings = ["ignore::DeprecationWarning:somepackage.*"]
+filterwarnings = [
+    "ignore::PendingDeprecationWarning:ruamel.yaml.*",
+    "ignore::PendingDeprecationWarning:pydantic_yaml.*"
+]
 
 # .coveragerc replacement
 [tool.coverage.run]
