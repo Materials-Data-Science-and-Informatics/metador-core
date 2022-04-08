@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from enum import Enum
 from json.decoder import JSONDecodeError
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -14,7 +15,7 @@ from pydantic_yaml import YamlModelMixin
 from typing_extensions import Literal
 
 from .hashutils import HASH_ALG, file_hashsum
-from .ih5.record import IH5Record
+from .ih5.record import IH5Group, IH5Record
 from .packer import ArdiemValidationErrors
 from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
@@ -25,7 +26,8 @@ class ArdiemBaseModel(YamlModelMixin, BaseModel):
     # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
 
     class Config:
-        json_encoders = {PintUnit.Parsed: lambda x: str(x)}
+        use_enum_values = True  # to serialize enums properly
+        json_encoders = {PintUnit.Parsed: lambda x: str(x)}  # for SI units
 
     @classmethod
     def from_file(cls, path: Path):
@@ -54,17 +56,48 @@ class ArdiemBaseModel(YamlModelMixin, BaseModel):
         val = None
         try:
             val = rec["/"].at(path)
+            if isinstance(val, IH5Group):
+                raise ArdiemValidationErrors({path: ["Expected JSON, found a group!"]})
             if isinstance(val, h5py.Empty):
                 return None
             else:
-                return cls.parse_raw(val)
-        except ValueError:
-            raise ArdiemValidationErrors({path: ["Expected JSON, found a group!"]})
-        except (TypeError, JSONDecodeError):
-            msg = f"Cannot parse {type(val).__name__} as JSON!"
+                return cls.parse_raw(val, content_type="application/json")
+        except (TypeError, JSONDecodeError) as e:
+            msg = f"Cannot parse {type(val).__name__} as JSON: {str(e)}"
             raise ArdiemValidationErrors({path: [msg]})
-        except (ValidationError, FileNotFoundError) as e:
+        except ValidationError as e:
             raise ArdiemValidationErrors({path: [str(e)]})
+
+    @classmethod
+    def from_path(cls, path: Union[Path, str], record: Optional[IH5Record] = None):
+        """Read instance from a file path or from a path relative to a given record.
+
+        JSON and YAML supported for file paths,
+        only JSON allowed from record datasets and attributes.
+
+        Wraps `from_record` and `from_file` in a unified function.
+        """
+        if record:
+            return cls.from_record(record, str(path))
+        else:
+            return cls.from_file(Path(path))
+
+    @classmethod
+    def check_path(cls, path: Union[Path, str], record: Optional[IH5Record] = None):
+        """Check instance at a file path or a path inside a given record.
+
+        JSON and YAML supported for file paths,
+        only JSON allowed from record datasets and attributes.
+
+        Will treat `h5py.Empty` as valid metadata (in order to work for stub records).
+
+        Returns errors if any.
+        """
+        try:
+            cls.from_path(path, record=record)
+        except ArdiemValidationErrors as e:
+            return e
+        return ArdiemValidationErrors()
 
 
 class PackerMeta(ArdiemBaseModel):
@@ -99,6 +132,11 @@ class PackerMeta(ArdiemBaseModel):
 # metadata records stored in node_meta attribute inside record
 
 
+class NodeMetaTypes(str, Enum):
+    file = "file"
+    table = "table"
+
+
 class FileMeta(ArdiemBaseModel):
     """Metadata to be provided for each embedded file.
 
@@ -106,7 +144,7 @@ class FileMeta(ArdiemBaseModel):
     For previews, the shown title is the provided title, otherwise the file name.
     """
 
-    type: Literal["file"]
+    type: Literal[NodeMetaTypes.file]
     filename: nonempty_str
     hashsum: hashsum_str
     mimetype: Optional[mimetype_str] = None
@@ -120,7 +158,7 @@ class FileMeta(ArdiemBaseModel):
         Title will be left empty.
         """
         return FileMeta(
-            type="file",
+            type=NodeMetaTypes.file,
             filename=path.name,
             hashsum=file_hashsum(path, HASH_ALG),
             mimetype=magic.from_file(path, mime=True),
@@ -133,7 +171,7 @@ class ColumnHead(ArdiemBaseModel):
 
 
 class TableMeta(ArdiemBaseModel):
-    type: Literal["table"]
+    type: Literal[NodeMetaTypes.table]
     title: nonempty_str
     columns: List[ColumnHead]
 

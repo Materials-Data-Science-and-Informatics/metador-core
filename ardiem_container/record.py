@@ -182,16 +182,6 @@ class ArdiemRecord:
         self._manifest = None  # type: ignore
         self._path = None  # type: ignore
 
-    def check_record_common(self) -> ArdiemValidationErrors:
-        """Check record constraints and invariants that are packer-independent."""
-        assert self.record is not None
-        errs = ArdiemValidationErrors()
-        try:
-            PackerMeta.from_record(self.record, self.RECORD_PACKERMETA_PATH)
-        except ArdiemValidationErrors as e:
-            errs = errs.join(e)
-        return errs
-
     def check_directory_common(self, data_dir: Path) -> ArdiemValidationErrors:
         """Check directory constraints and invariants that are packer-independent."""
         errs = ArdiemValidationErrors()
@@ -200,6 +190,14 @@ class ArdiemRecord:
             key = str(path.relative_to(data_dir))
             if path.is_symlink() and rel_symlink(data_dir, path) is None:
                 errs.add(key, "Invalid out-of-data-directory symlink!")
+        return errs
+
+    def check_record_common(self) -> ArdiemValidationErrors:
+        """Check record constraints and invariants that are packer-independent."""
+        assert self.record is not None
+        errs = ArdiemValidationErrors()
+        # packer meta must be present in header
+        errs.append(PackerMeta.check_path(self.RECORD_PACKERMETA_PATH, self.record))
         return errs
 
     def check_directory(
@@ -212,7 +210,7 @@ class ArdiemRecord:
         """
         errs = self.check_directory_common(data_dir)
         if packer is not None:
-            errs = errs.join(packer.check_directory(data_dir))
+            errs.append(packer.check_directory(data_dir))
         return errs
 
     def check_record(
@@ -226,7 +224,7 @@ class ArdiemRecord:
         assert self.record is not None
         errs = self.check_record_common()
         if packer is not None:
-            errs = errs.join(packer.check_record(self.record))
+            errs.append(packer.check_record(self.record))
         return errs
 
     def check_packer_compatible(self, packer: Type[ArdiemPacker]):

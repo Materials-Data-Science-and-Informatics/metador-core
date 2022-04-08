@@ -1,67 +1,11 @@
 """Test hashing and diffing functions."""
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 
 from ardiem_container.hashutils import DiffNode, DirDiff, dir_hashsums, file_hashsum
 
-
-class SymLink(str):
-    pass
-
-
-# data directory contents
-tmp1 = {
-    "a": {
-        "b": {
-            "c.csv": """time,position
-0,1
-1,2.71
-2,3.14""",
-            "c.csv_meta.yaml": """type: table
-title: Movement
-columns:
-  - title: time
-    unit: second
-  - title: position
-    unit: meter""",
-            "d": SymLink("../../d"),
-        }
-    },
-    "d": SymLink("a/b"),
-    "e": "will be replaced",
-    "f": "will be modified",
-    "_meta.yaml": "author: unchanged",
-    "z": "",
-}
-
-tmp2 = {
-    "a": {"b": "hello, world!"},
-    "e": {"g": "is added"},
-    "f": "is modified",
-    "_meta.yaml": "author: unchanged",
-    "z": "",
-}
-
-
-def prepare_dir(dir: Path, data: Dict[str, Any]):
-    """Given an existing empty directory and a data dict, create structure.
-
-    Will create nested subdirectories, files and symlinks as specified.
-    """
-    for k, v in data.items():
-        path = dir / k
-        if isinstance(v, dict):
-            path.mkdir()
-            prepare_dir(path, v)
-        elif isinstance(v, SymLink):
-            path.symlink_to(v)
-        else:
-            with open(path, "wb") as f:
-                if isinstance(v, str):
-                    v = v.encode("utf-8")
-                f.write(v)
+from .conftest import SymLink
 
 
 def test_hashsum(tmp_path):
@@ -79,21 +23,21 @@ def test_hashsum(tmp_path):
     )
 
 
-def test_dir_hashsums_invalid_symlink_fail(tmp_path):
-    prepare_dir(tmp_path, {"sym": SymLink("/outside")})
+def test_dir_hashsums_invalid_symlink_fail(tmp_path, testutils):
+    testutils.prepare_dir(tmp_path, {"sym": SymLink("/outside")})
     with pytest.raises(ValueError):
         dir_hashsums(tmp_path, "sha256")
 
 
-def test_dir_hashsums(tmp_path):
-    prepare_dir(tmp_path, tmp1)
+def test_dir_hashsums(tmp_path, testutils):
+    testutils.prepare_dir(tmp_path, testutils.data_dir["tmp1"])
     assert dir_hashsums(tmp_path, "sha256") == {
-        "_meta.yaml": "sha256:460bc0d9c1c5b1a090d10660b36cacdee627629f58de6abb662c697d3da6a8f4",
+        "example_meta.yaml": "sha256:460bc0d9c1c5b1a090d10660b36cacdee627629f58de6abb662c697d3da6a8f4",
         "a": {
             "b": {
-                "c.csv_meta.yaml": "sha256:9a95348b68d4abd55fcce0e531028ce71dac8a28753ac22d2c7b4c1a8dc3c6a2",
                 "d": "symlink:a/b",
-                "c.csv": "sha256:ae69f538d682dbd96528b0e19be350895083de72723f1cdb0f36f418273361c4",
+                "c.csv": "sha256:d37ad046c2e0c067e59f64a91732873f31df478d51a26e3552e2522cade609b2",
+                "c.csv_meta.yaml": "sha256:833c8d30f975d23cd0250900a5b3efa26f04a45d14c0c492a1172f9a41af9146",
             }
         },
         "e": "sha256:9c56c2e576b1e63c65e2601e182def51891f5d57def434270f6e2c1e36da5e67",
@@ -103,20 +47,20 @@ def test_dir_hashsums(tmp_path):
     }
 
 
-def test_dirdiff_same_empty(tmp_path):
-    prepare_dir(tmp_path, tmp1)
+def test_dirdiff_same_empty(tmp_path, testutils):
+    testutils.prepare_dir(tmp_path, testutils.data_dir["tmp1"])
     dhs = dir_hashsums(tmp_path, "sha256")
     diff = DirDiff.compare(dhs, dhs)
     assert diff.is_empty
 
 
-def test_dirdiff_nontrivial(tmp_path):
+def test_dirdiff_nontrivial(tmp_path, testutils):
     p_tmp1 = tmp_path / "tmp1"
     p_tmp2 = tmp_path / "tmp2"
     p_tmp1.mkdir()
     p_tmp2.mkdir()
-    prepare_dir(p_tmp1, tmp1)
-    prepare_dir(p_tmp2, tmp2)
+    testutils.prepare_dir(p_tmp1, testutils.data_dir["tmp1"])
+    testutils.prepare_dir(p_tmp2, testutils.data_dir["tmp2"])
     dhs1 = dir_hashsums(p_tmp1, "sha256")
     dhs2 = dir_hashsums(p_tmp2, "sha256")
     diff = DirDiff.compare(dhs1, dhs2)
@@ -154,14 +98,14 @@ def test_dirdiff_nontrivial(tmp_path):
     assert f.prev_type == DiffNode.ObjType.file
     assert f.curr_type == DiffNode.ObjType.file
 
-    assert diff.get(Path("_meta.yaml")) is None
+    assert diff.get(Path("example_meta.yaml")) is None
     assert diff.status(diff.get(Path("_meta.yaml"))) == DiffNode.Status.unchanged
 
     # test annotate()
 
     # changed - check correct order rec(removed, modified, self, added) + unchanged
     lst = ["d", "a/b/c.csv", "a/b/c.csv_meta.yaml", "a/b/d", "a/b", "a"]
-    lst += ["e", "e/g", "f", ".", "_meta.yaml", "z"]
+    lst += ["e", "e/g", "f", ".", "example_meta.yaml", "z"]
     exp_paths = [p_tmp2 / x for x in lst]
 
     ordered_paths = list(diff.annotate(p_tmp2).keys())

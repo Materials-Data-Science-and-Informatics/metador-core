@@ -26,12 +26,18 @@ class DummyPacker(ArdiemPacker):
 
     @classmethod
     def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
+        if cls.ex_check_directory:
+            raise Exception("check_directory failed.")
+
         if cls.fail_check_directory:
             return ArdiemValidationErrors({"error": ["check_directory"]})
         return ArdiemValidationErrors()
 
     @classmethod
     def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
+        if cls.ex_check_record:
+            raise Exception("check_record failed.")
+
         if cls.fail_check_record:
             return ArdiemValidationErrors({"error": ["check_record"]})
         if cls.fail_check_record_after_pack and "fail" in record:
@@ -43,7 +49,7 @@ class DummyPacker(ArdiemPacker):
         cls, data_dir: Path, diff: DirDiff, record: IH5Record, fresh: bool
     ):
         if cls.ex_pack_directory:
-            raise ValueError("Packing failed.")
+            raise ValueError("pack_directory failed.")
 
         if not fresh:
             del record["/head/packer"]
@@ -284,3 +290,27 @@ def test_update_fail_check_record_after_pack(tmp_ds_path, tmp_path):
     with ArdiemRecord.open(ds_path) as ds:
         assert ds.record.containers == cfiles
         assert ds.manifest == manifest
+
+
+def test_errors_add_append():
+    errs = ArdiemValidationErrors()
+    assert not errs
+
+    errs.add("a", "entry1")
+    errs.add("a", "entry2")
+    assert errs
+    assert errs.errors["a"] == ["entry1", "entry2"]
+
+    errs2 = ArdiemValidationErrors()
+    errs2.add("a", "entry3")
+    errs2.add("a", "entry4")
+    errs2.add("b", "entry5")
+    assert errs2.errors["a"] == ["entry3", "entry4"]
+    assert errs2.errors["b"] == ["entry5"]
+
+    errs3 = ArdiemValidationErrors()
+    errs3.add("b", "entry6")
+
+    errs.append(errs2, errs3)
+    assert errs.errors["a"] == ["entry1", "entry2", "entry3", "entry4"]
+    assert errs.errors["b"] == ["entry5", "entry6"]

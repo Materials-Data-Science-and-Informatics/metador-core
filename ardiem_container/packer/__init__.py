@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..hashutils import DiffNode  # noqa: F401
 from ..hashutils import DirDiff
@@ -24,23 +24,24 @@ class ArdiemValidationErrors(ValueError):
     but Python type checkers are unable to understand recursive types.
     """
 
-    def __init__(self, errs: Dict[str, Any] = {}):
-        self.errors = errs
+    def __init__(self, errs: Optional[Dict[str, Any]] = None):
+        self.errors = errs or {}
 
     def __bool__(self):
         return bool(self.errors)
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return repr(self.errors)
 
-    def join(self, more_errs: ArdiemValidationErrors) -> ArdiemValidationErrors:
-        errs = self.errors.copy()
-        for k, v in more_errs.errors.items():
-            if k not in errs:
-                errs[k] = v
-            else:
-                errs[k] += v
-        return ArdiemValidationErrors(errs)
+    def append(self, *err_objs: ArdiemValidationErrors):
+        """Add errors from other instances to this object."""
+        errs = self.errors
+        for more_errs in err_objs:
+            for k, v in more_errs.errors.items():
+                if k not in errs:
+                    errs[k] = v
+                else:
+                    errs[k] += v
 
     def add(self, k, v):
         if k not in self.errors:
@@ -242,9 +243,10 @@ class ArdiemPacker(ABC):
             previous option is preferrable in practice.
 
         6. Exceptional termination:
-        In case that packing must be aborted, and exception MUST be raised and contain
-        an ArdiemValidationErrors object like in the other methods above helping to find
-        and fix the problem.
+        In case that packing must be aborted, and exception MUST be raised.
+        If the exception happened due to invalid data or metadata, it MUST be
+        an ArdiemValidationErrors object like in the other methods above, helping to find
+        and fix the problem. Otherwise, a different appropriate exception may be used.
 
         Args:
             data_dir: Directory containing all the data to be packed

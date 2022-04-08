@@ -52,12 +52,7 @@ class ExamplePacker(ArdiemPacker):
         print("--------")
         print("called check_directory")
         errs = ArdiemValidationErrors()
-
-        try:
-            ExampleMeta.from_file(data_dir / "_meta.yaml")
-        except ArdiemValidationErrors as e:
-            errs = errs.join(e)
-
+        errs.append(ExampleMeta.check_path(data_dir / "example_meta.yaml"))
         return errs
 
     @classmethod
@@ -65,12 +60,8 @@ class ExamplePacker(ArdiemPacker):
         print("--------")
         print("called check_container")
         errs = ArdiemValidationErrors()
-
-        try:
-            PackerMeta.from_record(record, PACKER_META_PATH)
-        except ArdiemValidationErrors as e:
-            errs = errs.join(e)
-
+        errs.append(PackerMeta.check_path(PACKER_META_PATH, record))
+        errs.append(ExampleMeta.check_path("/body/custom", record))
         return errs
 
     @classmethod
@@ -105,8 +96,13 @@ class ExamplePacker(ArdiemPacker):
 
             # for this packer, each file maps 1-to-1 to a record path
             key = f"/body/{dnode.path}"  # the path inside the record
+
             if path.name.lower().endswith(".csv"):  # for CSV files:
                 key = key[:-4]  # drop file extension for array inside record
+
+            # special case - some custom metadata with nontrivial mapping
+            if path.relative_to(data_dir) == Path("example_meta.yaml"):
+                key = "/body/custom"
 
             if status == DiffNode.Status.removed:  # entity was removed ->
                 # also remove in record, if it was not a symlink (which we ignored)
@@ -130,7 +126,12 @@ class ExamplePacker(ArdiemPacker):
                 record.create_group(key)
 
             elif path.is_file():
-                if path.name.lower().endswith(".csv"):
+                if key == "/body/custom":
+                    # update custom ExampleMeta stuff
+                    print("CREATE:", path, "->", key, "(custom ExampleMeta)")
+                    record[key] = ExampleMeta.from_path(path).json()
+
+                elif path.name.lower().endswith(".csv"):
                     # embed CSV as numpy array with table metadata
                     print("CREATE:", path, "->", key, "(table)")
 
