@@ -16,7 +16,7 @@ import h5py
 import numpy as np
 import pandas
 
-from ..metadata import ArdiemBaseModel, FileMeta, PackerMeta, TableMeta
+from ..metadata import ArdiemBaseModel, FileMeta, ImageMeta, PackerMeta, TableMeta
 from . import ArdiemPacker, ArdiemValidationErrors, DiffNode, DirDiff, IH5Record
 
 
@@ -139,6 +139,16 @@ class ExamplePacker(ArdiemPacker):
                     metafile = Path(f"{path}_meta.yaml")
                     metadata = TableMeta.parse_file(metafile).json()
                     record[key].attrs["node_meta"] = metadata
+
+                elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
+                    # embed image file with image-specific metadata
+                    print("CREATE:", path, "->", key, "(image)")
+
+                    data = path.read_bytes()
+                    val = np.void(data) if len(data) else h5py.Empty("b")
+                    meta = ImageMeta.for_file(path).json()
+                    record[key] = val
+                    record[key].attrs["node_meta"] = meta
 
                 else:
                     # treat as opaque blob and add file metadata

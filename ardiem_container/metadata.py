@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Union
 
 import h5py
 import magic
+from PIL import Image
 from pydantic import AnyHttpUrl, BaseModel, Field, NonNegativeInt, ValidationError
 from pydantic_yaml import YamlModelMixin
 from typing_extensions import Literal
@@ -134,6 +135,7 @@ class PackerMeta(ArdiemBaseModel):
 
 class NodeMetaTypes(str, Enum):
     file = "file"
+    image = "image"
     table = "table"
 
 
@@ -162,6 +164,31 @@ class FileMeta(ArdiemBaseModel):
             filename=path.name,
             hashsum=file_hashsum(path, HASH_ALG),
             mimetype=magic.from_file(path, mime=True),
+        )
+
+
+class ImageMeta(FileMeta):
+    type: Literal[NodeMetaTypes.image]  # type: ignore
+    # dimensions in pixels
+    width: int
+    height: int
+
+    @classmethod
+    def for_file(cls, path: Path) -> FileMeta:
+        """Generate and return expected metadata for a file.
+
+        Will compute its hashsum and try to detect the MIME type.
+        Title will be left empty.
+        """
+        with Image.open(path) as img:
+            width, height = img.size
+        return ImageMeta(
+            type=NodeMetaTypes.image,
+            filename=path.name,
+            hashsum=file_hashsum(path, HASH_ALG),
+            mimetype=magic.from_file(path, mime=True),
+            width=width,
+            height=height,
         )
 
 

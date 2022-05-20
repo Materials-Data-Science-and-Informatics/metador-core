@@ -1,5 +1,7 @@
 import entrypoints
 
+from . import ArdiemPacker
+
 PACKER_GROUP = "ardiem_packer"
 """
 Group in which packer plugin entry-points are registered.
@@ -11,3 +13,7 @@ ardiem_packers = {
 """
 Dict mapping from registered packer names to the corresponding classes.
 """
+for k, v in ardiem_packers.items():
+    if not issubclass(v, ArdiemPacker):
+        msg = f"Registered packer not subclass of ArdiemPacker: '{k}'"
+        raise RuntimeError(msg)
