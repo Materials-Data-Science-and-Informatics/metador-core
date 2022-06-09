@@ -16,8 +16,9 @@ from .ih5.record import (
     create_stub_base,
     ih5_skeleton,
 )
-from .metadata.header import PackerMeta
-from .packer import ArdiemPacker, ArdiemValidationErrors
+from .metadata.header import PACKER_META_PATH, TOC_META_PATH, PackerMeta, TOCMeta
+from .packer.base import ArdiemPacker
+from .packer.util import ArdiemValidationErrors
 
 # TODO: should the manifest file be hashed itself,
 # and listed as sidecar as "sidecar UUID -> hashsum" in user block?
@@ -91,8 +92,6 @@ class ArdiemRecord:
     _path: Path
     _record: Optional[IH5Record]
     _manifest: Optional[ManifestFile]
-
-    RECORD_PACKERMETA_PATH = "/head/packer"
 
     MANIFEST_EXT = f"{IH5Record.FILE_EXT}mf.json"
 
@@ -197,7 +196,8 @@ class ArdiemRecord:
         assert self.record is not None
         errs = ArdiemValidationErrors()
         # packer meta must be present in header
-        errs.append(PackerMeta.check_path(self.RECORD_PACKERMETA_PATH, self.record))
+        errs.append(PackerMeta.check_path(PACKER_META_PATH, self.record))
+        errs.append(TOCMeta.check_path(TOC_META_PATH, self.record))
         return errs
 
     def check_directory(
@@ -235,7 +235,7 @@ class ArdiemRecord:
         else:
             assert self.record is not None
             if not self.record.is_empty:
-                pmeta = PackerMeta.from_record(self.record, self.RECORD_PACKERMETA_PATH)
+                pmeta = PackerMeta.from_record(self.record, PACKER_META_PATH)
         if pmeta is None:
             return  # no manifest, empty record -> fresh dataset
         if not (
@@ -270,6 +270,17 @@ class ArdiemRecord:
         # call packer. creation = "update" from empty record
         ret.update(data_dir, packer)
         return ret
+
+    def finalize_header(self, packer: Type[ArdiemPacker]):
+        """Create common derivative metadata structures in header."""
+        assert self._record is not None
+        if PACKER_META_PATH in self._record:
+            del self._record[PACKER_META_PATH]
+        self._record[PACKER_META_PATH] = packer.packer_meta().json()
+
+        if TOC_META_PATH in self._record:
+            del self._record[TOC_META_PATH]
+        self._record[TOC_META_PATH] = TOCMeta.for_record_body(self._record).json()
 
     def update(
         self, data_dir: Path, packer: Type[ArdiemPacker], allow_unchanged: bool = False
@@ -355,6 +366,10 @@ class ArdiemRecord:
         try:
             # run packer... which must run through without throwing exceptions
             packer.pack_directory(data_dir, diff, self._record, fresh)
+
+            # do common finalization of header part of container
+            self.finalize_header(packer)
+
             # verify general container constraints that all packers must satisfy
             errs = self.check_record(packer)
             if errs:

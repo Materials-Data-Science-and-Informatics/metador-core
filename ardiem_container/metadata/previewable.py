@@ -3,6 +3,8 @@
 import sys
 from typing import Union, get_type_hints
 
+from typing_extensions import Final
+
 if sys.version_info[:2] >= (3, 9):
     from typing import _UnionGenericAlias  # type: ignore
 elif sys.version_info[:2] == (3, 8):
@@ -17,7 +19,7 @@ from .base import ArdiemBaseModel, create_union_model
 
 PREVIEWABLE_GROUP = "ardiem_previewable"
 
-previewables = {
+known_previewables = {
     ep.name: ep.load() for ep in entrypoints.get_group_all(group=PREVIEWABLE_GROUP)
 }
 """
@@ -25,7 +27,7 @@ Dict mapping from registered previewable models to the corresponding classes.
 """
 
 # check that the previewables are valid
-for k, v in previewables.items():
+for k, v in known_previewables.items():
     if not issubclass(v, ArdiemBaseModel):
         msg = f"ArdiemBaseModel must be parent class of previewable: '{k}'"
         raise RuntimeError(msg)
@@ -41,9 +43,9 @@ for k, v in previewables.items():
 # dynamically initialize the union type hint to configure Pydantic.
 # (disgusting hack... but currently yields best ergonomics for parsing down the line)
 # problem: initialization order!!! would require this to be loaded last
-NodeMetaUnion = _UnionGenericAlias(Union, tuple(previewables.values()))  # type: ignore
+NodeMetaUnion = _UnionGenericAlias(Union, tuple(known_previewables.values()))  # type: ignore
 
-NODE_META_ATTR: str = "node_meta"
+NODE_META_ATTR: Final[str] = "node_meta"
 """Name of the attribute used to store node-local (group or dataset) metadata."""
 
 

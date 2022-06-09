@@ -15,18 +15,18 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas
+from pydantic import AnyHttpUrl
+from pydantic.tools import parse_obj_as
 
 from ..metadata.base import ArdiemBaseModel
 from ..metadata.body import FileMeta, ImageMeta, TableMeta
-from ..metadata.header import PackerMeta
-from . import ArdiemPacker, ArdiemValidationErrors, DiffNode, DirDiff, IH5Record
+from ..metadata.header import PACKER_META_PATH, PackerMeta
+from .base import ArdiemPacker, DiffNode, DirDiff, IH5Record
+from .util import ArdiemValidationErrors
 
 
 class ExampleMeta(ArdiemBaseModel):
     author: str
-
-
-PACKER_META_PATH = "/head/packer"
 
 
 class ExamplePacker(ArdiemPacker):
@@ -72,11 +72,6 @@ class ExamplePacker(ArdiemPacker):
     ):
         print("--------")
         print("called pack_directory")
-
-        # create/update packer metadata in header
-        if not fresh:
-            del record["/head/packer"]
-        record["/head/packer"] = packer_meta().json()
 
         for path, dnode in diff.annotate(data_dir).items():
             # the status indicates whether the file was added, removed or modified
@@ -162,13 +157,16 @@ class ExamplePacker(ArdiemPacker):
                     record[key] = val
                     record[key].attrs["node_meta"] = meta
 
-
-def packer_meta() -> PackerMeta:
-    """Return metadata info about this packer."""
-    return PackerMeta(
-        id=ExamplePacker.PACKER_ID,
-        version=ExamplePacker.PACKER_VERSION,
-        uname=PackerMeta.get_uname(),
-        python_package="ardiem-container",
-        python_source="https://github.com/Materials-Data-Science-and-Informatics/ardiem-container",
-    )
+    @classmethod
+    def packer_meta(cls) -> PackerMeta:
+        """Return metadata info about this packer."""
+        url = (
+            "https://github.com/Materials-Data-Science-and-Informatics/ardiem-container"
+        )
+        return PackerMeta(
+            id=ExamplePacker.PACKER_ID,
+            version=ExamplePacker.PACKER_VERSION,
+            uname=PackerMeta.get_uname(),
+            python_package="ardiem-container",
+            python_source=parse_obj_as(AnyHttpUrl, url),
+        )

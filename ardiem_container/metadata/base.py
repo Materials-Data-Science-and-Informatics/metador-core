@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError, create_model
 from pydantic_yaml import YamlModelMixin
 
 from ..ih5.record import IH5Group, IH5Record
-from ..packer import ArdiemValidationErrors
+from ..packer.util import ArdiemValidationErrors
 from .types import PintUnit
 
 
@@ -131,9 +131,7 @@ def create_union_model(
             return super().parse_obj(*args, **kwargs).__root__  # type: ignore
 
     # use dynamic create_model so we can give returned class a proper name
-    return create_model(
-        name,
-        __module__=module,
-        __base__=TaggedUnion,
-        __root__=(union_type, Field(..., discriminator=discriminator)),
-    )  # type: ignore
+    fields = {
+        "__root__": (union_type, Field(..., discriminator=discriminator)),
+    }
+    return create_model(name, __module__=module, __base__=TaggedUnion, **fields)  # type: ignore

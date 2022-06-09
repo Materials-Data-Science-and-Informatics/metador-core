@@ -6,7 +6,8 @@ import pytest
 
 from ardiem_container.hashutils import HASH_ALG, dir_hashsums
 from ardiem_container.ih5 import IH5Record
-from ardiem_container.packer import ArdiemPacker, ArdiemValidationErrors, DirDiff
+from ardiem_container.packer.base import ArdiemPacker, DirDiff
+from ardiem_container.packer.util import ArdiemValidationErrors
 from ardiem_container.record import ArdiemRecord, PackerMeta
 
 
@@ -64,6 +65,10 @@ class DummyPacker(ArdiemPacker):
 
         if cls.fail_check_record_after_pack and "fail" not in record:
             record["fail"] = True
+
+    @classmethod
+    def packer_meta(cls):
+        return PackerMeta(id="dummy", version=(0, 0, 1), uname=PackerMeta.get_uname())
 
 
 def test_create_fail(tmp_ds_path, tmp_path):

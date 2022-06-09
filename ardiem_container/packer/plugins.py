@@ -1,6 +1,6 @@
 import entrypoints
 
-from . import ArdiemPacker
+from .base import ArdiemPacker
 
 PACKER_GROUP = "ardiem_packer"
 """

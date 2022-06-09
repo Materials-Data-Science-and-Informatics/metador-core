@@ -2,8 +2,8 @@
 
 import pytest
 
-from ardiem_container.packer import ArdiemValidationErrors
 from ardiem_container.packer.plugins import ardiem_packers
+from ardiem_container.packer.util import ArdiemValidationErrors
 from ardiem_container.record import ArdiemRecord
 
 
