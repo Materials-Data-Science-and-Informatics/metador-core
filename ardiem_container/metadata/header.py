@@ -67,15 +67,15 @@ class TOCMeta(ArdiemBaseModel):
 
     @classmethod
     def for_record_body(cls, rec: IH5Record):
+        """Given a record, scan its body group for metadata to be listed in the TOC."""
         if "/body" not in rec:
-            return cls()
+            return cls()  # no body -> empty TOC
 
         ret = {}
 
-        def collect(name, obj):
+        def collect_previewables(name, obj):
             if NODE_META_ATTR not in obj.attrs:
                 return
-            print(obj.attrs[NODE_META_ATTR])
             meta = NodeMeta.parse_raw(obj.attrs[NODE_META_ATTR])
             typ: str = meta.type  # type: ignore
             if typ not in _previewable_types:
@@ -85,5 +85,5 @@ class TOCMeta(ArdiemBaseModel):
                 ret[typ] = []
             ret[typ].append(name)
 
-        rec["/body"].visititems(collect)
+        rec["/body"].visititems(collect_previewables)
         return cls(previewable=ret)
