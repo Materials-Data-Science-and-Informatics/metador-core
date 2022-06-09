@@ -7,7 +7,7 @@ from pint.errors import UndefinedUnitError
 from pydantic import Field
 from typing_extensions import Annotated
 
-from .hashutils import _hash_alg
+from ..hashutils import _hash_alg
 
 nonempty_str = Annotated[str, Field(min_length=1)]
 

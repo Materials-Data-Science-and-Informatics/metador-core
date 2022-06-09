@@ -31,6 +31,14 @@ pdoc = "^10.0.3"
 # creating your own packer plugins for different use-cases.
 example = "ardiem_container.packer.example:ExamplePacker"
 
+[tool.poetry.plugins.ardiem_previewable]
+# ardiem-container supports entry-point-based custom metadata models.
+# A custom metadata schema must have a unique type name in a property "type"
+# and it must be equal to the name of the entry point listed here.
+file  = "ardiem_container.metadata.body:FileMeta"
+image = "ardiem_container.metadata.body:ImageMeta"
+table = "ardiem_container.metadata.body:TableMeta"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

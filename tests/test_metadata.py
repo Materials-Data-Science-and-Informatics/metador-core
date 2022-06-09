@@ -1,15 +1,12 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-import ardiem_container.types as t
+import ardiem_container.metadata.types as t
 from ardiem_container.ih5.record import IH5Record
-from ardiem_container.metadata import (
-    ArdiemValidationErrors,
-    FileMeta,
-    NodeMeta,
-    NodeMetaTypes,
-    PackerMeta,
-)
+from ardiem_container.metadata.base import ArdiemValidationErrors
+from ardiem_container.metadata.body import FileMeta, ImageMeta, TableMeta
+from ardiem_container.metadata.header import PackerMeta
+from ardiem_container.metadata.previewable import NodeMeta
 
 
 def parse_as(type_hint, val):
@@ -77,6 +74,21 @@ def test_packermeta():
     assert len(PackerMeta.get_uname()) == 4
 
 
+def test_nodemeta():
+    # check that the union types are correct
+    assert set(NodeMeta.types()) == set([FileMeta, ImageMeta, TableMeta])
+
+    # check that parsing yields the desired object type
+    ret = NodeMeta.parse_obj(
+        {
+            "type": "table",
+            "title": "hello",
+            "columns": [{"title": "hello", "unit": "m"}],
+        }
+    )
+    assert isinstance(ret, TableMeta)
+
+
 def test_filemeta(tmp_path, tmp_ds_path):
     # get metadata for a file, save to yaml, load from yaml, check it
     file = tmp_path / "myfile.txt"
@@ -91,9 +103,8 @@ def test_filemeta(tmp_path, tmp_ds_path):
         FileMeta.from_file(tmp_path / "non-existing.yaml")
 
     # check success
-    fmeta = NodeMeta.from_file(tmp_path / "myfile_meta.yaml").__root__
+    fmeta = NodeMeta.from_file(tmp_path / "myfile_meta.yaml")
     assert isinstance(fmeta, FileMeta)
-    assert fmeta.type == NodeMetaTypes.file
     assert fmeta.filename == "myfile.txt"
     assert (
         fmeta.hashsum

@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
 from ..hashutils import HASH_ALG, hashsum
-from ..types import hashsum_str
+from ..metadata.types import hashsum_str
 from .overlay import IH5Dataset, IH5Group, Unset
 
 # the magic string we use to identify a valid container

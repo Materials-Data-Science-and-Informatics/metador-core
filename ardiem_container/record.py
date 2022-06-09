@@ -16,7 +16,7 @@ from .ih5.record import (
     create_stub_base,
     ih5_skeleton,
 )
-from .metadata import PackerMeta
+from .metadata.header import PackerMeta
 from .packer import ArdiemPacker, ArdiemValidationErrors
 
 # TODO: should the manifest file be hashed itself,

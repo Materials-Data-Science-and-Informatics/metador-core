@@ -16,7 +16,9 @@ import h5py
 import numpy as np
 import pandas
 
-from ..metadata import ArdiemBaseModel, FileMeta, ImageMeta, PackerMeta, TableMeta
+from ..metadata.base import ArdiemBaseModel
+from ..metadata.body import FileMeta, ImageMeta, TableMeta
+from ..metadata.header import PackerMeta
 from . import ArdiemPacker, ArdiemValidationErrors, DiffNode, DirDiff, IH5Record
 
 
