@@ -1,8 +1,9 @@
 [tool.poetry]
-name = "ardiem-container"
+name = "metador-core"
 version = "0.1.0"
-description = "Ardiem container management library."
+description = "Metador container and plugin management."
 authors = ["a.pirogov <a.pirogov@fz-juelich.de>"]
+repository = "https://github.com/Materials-Data-Science-and-Informatics/metador"
 license = "MIT"
 
 [tool.poetry.dependencies]
@@ -16,8 +17,8 @@ Pint = "^0.18"
 python-magic = "^0.4.25"
 pandas = "^1.4.1"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
-entrypoints = "^0.4"
 Pillow = "^9.1.1"
+importlib-metadata = "^4.11.4"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.17.0"
@@ -25,19 +26,26 @@ pytest = "^7.0.1"
 pytest-cov = "^3.0.0"
 pdoc = "^10.0.3"
 
-[tool.poetry.plugins.ardiem_packer]
-# ardiem-container supports entry-point-based packer plugins.
+[tool.poetry.plugins.metador_pluggable]
+# Metador supports defining custom validated plugin groups.
+# Here we define the default entities used in Metador.
+# For each declared pluggable type, plugins can be defined via entrypoints.
+schema = "metador_core.schema.pluggable:PluggableSchema"
+packer = "metador_core.packer.pluggable:PluggablePacker"
+
+[tool.poetry.plugins.metador_schema]
+# Metador supports entry-point-based custom metadata schemas.
+core_plugin = "metador_core.schema.core:PluginPkgMeta"
+core_env = "metador_core.schema.core:EnvMeta"
+packer_info = "metador_core.packer.interface:PackerInfo"
+common_file  = "metador_core.schema.common:FileMeta"
+common_image = "metador_core.schema.common:ImageMeta"
+common_table = "metador_core.schema.common:TableMeta"
+
+[tool.poetry.plugins.metador_packer]
 # You can use the example packer plugin as a template for
 # creating your own packer plugins for different use-cases.
-example = "ardiem_container.packer.example:ExamplePacker"
-
-[tool.poetry.plugins.ardiem_previewable]
-# ardiem-container supports entry-point-based custom metadata models.
-# A custom metadata schema must have a unique type name in a property "type"
-# and it must be equal to the name of the entry point listed here.
-file  = "ardiem_container.metadata.body:FileMeta"
-image = "ardiem_container.metadata.body:ImageMeta"
-table = "ardiem_container.metadata.body:TableMeta"
+example = "metador_core.packer.example:ExamplePacker"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -53,4 +61,4 @@ filterwarnings = [
 
 # .coveragerc replacement
 [tool.coverage.run]
-source = ['ardiem_container']
+source = ['metador_core']

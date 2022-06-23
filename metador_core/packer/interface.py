@@ -2,43 +2,36 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Tuple
 
+from typing_extensions import Literal
+
 from ..hashutils import DiffNode  # noqa: F401
 from ..hashutils import DirDiff
 from ..ih5.record import IH5Record
-from ..metadata.header import PackerMeta
-from .util import ArdiemValidationErrors
+from ..schema.core import PluginRef
+from ..schema.interface import MetadataSchema
+from ..schema.types import nonempty_str
+from .util import MetadorValidationErrors
 
 
-class ArdiemPacker(ABC):
-    """Interface to be implemented by Ardiem packer plugins.
+class Packer(ABC):
+    """Interface to be implemented by Metador IH5 packer plugins.
 
     These plugins is how support for wildly different domain-specific
-    use-cases can be added to `ardiem-container` in a opt-in and
-    loosely-coupled way.
+    use-cases can be added to Metador in a opt-in and loosely-coupled way.
 
     Users can install only the packer plugins they need for their use-cases,
     and such plugins can be easily developed independently from the rest
-    of the Ardiem tooling, as long as this interface is honored.
+    of the Metador tooling, as long as this interface is honored.
 
     Carefully read the documentation for the required attributes and methods
     and implement them for your use-case in a subclass.
-    See `ardiem_container.packer.example` for an example plugin.
-    """
+    See `metador_core.packer.example` for an example plugin.
 
-    PACKER_ID: str
-    """The unique packer ID.
+    IMPORTANT!
+    Required contract for semantic versioning of packages providing packers:
 
-    This MUST be equal to the declared entry-point under which this class is
-    registered in the Python package it is contained in.
-    """
-
-    PACKER_VERSION: Tuple[int, int, int]
-    """The current version the packer.
-
-    Tuple corresponds to a version string, i.e. (1,2,4) means "1.2.4".
-
-    A packer MUST be able to update records created by a packer with the same id,
-    same MAJOR version and the current or an earlier MINOR version.
+    A packer MUST be able to update records created by a packer of the same or
+    earlier MINOR package version of the Python package providing this packer.
 
     More formally, the version list [MAJOR, MINOR, REVISION]
     MUST adhere to the following contract:
@@ -52,16 +45,17 @@ class ArdiemPacker(ABC):
     3. increasing REVISION does not affect compatibility
     for datasets with the same MAJOR and MINOR version.
 
-    When the packer is updated, the version MUST increase in a suitable way.
-    As usual, whenever an earlier number is increased, the following numbers
-    are reset to zero.
+    When the packer is updated, the Python package version MUST increase
+    in a suitable way. As usual, whenever an earlier number is increased,
+    the following numbers are reset to zero.
 
     This means, the REVISION version should increase for e.g. bugfixes that do
     not change the structure or metadata stored in the dataset,
-    MINOR should increase whenever from now on older versions would not be able
-    to produce a valid update for a dataset created with this version,
+    MINOR should increase whenever from now on older versions of the packer
+    would not be able to produce a valid update for a dataset created with this version,
     but upgrading older existing datasets with this version still works.
-    Finally, MAJOR version is increased when all compatibility guarantees are off.
+    Finally, MAJOR version is increased when all compatibility guarantees are off
+    and the resulting container cannot be migrated or updated automatically.
 
     It SHOULD be possible to convert datasets from one MAJOR version to the next
     using a possibly interactive external migration script.
@@ -69,12 +63,7 @@ class ArdiemPacker(ABC):
 
     @classmethod
     @abstractmethod
-    def packer_meta(cls) -> PackerMeta:
-        """Return metadata info about this packer (will be added to header)."""
-
-    @classmethod
-    @abstractmethod
-    def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
+    def check_directory(cls, data_dir: Path) -> MetadorValidationErrors:
         """Check whether the given directory is suitable for packing with this plugin.
 
         This method will be called before `pack_directory` and MUST detect
@@ -93,7 +82,7 @@ class ArdiemPacker(ABC):
             data_dir: Directory containing all the data to be packed.
 
         Returns:
-            ArdiemValidationErrors object initialized with
+            MetadorValidationErrors object initialized with
             empty dict if there are no problems and the directory looks like it
             can be packed, assuming it stays in the state it is currently in.
             Otherwise, initialized with a dict mapping file paths (relative to `dir`)
@@ -107,7 +96,7 @@ class ArdiemPacker(ABC):
 
     @classmethod
     @abstractmethod
-    def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
+    def check_record(cls, record: IH5Record) -> MetadorValidationErrors:
         """Check whether a record is compatible with and valid according to this packer.
 
         This method MUST succeed on a record that was created or updated using
@@ -124,7 +113,7 @@ class ArdiemPacker(ABC):
             record: The record to be verified.
 
         Returns:
-            ArdiemValidationErrors object initialized with
+            MetadorValidationErrors object initialized with
             empty dict if there are no problems detected in the container.
             Otherwise, initialized with a dict mapping record paths to errors.
 
@@ -139,7 +128,7 @@ class ArdiemPacker(ABC):
     def pack_directory(
         cls, data_dir: Path, diff: DirDiff, record: IH5Record, fresh: bool
     ):
-        """Pack a directory into an Ardiem IH5 record or update it.
+        """Pack a directory into an Metador IH5 record or update it.
 
         The `data_dir` is assumed to be suitable (according to `check_directory`).
 
@@ -210,12 +199,21 @@ class ArdiemPacker(ABC):
         6. Exceptional termination:
         In case that packing must be aborted, and exception MUST be raised.
         If the exception happened due to invalid data or metadata, it MUST be
-        an ArdiemValidationErrors object like in the other methods above, helping to find
+        an MetadorValidationErrors object like in the other methods above, helping to find
         and fix the problem. Otherwise, a different appropriate exception may be used.
 
         Args:
             data_dir: Directory containing all the data to be packed
-            record: Ardiem IH5 record to pack the data into or update
+            record: Metador IH5 record to pack the data into or update
             fresh: `True` if this is to be treated like a new record
             diff: Diff tree of dirs and files in data_dir compared to a previous state
         """
+
+
+class PackerInfo(PluginRef):
+    """Schema for info about the packer that was used to create a container."""
+
+    # define more restrictive types (compatible with parent!)
+    python_pkg: nonempty_str
+    python_pkg_version: Tuple[int, int, int]
+    plugin_group: Literal["packer"]

@@ -23,7 +23,7 @@ A quite minimal working example:
 
 ```python
 # just use IH5Record instead of h5py.File:
-from ardiem_container.ih5 import IH5Record
+from metador_core.ih5 import IH5Record
 
 
 # initial creation:
@@ -49,6 +49,3 @@ to finilize your changes. You can also just use `close()`, which will also call
 `commit()` for you. **Consider it good practice calling `commit()`
 manually after completing your updates of the record.**
 """
-
-from .overlay import IH5AttributeManager, IH5Dataset, IH5Group  # noqa: F401
-from .record import IH5Record, IH5UserBlock  # noqa: F401

@@ -2,9 +2,9 @@
 
 import pytest
 
-from ardiem_container.packer.plugins import ardiem_packers
-from ardiem_container.packer.util import ArdiemValidationErrors
-from ardiem_container.record import ArdiemRecord
+from metador_core import Pluggable
+from metador_core.container import MetadorContainer
+from metador_core.packer.util import MetadorValidationErrors
 
 
 def test_example_packer_create(tmp_path_factory, tmp_ds_path, testutils):
@@ -12,7 +12,7 @@ def test_example_packer_create(tmp_path_factory, tmp_ds_path, testutils):
     tmp2 = tmp_path_factory.mktemp("tmp2")
 
     # get the packer from registered entry-point
-    epacker = ardiem_packers["example"]
+    epacker = Pluggable["packer"]["example"]
 
     # prepare directory and check that it is packer-compatible (just to make sure)
     testutils.prepare_dir(tmp1, testutils.data_dir["tmp1"])
@@ -24,13 +24,13 @@ def test_example_packer_create(tmp_path_factory, tmp_ds_path, testutils):
     assert errs
     print(errs)
 
-    with pytest.raises(ArdiemValidationErrors):
-        ArdiemRecord.create(tmp_ds_path, tmp1, epacker)
+    with pytest.raises(MetadorValidationErrors):
+        MetadorContainer.create(tmp_ds_path, tmp1, epacker)
 
     # fix error with directory
     (tmp1 / "renamed").rename(tmp1 / "example_meta.yaml")
 
-    with ArdiemRecord.create(tmp_ds_path, tmp1, epacker) as ds:
+    with MetadorContainer.create(tmp_ds_path, tmp1, epacker) as ds:
         # the freshly produced record should have no issues according to packer
         assert not ds.check_record(epacker)
 

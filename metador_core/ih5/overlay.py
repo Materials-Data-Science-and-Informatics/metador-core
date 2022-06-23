@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 import h5py
@@ -40,29 +41,6 @@ def _node_is_virtual(node) -> bool:
     return isinstance(node, h5py.Group) and SUBST_KEY not in node.attrs
 
 
-def new_atom():
-    """Return a fresh value that behaves like a custom `None` (singleton atomic literal).
-
-    The atom is identical (`is`) and equal (`==`) to itself and specifically not
-    identical or equal to anything else.
-
-    Creating a second instance might still possible through reflection, but this
-    is close enough to a "real" singleton atom for any practical purpose.
-    """
-
-    @dataclass(frozen=True)
-    class Atom:
-        """This class is in function scope, so each call produces a new class."""
-
-    return Atom()  # the only class instance that will ever exist
-
-
-Unset = new_atom()
-"""Unique singleton value of a fresh type behaving like `None` and used
-as a neat technical hack to distinguish between passed and unpassed parameters
-(specifically, if `None` is an allowed actual value)."""
-
-
 @dataclass(frozen=True)
 class IH5Node:
     """An overlay node wraps a group, dataset or attribute manager.
@@ -78,7 +56,7 @@ class IH5Node:
     """List of open containers in patch order (the actual data store)."""
 
     _gpath: str
-    """Location in record this node represents."""
+    """Location in record this node represents (absolute wrt. root of record)."""
 
     _cidx: int
     """Left boundary index for lookups, i.e. this node will not consider
@@ -101,6 +79,10 @@ class IH5Node:
         HDF5 files and address the same entity.
         """
         return hash((id(self._files), self._gpath, self._cidx))
+
+    @property
+    def name(self) -> str:
+        return self._gpath
 
     @property
     def _last_idx(self):
@@ -180,7 +162,7 @@ class IH5InnerNode(IH5Node):
         """
         if key == "":
             raise ValueError("Invalid empty path!")
-        if key.find("@") >= 0:  # that's an attribute separator
+        if key.find("@") >= 0:  # used as attribute separator in the skeleton!
             raise ValueError(f"Invalid symbol '@' in key: '{key}'!")
         if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
@@ -298,7 +280,7 @@ class IH5InnerNode(IH5Node):
         curr: IH5InnerNode = IH5Group(self._files) if path[0] == "/" else self
 
         ret: List[IH5Node] = [curr]
-        if path == "/":  # special case
+        if path == "/" or path == ".":  # special case
             return ret
 
         # access entity through child group sequence
@@ -450,37 +432,15 @@ class IH5InnerNode(IH5Node):
         except KeyError:
             return default
 
-    def at(self, key: str, default=Unset):
-        """Return a group, dataset or attribute value at a path.
-
-        Provides unified access to both groups, values and attributes.
-        In case of datasets, returns unpacked dataset value.
-
-        Attributes are addressed after using @ as separator, i.e.
-        `/a/b@c` addresses attribute `c` at node `/a/b`.
-
-        If the entity is not found,
-        Will return `default` if it is passed and otherwise will raise a `KeyError`.
-        """
-        paths = key.split("@")
-        ret = self.get(self._abs_path(paths[0]), default)
-        if len(paths) > 1:
-            assert isinstance(ret, IH5Group) or isinstance(ret, IH5Dataset)
-            ret = ret.attrs.get(paths[1], default)
-        elif isinstance(ret, IH5Dataset):
-            ret = ret[()]
-        # if the default value is not the special unique "unset" value, raise error
-        if ret is Unset:
-            raise KeyError
-        else:  # otherwise return the default value (which can also be None)
-            return ret
-
     def __contains__(self, key: str):
         self._check_key(key)
         return self._find(key) is not None
 
     def __iter__(self):
         return iter(self._children().keys())
+
+    def __len__(self):
+        return len(self.keys())
 
     def keys(self):
         return self._children().keys()
@@ -577,9 +537,118 @@ class IH5Group(IH5InnerNode):
         self._expect_open()
         return self._create_dataset(gpath, *args, **kwargs)
 
+    def create_copy(self, gpath, src_group_or_dataset):
+        """Copy data to target path from a source IH5 (or H5) group or dataset.
+
+        Will also copy all the attached attributes.
+
+        Can also be used to copy data from a normal HDF5 File into an IH5 record.
+        """
+        return h5_copy_from_to(src_group_or_dataset, self, gpath)
+
 
 class IH5AttributeManager(IH5InnerNode):
     """`IH5Node` representing an `h5py.AttributeManager`."""
 
     def __init__(self, files, gpath, creation_idx):
         super().__init__(files, gpath, creation_idx, True)
+
+
+# ----
+# Helpers for IH5 / H5 interop (its all h5py at the bottom anyway, so its easy)
+
+
+class H5Type(str, Enum):
+    """Type of an entity in a HDF5-like container.
+
+    We list only those we care about, ignoring various
+    link types etc.
+
+    This will be used in wrappers around HDF5-like objects
+    instead of using isinstance/subclass checks to implement
+    duck-typing based decorator functionality that can
+    work with (at least) raw HDF5, IH5 and IH5+Manifest.
+    """
+
+    group = "group"  # possibly nested, dict-like
+    dataset = "dataset"  # = wrapped, indexable data
+    attribute_set = "attribute-set"  # = not further nested, dict-like
+    attribute = "attribute"  # = unwrapped data
+
+
+_h5types = {
+    # normal h5py files
+    h5py.Group: H5Type.group,
+    h5py.Dataset: H5Type.dataset,
+    h5py.AttributeManager: H5Type.attribute_set,
+    # IH5 datasets
+    IH5Group: H5Type.group,
+    IH5Dataset: H5Type.dataset,
+    IH5AttributeManager: H5Type.attribute_set,
+}
+
+
+def node_h5type(node):
+    """Returns whether node is Group, Dataset or AttributeManager (or None)."""
+    return _h5types.get(type(node))
+
+
+def h5_copy_group_to_group(source_node, target_node):
+    """Copy contents of one group into another group.
+
+    The target group must exist, but be empty (no datasets or attributes).
+    """
+    assert node_h5type(source_node) == H5Type.group
+    assert node_h5type(target_node) == H5Type.group
+    assert not len(target_node) and not len(target_node.attrs)
+
+    for k, v in source_node.attrs.items():  # copy root attributes
+        target_node.attrs[k] = v
+    for name in source_node.keys():  # copy each entity (will recurse)
+        h5_copy_from_to(source_node[name], target_node, name)
+
+
+def h5_copy_from_to(source_node, target_node, target_path: str):
+    """Copy a dataset or group from one container to a fresh location.
+
+    Will also copy all the attached attributes.
+
+    This works also between HDF5 and IH5.
+
+    Source node must be group or dataset object.
+    Target path must be fresh absolute path or fresh path relative to target node.
+    """
+    if not target_path:
+        raise ValueError("Target path is empty!")
+    if target_path in target_node:
+        raise ValueError(f"Target path {target_path} already exists!")
+    if target_path[0] != "/" and node_h5type(target_node) != H5Type.group:
+        raise ValueError("Cannot copy to relative path if target is not a group!")
+
+    src_type = node_h5type(source_node)
+    if src_type is None or src_type == H5Type.attribute_set:
+        raise ValueError("Can only copy from a group or dataset!")
+
+    if src_type == H5Type.dataset:
+        node = target_node.create_dataset(target_path, data=source_node[()])
+        for k, v in source_node.attrs.items():  # copy dataset attributes
+            node.attrs[k] = v
+    else:
+        node = target_node.create_group(target_path)  # create local root for copy
+        for k, v in source_node.attrs.items():  # copy source node attributes
+            node.attrs[k] = v
+
+        def copy_children(name, obj):
+            print("visit", name)
+            # name is relative to source root, so we can use it
+            ntype = node_h5type(obj)
+            if ntype == H5Type.group:
+                node.create_group(name)
+            elif ntype == H5Type.dataset:
+                node[name] = obj[()]
+
+            new_atrs = node[name].attrs  # copy node attributes
+            for k, v in obj.attrs.items():
+                new_atrs[k] = v
+
+        source_node.visititems(copy_children)

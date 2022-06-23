@@ -1,45 +1,63 @@
-# ardiem-container
+# metador-core
 
 ![Project status](https://img.shields.io/badge/project%20status-alpha-%23ff8000)
 [
-![Test](https://img.shields.io/github/workflow/status/Materials-Data-Science-and-Informatics/ardiem-container/test?label=test)
-](https://github.com/Materials-Data-Science-and-Informatics/ardiem-container/actions?query=workflow:test)
+![Test](https://img.shields.io/github/workflow/status/Materials-Data-Science-and-Informatics/metador-core/test?label=test)
+](https://github.com/Materials-Data-Science-and-Informatics/metador-core/actions?query=workflow:test)
 [
-![Coverage](https://img.shields.io/codecov/c/gh/Materials-Data-Science-and-Informatics/ardiem-container?token=4JU2SZFZDZ)
-](https://app.codecov.io/gh/Materials-Data-Science-and-Informatics/ardiem-container)
+![Coverage](https://img.shields.io/codecov/c/gh/Materials-Data-Science-and-Informatics/metador-core?token=4JU2SZFZDZ)
+](https://app.codecov.io/gh/Materials-Data-Science-and-Informatics/metador-core)
 [
 ![Docs](https://img.shields.io/badge/read-docs-success)
-](https://materials-data-science-and-informatics.github.io/ardiem-container/)
+](https://materials-data-science-and-informatics.github.io/metador-core/)
 
-General purpose functionality and infrastructure for managing Ardiem containers.
+Core library of Metador. It provides:
 
-# Immutable HDF5 (IH5) records
+* an API to manage immutable (but still "patchable") HDF5 files
+* an API to store and retrieve metadata attached to groups and datasets in HDF5-based containers
+* an extensible entry-points based Metador plugin system
+* core pluggable type interfaces (Schemas, Mappings, Packers)
+* a set of core schemas required for the minimal functioning of the system
+
+**NOTE:** This repository currently also includes functionality that will be split out
+into separate packages in the future. This includes:
+
+* Pluggable widgets based on Bokeh and Panel
+* A generic dashboard for presenting annotated nodes in a Metador container
+
+# Immutable HDF5 (IH5) Records
 
 `IH5Record` is an (almost) drop-in replacement for and wrapper of
 [h5py](https://docs.h5py.org/en/latest/index.html) to manage
 layered immutable records consisting of a series of patches.
-(See [here](./ardiem_container/ih5/PATCH_THEORY.md) for technical details of the design)
+(See [here](./metador_core/ih5/PATCH_THEORY.md) for technical details of the design)
 
-When needed, a `IH5Record` can be flattened down into a single file
+When needed, a `IH5Record` can be flattened down into a single valid HDF5 file
 for applications where the IH5 API cannot be used to inspect the
 multi-file records.
 
-# Ardiem-specific IH5 record packing and validation infrastructure
+# Implementing Metador Plugins
 
-`ArdiemRecord` is based on `IH5Record` and extends it with
+You can easily extend Metador both with plugins of existing plugin types
+and also register new plugin types and corresponding interfaces and functionality.
 
-* entry-point based plugin system for packaging records from directories
-* support for creating patches without having the full latest container locally
-* validation of general and plugin-specific data and metadata constraints
-* record upload to and download from Invenio RDM through
-  [iridium](https://github.com/Materials-Data-Science-and-Informatics/iridium) (**TODO**)
+TODO: write example / provide template poetry-based repo
+
+# HDF5-based MetadorContainer
+
+`MetadorContainer` provides a wrapper interface for annotating, inspecting and retrieving
+metadata stored in regular HDF5 files (`h5py.File`) as well as IH5 containers (`IH5Record`).
+
+## User Tutorial
+
+**TODO**
 
 ## Getting Started
 
 As a user, you can install this package just as any other package into your current
 Python environment using:
 ```
-$ pip install ardiem-container@git+https://github.com/Materials-Data-Science-and-Informatics/ardiem-container.git
+$ pip install metador-core@git+https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
 ```
 
 As usual, it is highly recommended that you use a
@@ -67,8 +85,8 @@ in order to contribute.
 
 Then you can run the following lines to setup the project and install the package:
 ```
-$ git clone https://github.com/Materials-Data-Science-and-Informatics/ardiem-container.git
-$ cd ardiem-container
+$ git clone https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
+$ cd metador-core
 $ poetry install
 ```
 
@@ -80,7 +98,7 @@ merging your changes to make sure you did not break anything. To check
 coverage, use `pytest --cov`.
 
 To generate local documentation (as the one linked above), run
-`pdoc -o docs ardiem_container` (see [https://pdoc.dev](https://pdoc.dev)).
+`pdoc -o docs metador_core` (see [https://pdoc.dev](https://pdoc.dev)).
 
 ## Acknowledgements
 

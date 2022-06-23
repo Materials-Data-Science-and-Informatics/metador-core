@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import re
-from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID, uuid1
@@ -25,15 +24,15 @@ import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
-from ..hashutils import HASH_ALG, hashsum
-from ..metadata.types import hashsum_str
-from .overlay import IH5Dataset, IH5Group, Unset
+from ..hashutils import qualified_hashsum
+from ..schema.types import hashsum_str
+from .overlay import IH5Dataset, IH5Group, h5_copy_group_to_group
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
 """Magic value at the beginning of the file to detect that an HDF5 file is valid IH5."""
 
-USER_BLOCK_SIZE: Final[int] = 512
+USER_BLOCK_SIZE: Final[int] = 1024
 """Space to reserve at beginning of each HDF5 file in bytes.
 Must be a power of 2 and at least 512 (required by HDF5)."""
 
@@ -42,8 +41,7 @@ def hashsum_file(filename: Path, skip_bytes: int = 0) -> str:
     """Compute hashsum of HDF5 file (ignoring the first `skip_bytes`)."""
     with open(filename, "rb") as f:
         f.seek(skip_bytes)
-        chksum = hashsum(f, HASH_ALG)
-    return f"{HASH_ALG}:{chksum}"
+        return qualified_hashsum(f)
 
 
 class IH5UserBlock(BaseModel):
@@ -76,8 +74,13 @@ class IH5UserBlock(BaseModel):
     hdf5_hashsum: hashsum_str
     """Hashsum to verity integrity of the HDF5 data after the user block."""
 
-    is_stub: bool
-    """True if file has the structure of another container, without actual data inside."""
+    exts: Dict[str, Any] = {}
+    """Any extra metadata to be stored in the user block, unvalidated in dicts.
+
+    Subclasses must ensure that desired extra metadata is stored and loaded correctly.
+
+    NOTE: In a merge of userblocks only newer extension section will be preserved!
+    """
 
     @classmethod
     def create(
@@ -95,8 +98,7 @@ class IH5UserBlock(BaseModel):
             record_uuid=uuid1() if prev is None else prev.record_uuid,
             patch_index=0 if prev is None else prev.patch_index + 1,
             prev_patch=None if prev is None else prev.patch_uuid,
-            hdf5_hashsum=f"{HASH_ALG}:0",  # to be computed
-            is_stub=False,
+            hdf5_hashsum="INVALID:0",  # to be computed on commit()
         )
         if path is not None:
             ret._filename = path
@@ -147,8 +149,9 @@ class IH5UserBlock(BaseModel):
         ret = self.copy()
         ret.patch_index = other.patch_index
         ret.patch_uuid = other.patch_uuid
-        ret._filename = target
+        ret.exts = other.exts
         ret.hdf5_hashsum = ""  # to be computed
+        ret._filename = target
         return ret
 
     def save(self, filename: Optional[Path] = None):
@@ -227,6 +230,10 @@ class IH5Record:
         f = obj if isinstance(obj, h5py.File) else self._files[obj]
         return self._ublocks[Path(f.filename)]
 
+    def _set_ublock(self, obj: Union[h5py.File, int], ub: IH5UserBlock):
+        f = obj if isinstance(obj, h5py.File) else self._files[obj]
+        self._ublocks[Path(f.filename)] = ub
+
     @classmethod
     def _new_container(cls, path: Path) -> h5py.File:
         """Initialize a fresh container file with reserved user block."""
@@ -256,27 +263,17 @@ class IH5Record:
                 msg = "patch container must have greater index than predecessor!"
                 raise ValueError(f"{ub._filename}: {msg}")
             if ub.prev_patch is None:
-                msg = "Patch must have an attribute 'prev_patch'!"
+                msg = "patch must have an attribute 'prev_patch'!"
                 raise ValueError(f"{ub._filename}: {msg}")
-
             # claimed predecessor uuid must match with the predecessor by index
             # (can compare as strings directly, as we checked those already)
             if ub.prev_patch != prev.patch_uuid:
-                msg = f"Patch for {ub.prev_patch}, but predecessor is {prev.patch_uuid}"
-                raise ValueError(f"{ub._filename}: {msg}")
-
-            # we only allow to write patches on top of stubs,
-            # but not have stubs on top of something else.
-            if ub.is_stub:
-                msg = "Found stub patch container, only base container may be a stub!"
+                msg = f"patch for {ub.prev_patch}, but predecessor is {prev.patch_uuid}"
                 raise ValueError(f"{ub._filename}: {msg}")
 
     def _expect_open(self):
         if self._files is None:
             raise ValueError("record is not open!")
-
-    def _root_group(self) -> IH5Group:
-        return IH5Group(self._files)
 
     def _clear(self):
         """Clear all contents."""
@@ -304,7 +301,7 @@ class IH5Record:
         return [Path(f.filename) for f in self._files]
 
     @property
-    def ih5meta(self) -> List[IH5UserBlock]:
+    def ih5_meta(self) -> List[IH5UserBlock]:
         return [self._ublock(i) for i in range(len(self._files))]
 
     @property
@@ -315,14 +312,15 @@ class IH5Record:
     @property
     def is_empty(self) -> bool:
         """Return whether this record currently contains any data."""
-        return len(set(self.attrs.keys()) | set(self.keys())) == 0
+        return not self.attrs.keys() and not self.keys()
 
-    def __init__(self, paths: List[Path], allow_baseless: bool = False):
+    def __init__(self, paths: List[Path], **kwargs):
         """Open a record consisting of a base container + possible set of patches.
 
         Expects a set of full file paths forming a valid record.
         Will throw an exception in case of a detected inconsistency.
         """
+        allow_baseless = kwargs.get("allow_baseless", False)
         if not paths:
             raise ValueError("Cannot open empty list of containers!")
 
@@ -396,7 +394,7 @@ class IH5Record:
         return paths
 
     @classmethod
-    def open(cls: Type[T], record: Path) -> T:
+    def open(cls: Type[T], record: Path, **kwargs) -> T:
         """Open a record for read access.
 
         This method uses `find_containers` to infer the correct file set.
@@ -404,7 +402,7 @@ class IH5Record:
         paths = cls.find_containers(record)
         if not paths:
             raise FileNotFoundError(f"No containers found for record: {record}")
-        return cls(paths)
+        return cls(paths, **kwargs)
 
     def close(self) -> None:
         """Commit changes and close all containers that belong to that record.
@@ -486,25 +484,11 @@ class IH5Record:
         self._expect_open()
         if self._has_writable:
             raise ValueError("Cannot merge, please commit or discard your changes!")
-        if any(map(lambda x: x.is_stub, self.ih5meta)):
-            raise ValueError("Cannot merge, files contain a stub!")
 
         with self.create(target) as ds:
-            for k, v in self.attrs.items():  # copy root attributes
-                ds.attrs[k] = v
-
-            def copy_children(name, node):
-                if isinstance(node, IH5Group):
-                    ds.create_group(node._gpath)
-                elif isinstance(node, IH5Dataset):
-                    ds[node._gpath] = node[()]
-                new_atrs = ds[node._gpath].attrs  # copy node attributes
-                for k, v in node.attrs.items():
-                    new_atrs[k] = v
-
-            self.visititems(copy_children)
-
+            h5_copy_group_to_group(self["/"], ds["/"])
             cfile = ds.containers[0]  # store filename to override userblock afterwards
+
         # compute new merged userblock and store it
         ub = self._ublock(0).merge(self._ublock(-1), cfile)
         chksum = hashsum_file(cfile, skip_bytes=USER_BLOCK_SIZE)
@@ -530,7 +514,10 @@ class IH5Record:
         # this will ensure that commit() is called and the files are closed
         self.close()
 
-    # ---- pass through group methods to an implicit root group instance ----
+    # ---- pass through HDF5 group methods to an implicit root group instance ----
+
+    def _root_group(self) -> IH5Group:
+        return IH5Group(self._files)
 
     @property
     def attrs(self):
@@ -568,11 +555,11 @@ class IH5Record:
     def __getitem__(self, key):
         return self._root_group()[key]
 
+    def __len__(self):
+        return len(self._root_group())
+
     def get(self, key: str, default=None):
         return self._root_group().get(key, default)
-
-    def at(self, key: str, default=Unset):
-        return self._root_group().at(key, default)
 
     def keys(self):
         return self._root_group().keys()
@@ -582,98 +569,3 @@ class IH5Record:
 
     def items(self):
         return self._root_group().items()
-
-
-# ---- Skeletons and Stubs ----
-
-IH5TypeSkeleton = Dict[str, Tuple[Union[None, Type[IH5Group], Type[IH5Dataset]], Any]]
-
-
-def ih5_type_skeleton(ds) -> IH5TypeSkeleton:
-    """Return mapping from all paths in a IH5 record to their type.
-
-    The attributes are represented as special paths with the shape `a/b/.../n@attr`,
-    pointing to the attribute named `attr` at the path `a/b/.../n`.
-
-    First component of type tuple is `IH5Group`, `IH5Dataset` or `None`.
-    Second component is more detailed type for attribute values and `IH5Dataset`s.
-    """
-    ret: IH5TypeSkeleton = {}
-    for k, v in ds.attrs.items():
-        ret[f"@{k}"] = (None, type(v))
-
-    def add_paths(name, node):
-        if isinstance(node, IH5Dataset):
-            typ = (type(node), type(node[()]))
-        else:
-            typ = (type(node), None)
-        ret[name] = typ
-        for k, v in node.attrs.items():
-            ret[f"{name}@{k}"] = (None, type(v))
-
-    ds.visititems(add_paths)
-    return ret
-
-
-class IH5SkeletonEnum(str, Enum):
-    """The skeleton is a mapping of entity paths to entity type."""
-
-    val = "v"
-    grp = "g"
-    atr = "a"
-
-
-def cls_to_skel_enum(v: Any) -> IH5SkeletonEnum:
-    """Convert class object to corresponding enum instance."""
-    if v[0] == IH5Group:
-        return IH5SkeletonEnum.grp
-    elif v[0] == IH5Dataset:
-        return IH5SkeletonEnum.val
-    else:
-        return IH5SkeletonEnum.atr
-
-
-def ih5_skeleton(ds: IH5Record) -> Dict[str, str]:
-    """Create a skeleton capturing the raw structure of a IH5 record."""
-    return {k: cls_to_skel_enum(v).value for k, v in ih5_type_skeleton(ds).items()}
-
-
-def create_stub_base(
-    record: Union[Path, str],
-    ub: IH5UserBlock,
-    skel: Dict[str, str],
-) -> IH5Record:
-    """Create a stub base container for a record.
-
-    The stub is based on the user block of a real IH5 record
-    and the skeleton of the overlay structure (as returned by `ih5_skeleton`).
-
-    Patches created on top of the stub are compatible with the original record
-    whose metadata the stub is based on.
-    """
-    record = Path(record)  # in case it was a str
-    ds = IH5Record.create(record)
-    # overwrite user block of fresh record, mark it as a base container stub
-    ds._ublocks[Path(ds._files[0].filename)] = ub.copy(
-        update={"is_stub": True, "prev_patch": None}
-    )
-    # create structure based on skeleton
-    for k, v in skel.items():
-        if v == IH5SkeletonEnum.grp:
-            if k not in ds:
-                ds.create_group(k)
-        elif v == IH5SkeletonEnum.val:
-            ds[k] = h5py.Empty(None)
-        elif v == IH5SkeletonEnum.atr:
-            k, atr = k.split("@")  # split off attribute name
-            k = k or "/"  # special case - root attributes
-            if k not in ds:
-                ds[k] = h5py.Empty(None)
-            ds[k].attrs[atr] = h5py.Empty(None)
-        else:
-            raise ValueError(f"Invalid skeleton entry: {k} -> {v}")
-
-    # fix changes, return resulting opened read-only record stub
-    ds.commit()  # this will also add the stub hashsum, completing the stub userblock
-    assert ds.read_only
-    return ds

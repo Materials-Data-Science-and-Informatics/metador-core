@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ardiem_container.hashutils import DiffNode, DirDiff, dir_hashsums, file_hashsum
+from metador_core.hashutils import DiffNode, DirDiff, dir_hashsums, file_hashsum
 
 from .conftest import SymLink
 

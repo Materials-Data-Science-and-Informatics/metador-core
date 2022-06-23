@@ -10,15 +10,12 @@ from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Union
 from pydantic import BaseModel
 
 _hash_alg = {
-    "md5": hashlib.md5,
-    "sha1": hashlib.sha1,
+    # "md5": hashlib.md5,
+    # "sha1": hashlib.sha1,
     "sha256": hashlib.sha256,
     "sha512": hashlib.sha512,
 }
 """Supported hashsum algorithms."""
-
-HASH_ALG = "sha256"
-"""Algorithm to use and string to prepend to a resulting hashsum."""
 
 
 def hashsum(data: BinaryIO, alg: str):
@@ -37,9 +34,18 @@ def hashsum(data: BinaryIO, alg: str):
     return h.hexdigest()
 
 
-def file_hashsum(path: Path, alg: str):
+DEF_HASH_ALG = "sha256"
+"""Algorithm to use and string to prepend to a resulting hashsum."""
+
+
+def qualified_hashsum(data: BinaryIO, alg: str = DEF_HASH_ALG):
+    """Like hashsum, but prepends the algorithm to the string."""
+    return f"{alg}:{hashsum(data, alg)}"
+
+
+def file_hashsum(path: Path, alg: str = DEF_HASH_ALG):
     with open(path, "rb") as f:
-        return f"{alg}:{hashsum(f, alg)}"
+        return qualified_hashsum(f, alg)
 
 
 DirHashsums = Dict[str, Any]
@@ -66,7 +72,7 @@ def rel_symlink(base: Path, dir: Path) -> Optional[Path]:
         return None  # link points outside of base directory
 
 
-def dir_hashsums(dir: Path, alg: str) -> DirHashsums:
+def dir_hashsums(dir: Path, alg: str = DEF_HASH_ALG) -> DirHashsums:
     """Return hashsums of all files.
 
     Resulting paths are relative to the provided `dir`.
@@ -89,7 +95,7 @@ def dir_hashsums(dir: Path, alg: str) -> DirHashsums:
             relpath = relpath.parent  # directory dicts to create = up to parent
 
         if is_file:
-            val = file_hashsum(path, HASH_ALG)  # value = hashsum
+            val = file_hashsum(path, alg)  # value = hashsum
         elif is_sym:
             sym_trg = rel_symlink(dir, path)
             if sym_trg is None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
-class ArdiemValidationErrors(ValueError):
+class MetadorValidationErrors(ValueError):
     """Structure to collect record or directory validation errors.
 
     Returned from validation functions and thrown in other contexts.
@@ -29,7 +29,7 @@ class ArdiemValidationErrors(ValueError):
     def __repr__(self):  # pragma: no cover
         return repr(self.errors)
 
-    def append(self, *err_objs: ArdiemValidationErrors):
+    def append(self, *err_objs: MetadorValidationErrors):
         """Add errors from other instances to this object."""
         errs = self.errors
         for more_errs in err_objs:

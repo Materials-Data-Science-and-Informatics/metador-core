@@ -1,4 +1,4 @@
-"""Metadata models for previewable entities in Ardiem records."""
+"""Metadata models for previewable entities in Metador containers."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import magic
 from PIL import Image
 from typing_extensions import Literal
 
-from ..hashutils import HASH_ALG, file_hashsum
-from .base import ArdiemBaseModel
+from ..hashutils import file_hashsum
+from .interface import MetadataSchema
 from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 
-class FileMeta(ArdiemBaseModel):
+class FileMeta(MetadataSchema):
     """Metadata to be provided for each embedded file.
 
     The type is preferably given as mime-type, otherwise implied py file extension.
@@ -38,7 +38,7 @@ class FileMeta(ArdiemBaseModel):
         return FileMeta(
             type="file",
             filename=path.name,
-            hashsum=file_hashsum(path, HASH_ALG),
+            hashsum=file_hashsum(path),
             mimetype=magic.from_file(path, mime=True),
         )
 
@@ -62,19 +62,19 @@ class ImageMeta(FileMeta):
         return ImageMeta(
             type="image",
             filename=path.name,
-            hashsum=file_hashsum(path, HASH_ALG),
+            hashsum=file_hashsum(path),
             mimetype=magic.from_file(path, mime=True),
             width=width,
             height=height,
         )
 
 
-class ColumnHead(ArdiemBaseModel):
+class ColumnHead(MetadataSchema):
     title: nonempty_str
     unit: PintUnit
 
 
-class TableMeta(ArdiemBaseModel):
+class TableMeta(MetadataSchema):
     type: Literal["table"]
 
     title: nonempty_str

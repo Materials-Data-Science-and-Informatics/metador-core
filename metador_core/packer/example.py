@@ -2,10 +2,10 @@
 This is an example packer plugin.
 
 A packer plugin implements use-case specific container-related
-functionality for Ardiem containers.
+functionality for Metador containers.
 
 To develop your own packer plugin, implement a class deriving from
-`ArdiemPacker` and register the class as an entrypoint of your package
+`MetadorPacker` and register the class as an entrypoint of your package
 (see the `pyproject.toml` of this package, where `ExamplePacker`
 is registered as a packer plugin called `example`.)
 """
@@ -15,21 +15,18 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas
-from pydantic import AnyHttpUrl
-from pydantic.tools import parse_obj_as
 
-from ..metadata.base import ArdiemBaseModel
-from ..metadata.body import FileMeta, ImageMeta, TableMeta
-from ..metadata.header import PACKER_META_PATH, PackerMeta
-from .base import ArdiemPacker, DiffNode, DirDiff, IH5Record
-from .util import ArdiemValidationErrors
+from ..schema.common import FileMeta, ImageMeta, TableMeta
+from ..schema.interface import MetadataSchema
+from .interface import DiffNode, DirDiff, IH5Record, Packer
+from .util import MetadorValidationErrors
 
 
-class ExampleMeta(ArdiemBaseModel):
+class ExampleMeta(MetadataSchema):
     author: str
 
 
-class ExamplePacker(ArdiemPacker):
+class ExamplePacker(Packer):
     """The example packer is demonstrating how a packer can be implemented.
 
     It will pack CSV tables with metadata into corresponding HDF5 records,
@@ -46,23 +43,19 @@ class ExamplePacker(ArdiemPacker):
     Other packers may log their actions as they deem appropriate.
     """
 
-    PACKER_ID = "example"
-    PACKER_VERSION = (0, 1, 0)
-
     @classmethod
-    def check_directory(cls, data_dir: Path) -> ArdiemValidationErrors:
+    def check_directory(cls, data_dir: Path) -> MetadorValidationErrors:
         print("--------")
         print("called check_directory")
-        errs = ArdiemValidationErrors()
+        errs = MetadorValidationErrors()
         errs.append(ExampleMeta.check_path(data_dir / "example_meta.yaml"))
         return errs
 
     @classmethod
-    def check_record(cls, record: IH5Record) -> ArdiemValidationErrors:
+    def check_record(cls, record: IH5Record) -> MetadorValidationErrors:
         print("--------")
         print("called check_container")
-        errs = ArdiemValidationErrors()
-        errs.append(PackerMeta.check_path(PACKER_META_PATH, record))
+        errs = MetadorValidationErrors()
         errs.append(ExampleMeta.check_path("/body/custom", record))
         return errs
 
@@ -156,17 +149,3 @@ class ExamplePacker(ArdiemPacker):
                     meta = FileMeta.for_file(path).json()
                     record[key] = val
                     record[key].attrs["node_meta"] = meta
-
-    @classmethod
-    def packer_meta(cls) -> PackerMeta:
-        """Return metadata info about this packer."""
-        url = (
-            "https://github.com/Materials-Data-Science-and-Informatics/ardiem-container"
-        )
-        return PackerMeta(
-            id=ExamplePacker.PACKER_ID,
-            version=ExamplePacker.PACKER_VERSION,
-            uname=PackerMeta.get_uname(),
-            python_package="ardiem-container",
-            python_source=parse_obj_as(AnyHttpUrl, url),
-        )

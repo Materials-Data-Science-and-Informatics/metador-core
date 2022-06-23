@@ -1,85 +1,18 @@
-"""Ardiem record."""
+"""Metador container."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Type
-from uuid import UUID, uuid1
-
-from pydantic import BaseModel
+from typing import Optional, Type
 
 from .hashutils import DirDiff, DirHashsums, dir_hashsums, rel_symlink
-from .ih5.record import (
-    HASH_ALG,
-    IH5Record,
-    IH5UserBlock,
-    create_stub_base,
-    ih5_skeleton,
-)
-from .metadata.header import PACKER_META_PATH, TOC_META_PATH, PackerMeta, TOCMeta
-from .packer.base import ArdiemPacker
-from .packer.util import ArdiemValidationErrors
-
-# TODO: should the manifest file be hashed itself,
-# and listed as sidecar as "sidecar UUID -> hashsum" in user block?
-# that way a container could recognize its "original" manifest file
+from .ih5.manifest import ManifestFile
+from .ih5.record import HASH_ALG, IH5Record, IH5UserBlock
+from .packer.util import MetadorValidationErrors
 
 
-class ManifestFile(BaseModel):
-    """A hashsum file, which is a sidecar file of a collection of IH5 record files.
-
-    It collects the current hashsums for all files in the directory
-    for the state of the data at the time of the creation of a certain patch.
-
-    It is used to be able to create a patch container updating a record
-    without having access to the predecessor containers.
-
-    Packer plugins can figure out what needs to be included in the patch
-    based on the changes in the raw unpacked data directory.
-    """
-
-    # uuid for the hashsum file itself (so the filename does not matter)
-    sidecar_uuid: UUID
-
-    # should be equal to those of the patch this hashsum file is based on
-    record_uuid: UUID
-    patch_uuid: UUID
-    patch_index: int
-
-    hashsums: DirHashsums  # computed with dir_hashsums
-    skeleton: Dict[str, str]  # computed with ih5_skeleton
-    packer: PackerMeta  # Metadata of the packer that created the dataset
-
-    @classmethod
-    def create(cls, ub: IH5UserBlock, packer: Type[ArdiemPacker]) -> ManifestFile:
-        """Create a manifest file based on a user block.
-
-        Hashsums and skeleton must still be added to make the instance complete.
-        """
-        return cls(
-            sidecar_uuid=uuid1(),
-            record_uuid=ub.record_uuid,
-            patch_uuid=ub.patch_uuid,
-            patch_index=ub.patch_index,
-            hashsums={},
-            skeleton={},
-            packer=PackerMeta(id=packer.PACKER_ID, version=packer.PACKER_VERSION),
-        )
-
-    def to_userblock(self) -> IH5UserBlock:
-        """Return a stub userblock based on information stored in manifest."""
-        return IH5UserBlock(
-            patch_uuid=self.patch_uuid,
-            record_uuid=self.record_uuid,
-            patch_index=self.patch_index,
-            prev_patch=None,
-            hdf5_hashsum=f"{HASH_ALG}:0",  # to be computed
-            is_stub=True,
-        )
-
-
-class ArdiemRecord:
-    """IH5-based records for the Ardiem platform.
+class MetadorContainer:
+    """IH5-based records for the Metador platform.
 
     This class extends the IH5 record concept with manifest files that contain enough
     metadata in order to compute shallow update containers without having the
@@ -122,7 +55,7 @@ class ArdiemRecord:
         )
 
     @classmethod
-    def open(cls, record: Path, **kwargs) -> ArdiemRecord:
+    def open(cls, record: Path, **kwargs) -> MetadorRecord:
         """Open a record at given path.
 
         This method takes two mutually exclusive keyword arguments:
@@ -181,9 +114,9 @@ class ArdiemRecord:
         self._manifest = None  # type: ignore
         self._path = None  # type: ignore
 
-    def check_directory_common(self, data_dir: Path) -> ArdiemValidationErrors:
+    def check_directory_common(self, data_dir: Path) -> MetadorValidationErrors:
         """Check directory constraints and invariants that are packer-independent."""
-        errs = ArdiemValidationErrors()
+        errs = MetadorValidationErrors()
         # check symlinks inside of data directory
         for path in sorted(data_dir.rglob("*")):
             key = str(path.relative_to(data_dir))
@@ -191,18 +124,20 @@ class ArdiemRecord:
                 errs.add(key, "Invalid out-of-data-directory symlink!")
         return errs
 
-    def check_record_common(self) -> ArdiemValidationErrors:
+    def check_record_common(self) -> MetadorValidationErrors:
         """Check record constraints and invariants that are packer-independent."""
         assert self.record is not None
-        errs = ArdiemValidationErrors()
-        # packer meta must be present in header
-        errs.append(PackerMeta.check_path(PACKER_META_PATH, self.record))
-        errs.append(TOCMeta.check_path(TOC_META_PATH, self.record))
+        errs = MetadorValidationErrors()
+        # TODO: check presence of env meta, packer name + container version
+        # and check consistency of TOC
+
+        # errs.append(PackerMeta.check_path(PACKER_META_PATH, self.record))
+        # errs.append(TOCMeta.check_path(TOC_META_PATH, self.record))
         return errs
 
     def check_directory(
-        self, data_dir: Path, packer: Optional[Type[ArdiemPacker]]
-    ) -> ArdiemValidationErrors:
+        self, data_dir: Path, packer: Optional[Type[MetadorPacker]]
+    ) -> MetadorValidationErrors:
         """Check the structure of the directory.
 
         Will always perform the packer-independent checks. If a packer is provided,
@@ -214,8 +149,8 @@ class ArdiemRecord:
         return errs
 
     def check_record(
-        self, packer: Optional[Type[ArdiemPacker]]
-    ) -> ArdiemValidationErrors:
+        self, packer: Optional[Type[MetadorPacker]]
+    ) -> MetadorValidationErrors:
         """Check the structure of the record.
 
         Will always perform the packer-independent checks. If a packer is provided,
@@ -227,7 +162,7 @@ class ArdiemRecord:
             errs.append(packer.check_record(self.record))
         return errs
 
-    def check_packer_compatible(self, packer: Type[ArdiemPacker]):
+    def check_packer_compatible(self, packer: Type[MetadorPacker]):
         """Check whether the packer is compatible with the record."""
         pmeta: Optional[PackerMeta] = None
         if self.manifest is not None:
@@ -248,8 +183,8 @@ class ArdiemRecord:
 
     @classmethod
     def create(
-        cls, target: Path, data_dir: Path, packer: Type[ArdiemPacker], **kwargs
-    ) -> ArdiemRecord:
+        cls, target: Path, data_dir: Path, packer: Type[MetadorPacker], **kwargs
+    ) -> MetadorRecord:
         """Create a fresh record.
 
         Will create an IH5 record + manifest file with names based on `target`
@@ -271,7 +206,7 @@ class ArdiemRecord:
         ret.update(data_dir, packer)
         return ret
 
-    def finalize_header(self, packer: Type[ArdiemPacker]):
+    def finalize_header(self, packer: Type[MetadorPacker]):
         """Create common derivative metadata structures in header."""
         assert self._record is not None
         if PACKER_META_PATH in self._record:
@@ -283,7 +218,7 @@ class ArdiemRecord:
         self._record[TOC_META_PATH] = TOCMeta.for_record_body(self._record).json()
 
     def update(
-        self, data_dir: Path, packer: Type[ArdiemPacker], allow_unchanged: bool = False
+        self, data_dir: Path, packer: Type[MetadorPacker], allow_unchanged: bool = False
     ):
         """Update a record by writing a patch.
 
@@ -352,7 +287,7 @@ class ArdiemRecord:
                 raise errs
 
         # prepare new manifest file
-        self._manifest = ManifestFile.create(self._record.ih5meta[-1], packer)
+        self._manifest = ManifestFile.create(self._record.ih5_meta[-1], packer)
         # compute hashsums and diff of directory (the packer will get the diff)
         self._manifest.hashsums = dir_hashsums(data_dir, HASH_ALG)
         diff = DirDiff.compare(old_hashsums, self._manifest.hashsums)

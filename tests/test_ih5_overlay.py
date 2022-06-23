@@ -2,9 +2,9 @@ import h5py
 import numpy as np
 import pytest
 
-from ardiem_container.ih5 import IH5Dataset, IH5Group, IH5Record
-from ardiem_container.ih5.overlay import DEL_VALUE, SUBST_KEY, IH5InnerNode, IH5Node
-from ardiem_container.ih5.record import ih5_type_skeleton
+from metador_core.ih5 import IH5Dataset, IH5Group, IH5Record
+from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, IH5InnerNode, IH5Node
+from metador_core.ih5.record import ih5_type_skeleton
 
 
 def create_entries(node: IH5InnerNode):
