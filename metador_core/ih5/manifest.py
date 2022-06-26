@@ -1,22 +1,16 @@
 """Sidecar JSON file storing a skeleton to create stubs and patch containers."""
 from __future__ import annotations
 
-from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid1
 
 from pydantic import BaseModel
 
-from ..hashutils import DEF_HASH_ALG, DirHashsums, dir_hashsums, qualified_hashsum
-from ..packer.interface import PackerInfo
+from ..hashutils import qualified_hashsum
 from ..schema.types import hashsum_str
-from .record import USER_BLOCK_SIZE, IH5Record, IH5UserBlock, hashsum_file
-from .skeleton import ih5_skeleton, init_stub_container
-
-# TODO: should the manifest file be hashed itself,
-# and listed as sidecar as "sidecar UUID -> hashsum" in user block?
-# that way a container could recognize its "original" manifest file
+from .record import IH5Record, IH5UserBlock, hashsum_file
+from .skeleton import ih5_skeleton, init_stub_base
 
 
 class IH5ManifestFile(BaseModel):
@@ -25,6 +19,7 @@ class IH5ManifestFile(BaseModel):
     It contains the skeleton of the container, in order to be able to create a
     patch for an IH5Record the data is not locally available for (but manifest is).
 
+    TODO: following info applies to the "packer" manifest extension
     For IH5 containers created by a packer plugin from a well-defined directory
     it also collects the current hashsums for all files in the source directory
     at the time of the creation of a certain patch, and info about the used packer.
@@ -36,97 +31,73 @@ class IH5ManifestFile(BaseModel):
     # uuid for the manifest file itself (so the filename does not matter)
     manifest_uuid: UUID
 
-    # should be equal to those of the patch this hashsum file is based on
-    # (from the patch user block)
-    record_uuid: UUID
-    patch_uuid: UUID
-    patch_index: int
+    user_block: IH5UserBlock  # copy of user block (without the manifest extension part)
 
     skeleton: Dict[str, str]  # computed with ih5_skeleton, used to create a stub
 
+    manifest_exts: Dict[str, Any]  # Arbitrary extensions, similar to IH5UserBlock
+
+    # todo: put this into an extension model defined in the packer context
     # relevant for packers:
-    srcdir_hashsums: DirHashsums = {}  # if set, computed with dir_hashsums
-    srcdir_packer: Optional[PackerInfo] = None  # if set, metadata of the used packer
+    # srcdir_hashsums: DirHashsums = {}  # if set, computed with dir_hashsums
+    # srcdir_packer: Optional[PackerInfo] = None  # if set, metadata of the used packer
 
     @classmethod
-    def from_userblock(cls, ub: IH5UserBlock) -> IH5ManifestFile:
-        """Create a manifest file based on a user block.
+    def from_userblock(cls, ub: IH5UserBlock, skeleton={}, exts={}) -> IH5ManifestFile:
+        """Create a manifest file based on a user block (optionally pass skeleton).
 
         Hashsums and skeleton must still be added to make the instance complete.
         """
+        ub_copy = ub.copy()
+        # only keep other extensions (otherwise its circular)
+        ub_copy.ub_exts = {k: v for k, v in ub.ub_exts.items() if k != UBEXT_MF_NAME}
         return cls(
             manifest_uuid=uuid1(),
-            record_uuid=ub.record_uuid,
-            patch_uuid=ub.patch_uuid,
-            patch_index=ub.patch_index,
-            skeleton={},
-            srcdir_hashsums={},
-            srcdir_packer=None,
+            user_block=ub_copy,
+            skeleton=skeleton,
+            manifest_exts=exts,
         )
 
-    def to_userblock(self) -> IH5UserBlock:
-        """Return a stub userblock based on information stored in manifest."""
-        return IH5UserBlock(
-            patch_uuid=self.patch_uuid,
-            record_uuid=self.record_uuid,
-            patch_index=self.patch_index,
-            prev_patch=None,
-            hdf5_hashsum="INVALID:0",  # to be computed on commit()
-            is_stub=True,
-            ext={"manifest_uuid": self.manifest_uuid},
-        )
+    def to_bytes(self) -> bytes:
+        """Serialize and return bytes."""
+        # add a newline, as otherwise behaviour with text editors will be confusing
+        # (e.g. vim automatically adds a trailing newline that it hides)
+        # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
+        return (self.json(indent=2) + "\n").encode(encoding="utf-8")
+
+    def save(self, path: Path):
+        """Save manifest exactly as returned by to_bytes into a file."""
+        with open(path, "wb") as f:
+            f.write(self.to_bytes())
+            f.flush()
 
 
-MF_EXT_NAME: str = "manifest"
+UBEXT_MF_NAME: str = "manifest_v01"
 """Name of user block extension section for stub and manifest info."""
 
 
 class IH5UBExtManifest(BaseModel):
     """IH5 user block extension for stub and manifest support."""
 
-    is_stub_container: bool = False
+    is_stub_container: bool
     """True if file has the structure of another container, without actual data inside."""
 
-    manifest_uuid: Optional[UUID] = None
+    manifest_uuid: UUID
     """UUID of the manifest file that belongs to this IH5 file."""
 
-    manifest_hashsum: Optional[hashsum_str] = None
+    manifest_hashsum: hashsum_str
     """Hashsum of the manifest file that belongs to this IH5 file."""
 
     @classmethod
-    def from_userblock(cls, ub: IH5UserBlock) -> Optional[IH5UBExtManifest]:
+    def get(cls, ub: IH5UserBlock) -> Optional[IH5UBExtManifest]:
         """Parse extension metadata from userblock, if it is available."""
-        if MF_EXT_NAME not in ub.exts:
+        if UBEXT_MF_NAME not in ub.ub_exts:
             return None
-        return cls.parse_obj(ub.exts[MF_EXT_NAME])
+        return cls.parse_obj(ub.ub_exts[UBEXT_MF_NAME])
 
-    def into_userblock(self, ub: IH5UserBlock):
+    def update(self, ub: IH5UserBlock):
         """Create or overwrite extension metadata in given userblock."""
-        ub.exts[MF_EXT_NAME] = self.dict()
-
-
-def create_stub_base(
-    record: Union[Path, str],
-    ub: IH5UserBlock,
-    skel: Dict[str, str],
-) -> IH5Record:
-    """Create a stub base container for a record.
-
-    The stub is based on the latest user block of a real IH5 record
-    and the skeleton of the overlay structure (as returned by `ih5_skeleton`).
-
-    Patches created on top of the stub are compatible with the original record
-    whose metadata the stub is based on.
-    """
-    ds = IH5Record.create(Path(record))
-    init_stub_container(ds, skel)
-
-    # fix user block to make it appear as valid base container
-    new_ub = ub.copy(update={"prev_patch": None})
-    new_ub.exts[MF_EXT_NAME] = IH5UBExtManifest(is_stub_container=True).dict()
-    # overwrite user block of fresh record, mark it as a base container stub
-    ds._ublocks[Path(ds._files[0].filename)] = new_ub
-    return ds
+        ub.ub_exts[UBEXT_MF_NAME] = self.dict()
 
 
 class IH5MFRecord(IH5Record):
@@ -135,7 +106,22 @@ class IH5MFRecord(IH5Record):
     The manifest file contains enough information to support the creation
     of a stub container and patching a dataset without having the actual container.
 
-    The intended use case of this IH5 variant is to be created by automated packers
+    In a chain of container files, only the base container may be a stub.
+    All files without the manifest extension in the userblock are considered not stubs.
+
+    An IH5MFRecord is a valid IH5Record (the manifest file then is simply ignored).
+    Also, it is possible to open an IH5Record as IH5MFRecord and turn it into a
+    valid IH5MFRecord by committing a patch (this will create the missing manifest).
+
+    In addition to the ability to create stubs, the manifest file can be used to carry
+    information that should be attached to a container, but is too large or inappropriate
+    for storage in the userblock (e.g. should be available separately).
+
+    The manifest should store information that applies semantically to the whole fileset
+    at the current patch level, it MUST NOT be required to have manifest files for each
+    ih5 patch.
+
+    The main use case of this extension is to be used by automated packers
     from suitably prepared source directories, to be uploaded to remote locations,
     and for these packers being able to create patches for the record without
     access to all the data containers (based only on the most recent manifest file).
@@ -143,13 +129,21 @@ class IH5MFRecord(IH5Record):
 
     MANIFEST_EXT: str = "mf.json"
 
-    _manifest: IH5ManifestFile
-    """Manifest of newest loaded container file."""
+    _manifest: Optional[IH5ManifestFile] = None
+    """Manifest of newest loaded container file (only None for new uncommited records)."""
 
     @property
     def manifest(self) -> IH5ManifestFile:
-        """Manifest file of latest committed record patch."""
+        """Manifest object of latest committed record patch."""
+        if self._manifest is None:  # should only happen with fresh create()d records
+            raise ValueError("No manifest exists yet! Did you forget to commit?")
         return self._manifest
+
+    def _fresh_manifest(self) -> IH5ManifestFile:
+        """Return new manifest based on current state of the record."""
+        ub = self._ublock(-1)
+        skel = ih5_skeleton(self)
+        return IH5ManifestFile.from_userblock(ub, skeleton=skel, exts={})
 
     @classmethod
     def _manifest_filepath(cls, record: str) -> Path:
@@ -166,98 +160,131 @@ class IH5MFRecord(IH5Record):
         if manifest_file is None:
             manifest_file = self._manifest_filepath(self._files[-1].filename)
 
-        # for latest container, check linked manifest against given/inferred one
+        # for latest container, check linked manifest (if any) against given/inferred one
         ub = self._ublock(-1)
-        ubext = IH5UBExtManifest.from_userblock(ub)
+        ubext = IH5UBExtManifest.get(ub)
+        if ubext is not None:
+            if not manifest_file.is_file():
+                msg = f"Manifest file {manifest_file} does not exist, cannot open!"
+                raise ValueError(f"{self._files[-1].filename}: {msg}")
 
-        # check that manifest file exists and has correct hashsum
-        chksum = hashsum_file(manifest_file)
-        if ubext.manifest_hashsum != chksum:
-            msg = "Manifest has been modified, unexpected hashsum!"
-            raise ValueError(f"{ub._filename}: {msg}")
+            chksum = hashsum_file(manifest_file)
+            if ubext.manifest_hashsum != chksum:
+                msg = "Manifest has been modified, unexpected hashsum!"
+                raise ValueError(f"{self._files[-1].filename}: {msg}")
 
-        # check if latest user block and the manifest agree
-        self._manifest = IH5ManifestFile.parse_file(manifest_file)
-        if ubext.manifest_uuid != self._manifest.manifest_uuid:
-            raise ValueError(f"{ub._filename}: Manifest file has wrong UUID!")
+            self._manifest = IH5ManifestFile.parse_file(manifest_file)
+            # NOTE: as long as we enforce checksum of manifest, this failure can't happen:
+            # if ubext.manifest_uuid != self._manifest.manifest_uuid:
+            #     raise ValueError(f"{ub._filename}: Manifest file has wrong UUID!")
 
     # Override to also check user block extension
-    def _check_ublock(self, ub: IH5UserBlock, prev: Optional[IH5UserBlock] = None):
-        super()._check_ublock(ub, prev)
-
-        # We expect to find additional info in the userblock
-        ubext = IH5UBExtManifest.from_userblock(ub)
-        if ubext is None:
-            raise ValueError(f"{ub._filename}: Missing manifest extension metadata!")
-
+    def _check_ublock(
+        self, filename, ub: IH5UserBlock, prev: Optional[IH5UserBlock] = None
+    ):
+        super()._check_ublock(filename, ub, prev)
+        # Try getting manifest info in the userblock.
+        # If it is missing, probably we're opening a "raw" IH5Record or a messed up mix
+        ubext = IH5UBExtManifest.get(ub)
         # we only allow to write patches on top of stubs,
         # but not have stubs on top of something else.
-        if prev is not None and ubext.is_stub_container:
-            msg = "Found stub patch container, only base container may be a stub!"
-            raise ValueError(f"{ub._filename}: {msg}")
+        # If something creates a patch that is (marked as) a stub, its a developer error.
+        # If the ub ext is missing, then we must assume that it is not a stub.
+        assert prev is None or ubext is None or not ubext.is_stub_container
+
+    def _fixes_after_merge(self, file, ub):
+        # if a manifest exists for the current dataset,
+        # copy its manifest to overwrite the fresh one of the merged container
+        # and fix its user block
+        if self._manifest is not None:
+            # check that new userblock inherited the original linked manifest
+            ext = IH5UBExtManifest.get(ub)
+            assert ext is not None and ext.manifest_uuid == self.manifest.manifest_uuid
+            # overwrite the "fresh" manifest from merge with the original one
+            self.manifest.save(self._manifest_filepath(file))
 
     # Override to prevent merge if a stub is present
-    def merge(self, target: Path) -> Path:
+    def merge(self, target: Path):
         def is_stub(x):
-            return IH5UBExtManifest.from_userblock(x).is_stub_container
+            ext = IH5UBExtManifest.get(x)
+            # missing ext -> not a stub (valid stub has ext + is marked as stub)
+            return ext is not None and ext.is_stub_container
 
         if any(map(is_stub, self.ih5_meta)):
             raise ValueError("Cannot merge, files contain a stub!")
 
-        # the following creates a new manifest file,
-        # but will not have hashsums or packer info!
-        # packers should not need "merge" anyway, this is something for end-users.
-
-        # TODO: is this ok? otherwise have to:
-        # need to read latest manifest,
-        # copy it over as the manifest for the new target,
-        # and change the user block in the target, updating the manifest uuid and hashsum
         return super().merge(target)
 
-    def _make_manifest(
-        self, src_dir: Optional[Path] = None, packer_info: Optional[PackerInfo] = None
-    ) -> IH5ManifestFile:
-        """Return new manifest based on current state of the record."""
-        mf = IH5ManifestFile.from_userblock(self._ublock(-1))
-        mf.skeleton = ih5_skeleton(self)
-        if src_dir is not None:
-            mf.srcdir_hashsums = dir_hashsums(src_dir)
-        if packer_info is not None:
-            mf.srcdir_packer = packer_info
-        return mf
-
     # Override to create skeleton and dir hashsums, write manifest and add to user block
+    # Will inherit old manifest extensions, unless overridden by passed argument
     def commit(self, **kwargs) -> None:
-        src_dir = kwargs.get("source_dir")
-        packer_info = kwargs.get("packer_info")
-        mf = self._make_manifest(src_dir, packer_info)
+        # is_stub = True only when called from init_stub_base!!! not for "end-user"!
+        is_stub = kwargs.get("__is_stub__", False)
 
-        # convert to bytes already to compute hashsum (these bytes will go to file)
-        # add a newline, as otherwise behaviour with text editors will be confusing
-        # (e.g. vim automatically adds a trailing newline that it hides)
-        # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
-        mf_json: bytes = (mf.json(indent=2) + "\n").encode("utf-8")
-        mf_hashsum: str = qualified_hashsum(BytesIO(mf_json))
+        exts = kwargs.get("manifest_exts")
+        mf = self._fresh_manifest()
+        if self._manifest is not None:  # inherit attached data, if manifest exists
+            mf.manifest_exts = self.manifest.manifest_exts
+        if exts is not None:  # override, if extensions provided
+            mf.manifest_exts = exts
 
+        old_ub = self._ublock(-1)  # keep ref in case anything goes wrong
         # prepare new user block that links to the prospective manifest
-        old_ub = self._ublock(-1)
         new_ub = old_ub.copy()
-        new_ub.exts[MF_EXT_NAME] = IH5UBExtManifest(
-            is_stub_container=False,  # stubs are not supposed to be created like this!
+        IH5UBExtManifest(
+            is_stub_container=is_stub,
             manifest_uuid=mf.manifest_uuid,
-            manifest_hashsum=mf_hashsum,
-        ).dict()
-        self._set_ublock(-1, new_ub)
+            manifest_hashsum=qualified_hashsum(mf.to_bytes()),
+        ).update(new_ub)
 
-        # try writing
+        # try writing new container
+        self._set_ublock(-1, new_ub)
         try:
             super().commit()
         except ValueError as e:  # some checks failed
-            self._set_ublock(-1, old_ub)
+            self._set_ublock(-1, old_ub)  # reset current user block
             raise e
 
         # as everything is fine, finally (over)write manifest here and on disk
         self._manifest = mf
-        with open(self._manifest_filepath(self._files[-1].filename), "wb") as f:
-            f.write(mf_json)
-            f.flush()
+        mf.save(self._manifest_filepath(self._files[-1].filename))
+
+    @classmethod
+    def create_stub(
+        cls,
+        record: Union[Path, str],
+        manifest_file: Path,
+    ) -> IH5MFRecord:
+        """Create a stub base container for patching an existing but unavailable record.
+
+        The stub is based on the user block of a real IH5 record container line
+        and the skeleton of the overlay structure (as returned by `ih5_skeleton`),
+        which are taken from a provided manifest file.
+
+        Patches created on top of the stub are compatible with the original record
+        whose metadata the stub is based on.
+
+        The returned container is read-only and only serves as base for patches.
+        """
+        manifest = IH5ManifestFile.parse_file(manifest_file)
+
+        skeleton: Dict[str, str] = manifest.skeleton
+        user_block: IH5UserBlock = manifest.user_block.copy()
+
+        # the manifest-stored user block has no manifest extension itself - create new
+        # based on passed manifest.
+        # mark it as stub in extra metadata now! important to avoid accidents!
+        # must pass it in like that, because the container will be auto-commited.
+        ubext = IH5UBExtManifest(
+            is_stub_container=True, # <- the ONLY place where this is allowed!
+            manifest_uuid=manifest.manifest_uuid,
+            manifest_hashsum=hashsum_file(manifest_file),
+        )
+        ubext.update(user_block)
+
+        # create the stub (override userblock and create skeleton structure)
+        ds = IH5MFRecord.create(Path(record))
+        init_stub_base(ds, user_block, skeleton)
+        assert ds.read_only
+
+        return ds

@@ -5,8 +5,8 @@ import h5py
 import pytest
 
 from metador_core.container import MetadorContainer
-from metador_core.hashutils import HASH_ALG, dir_hashsums
-from metador_core.ih5 import IH5Record
+from metador_core.hashutils import dir_hashsums
+from metador_core.ih5.containers import IH5Record
 from metador_core.packer.interface import DirDiff, Packer
 from metador_core.packer.util import MetadorValidationErrors
 

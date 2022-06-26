@@ -589,7 +589,7 @@ _h5types = {
 
 
 def node_h5type(node):
-    """Returns whether node is Group, Dataset or AttributeManager (or None)."""
+    """Return whether node is Group, Dataset or AttributeManager (or None)."""
     return _h5types.get(type(node))
 
 
@@ -639,7 +639,6 @@ def h5_copy_from_to(source_node, target_node, target_path: str):
             node.attrs[k] = v
 
         def copy_children(name, obj):
-            print("visit", name)
             # name is relative to source root, so we can use it
             ntype = node_h5type(obj)
             if ntype == H5Type.group:

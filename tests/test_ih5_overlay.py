@@ -2,9 +2,9 @@ import h5py
 import numpy as np
 import pytest
 
-from metador_core.ih5 import IH5Dataset, IH5Group, IH5Record
-from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, IH5InnerNode, IH5Node
-from metador_core.ih5.record import ih5_type_skeleton
+from metador_core.ih5.containers import IH5Dataset, IH5Group, IH5Record
+from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, H5Type, IH5InnerNode, IH5Node
+from metador_core.ih5.skeleton import ih5_type_skeleton
 
 
 def create_entries(node: IH5InnerNode):
@@ -146,34 +146,6 @@ def test_latest_container_idx(tmp_ds_path):
         assert IH5Group._latest_container_idx(ds._files, "/foo/bar") == 2
 
 
-def test_access_with_at(dummy_ds_factory):
-    with dummy_ds_factory(flat=True, commit=True) as ds:
-        a = ds.at("a")
-        assert isinstance(a, IH5Group)
-
-        with pytest.raises(KeyError):
-            ds.at("invalid")
-        assert ds.at("invalid", None) is None
-        assert ds.at("invalid", 123) == 123
-
-        ab = a.at("b")
-        assert isinstance(ab, IH5Group)
-        assert ab._gpath == "/a/b"
-
-        bstr = ab.at("/b/string")
-        assert isinstance(bstr, bytes)
-        assert bstr == b"/b/string"
-
-        # also test attributes
-        with pytest.raises(KeyError):
-            ds.at("a@invalid")
-        assert ds.at("a@invalid", default=False) == False
-
-        bstr = ab.at("/a@string")
-        assert isinstance(bstr, str)
-        assert bstr == "/a@string"
-
-
 def test_visit(tmp_ds_path):
     with IH5Record.create(tmp_ds_path) as ds:
         ds["grp/foo/bar"] = 123
@@ -197,12 +169,12 @@ def test_visit(tmp_ds_path):
         ds.visit(lst.append)
         assert lst == ["grp", "grp/foo", "grp/foo/bar", "grp/qux"]
         assert ih5_type_skeleton(ds) == {
-            "@rootattr": (None, str),
-            "grp": (IH5Group, None),
-            "grp/foo": (IH5Group, None),
-            "grp/foo/bar": (IH5Dataset, np.int64),
-            "grp/foo/bar@someattr": (None, str),
-            "grp/qux": (IH5Group, None),
+            "@rootattr": (H5Type.attribute, str),
+            "grp": (H5Type.group, None),
+            "grp/foo": (H5Type.group, None),
+            "grp/foo/bar": (H5Type.dataset, np.int64),
+            "grp/foo/bar@someattr": (H5Type.attribute, str),
+            "grp/qux": (H5Type.group, None),
         }
 
 
@@ -383,12 +355,12 @@ def test_create_access_relative_absolute(tmp_ds_path):
         ds.commit()
 
         assert ih5_type_skeleton(ds) == {
-            "moredata": (IH5Dataset, np.int64),
-            "nested": (IH5Group, None),
-            "nested/data": (IH5Dataset, np.int64),
-            "nested/data@key": (None, str),
-            "nested/deep": (IH5Group, None),
-            "toplevel": (IH5Group, None),
+            "moredata": (H5Type.dataset, np.int64),
+            "nested": (H5Type.group, None),
+            "nested/data": (H5Type.dataset, np.int64),
+            "nested/data@key": (H5Type.attribute, str),
+            "nested/deep": (H5Type.group, None),
+            "toplevel": (H5Type.group, None),
         }
         # access from inside using absolute or relative path
         assert ds["nested"]["data"]._gpath == "/nested/data"
@@ -477,11 +449,11 @@ def test_clear_all_override(dummy_ds_factory):
 
         # only the new stuff should be there
         assert ih5_type_skeleton(ds) == {
-            "a": (IH5Group, None),
-            "b": (IH5Group, None),
-            "b/a": (IH5Dataset, np.int64),
-            "b/a@atr": (None, str),
-            "b/b": (IH5Group, None),
+            "a": (H5Type.group, None),
+            "b": (H5Type.group, None),
+            "b/a": (H5Type.dataset, np.int64),
+            "b/a@atr": (H5Type.attribute, str),
+            "b/b": (H5Type.group, None),
         }
 
     # fully clear and refill within the same patch

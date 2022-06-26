@@ -8,7 +8,6 @@ from ..hashutils import DiffNode  # noqa: F401
 from ..hashutils import DirDiff
 from ..ih5.record import IH5Record
 from ..schema.core import PluginRef
-from ..schema.interface import MetadataSchema
 from ..schema.types import nonempty_str
 from .util import MetadorValidationErrors
 

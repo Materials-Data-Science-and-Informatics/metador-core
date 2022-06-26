@@ -53,9 +53,6 @@ class IH5UserBlock(BaseModel):
     followed by a NUL byte.
     """
 
-    _filename: Path = PrivateAttr(Path(""))
-    """Filename this user block was loaded from."""
-
     _userblock_size: int = PrivateAttr(default=USER_BLOCK_SIZE)
     """User block size claimed in the block itself (second line)."""
 
@@ -69,12 +66,12 @@ class IH5UserBlock(BaseModel):
     """UUID representing a certain state of the data in the record."""
 
     prev_patch: Optional[UUID]
-    """UUID of the previous patch UUID, so that that predecessor container is required."""
+    """UUID of the previous patch UUID (unless it is a base container, i.e. first one)."""
 
-    hdf5_hashsum: hashsum_str
+    hdf5_hashsum: Optional[hashsum_str] = None
     """Hashsum to verity integrity of the HDF5 data after the user block."""
 
-    exts: Dict[str, Any] = {}
+    ub_exts: Dict[str, Any]
     """Any extra metadata to be stored in the user block, unvalidated in dicts.
 
     Subclasses must ensure that desired extra metadata is stored and loaded correctly.
@@ -83,25 +80,19 @@ class IH5UserBlock(BaseModel):
     """
 
     @classmethod
-    def create(
-        cls, prev: Optional[IH5UserBlock] = None, path: Optional[Path] = None
-    ) -> IH5UserBlock:
+    def create(cls, prev: Optional[IH5UserBlock] = None) -> IH5UserBlock:
         """Create a new user block for a base or patch container.
 
         If `prev` is None, will return a new base container block.
         Otherwise, will return a block linking back to the passed `prev` block.
-
-        If `path` is passed, will set `_filename` attribute.
         """
         ret = cls(
             patch_uuid=uuid1(),
             record_uuid=uuid1() if prev is None else prev.record_uuid,
             patch_index=0 if prev is None else prev.patch_index + 1,
             prev_patch=None if prev is None else prev.patch_uuid,
-            hdf5_hashsum="INVALID:0",  # to be computed on commit()
+            ub_exts={},
         )
-        if path is not None:
-            ret._filename = path
         return ret
 
     @classmethod
@@ -136,34 +127,14 @@ class IH5UserBlock(BaseModel):
                 assert head is not None
         ret = IH5UserBlock.parse_obj(json.loads(head[1]))
         ret._userblock_size = head[0]
-        ret._filename = filename
         return ret
 
-    def merge(self, other: IH5UserBlock, target: Path) -> IH5UserBlock:
-        """Merge this user block with another one.
-
-        This userblock must be the first one in a merged patch sequence,
-        while the argument must be the userblock from the last one.
-        The result is the userblock for a merged record, lacking just the hashsum.
-        """
-        ret = self.copy()
-        ret.patch_index = other.patch_index
-        ret.patch_uuid = other.patch_uuid
-        ret.exts = other.exts
-        ret.hdf5_hashsum = ""  # to be computed
-        ret._filename = target
-        return ret
-
-    def save(self, filename: Optional[Path] = None):
-        """Save this object in the user block of the given HDF5 file.
-
-        If no path is given, will save back to file this block belongs to
-        (stored in the `_filename` attribute).
-        """
+    def save(self, filename: Union[Path, str]):
+        """Save this object in the user block of the given HDF5 file."""
+        filename = Path(filename)
         dat_str = f"{FORMAT_MAGIC_STR}\n{self._userblock_size}\n{self.json()}"
         data = dat_str.encode("utf-8")
         assert len(data) < USER_BLOCK_SIZE
-        filename = filename or self._filename
         with open(filename, "r+b") as f:
             # check that this HDF file actually has a user block
             check = f.read(4)
@@ -240,36 +211,45 @@ class IH5Record:
         # create if does not exist, fail if it does
         return h5py.File(path, mode="x", userblock_size=USER_BLOCK_SIZE)
 
-    def _check_ublock(self, ub: IH5UserBlock, prev: Optional[IH5UserBlock] = None):
+    def _check_ublock(
+        self,
+        filename: Union[str, Path],
+        ub: IH5UserBlock,
+        prev: Optional[IH5UserBlock] = None,
+    ):
         """Check given container file.
 
         If `prev` block is given, assumes that `ub` is from a patch container,
         otherwise from base container.
         """
+        filename = Path(filename)
         # check presence+validity of record uuid (should be the same for all)
         if ub.record_uuid != self.uuid:
             msg = "'record_uuid' inconsistent! Mixed up records?"
-            raise ValueError(f"{ub._filename}: {msg}")
+            raise ValueError(f"{filename}: {msg}")
 
         # hash must match with HDF5 content (i.e. integrity check)
-        chksum = hashsum_file(ub._filename, skip_bytes=USER_BLOCK_SIZE)
+        if ub.hdf5_hashsum is None:
+            msg = "hdf5_checksum is missing!"
+            raise ValueError(f"{filename}: {msg}")
+        chksum = hashsum_file(filename, skip_bytes=USER_BLOCK_SIZE)
         if ub.hdf5_hashsum != chksum:
             msg = "file has been modified, stored and computed checksum are different!"
-            raise ValueError(f"{ub._filename}: {msg}")
+            raise ValueError(f"{filename}: {msg}")
 
         # check patch chain structure
         if prev is not None:
             if ub.patch_index <= prev.patch_index:
                 msg = "patch container must have greater index than predecessor!"
-                raise ValueError(f"{ub._filename}: {msg}")
+                raise ValueError(f"{filename}: {msg}")
             if ub.prev_patch is None:
                 msg = "patch must have an attribute 'prev_patch'!"
-                raise ValueError(f"{ub._filename}: {msg}")
+                raise ValueError(f"{filename}: {msg}")
             # claimed predecessor uuid must match with the predecessor by index
             # (can compare as strings directly, as we checked those already)
             if ub.prev_patch != prev.patch_uuid:
                 msg = f"patch for {ub.prev_patch}, but predecessor is {prev.patch_uuid}"
-                raise ValueError(f"{ub._filename}: {msg}")
+                raise ValueError(f"{filename}: {msg}")
 
     def _expect_open(self):
         if self._files is None:
@@ -336,12 +316,14 @@ class IH5Record:
         # check first container (it could be a base container and it has no predecessor)
         if not allow_baseless and self._ublock(0).prev_patch is not None:
             msg = "base container must not have attribute 'prev_patch'!"
-            raise ValueError(f"{self._ublock(0)._filename}: {msg}")
-        self._check_ublock(self._ublock(0))
+            raise ValueError(f"{self._files[0].filename}: {msg}")
+        self._check_ublock(self._files[0].filename, self._ublock(0))
 
         # check successive patches
         for i in range(1, len(self._files)):
-            self._check_ublock(self._ublock(i), self._ublock(i - 1))
+            self._check_ublock(
+                self._files[i].filename, self._ublock(i), self._ublock(i - 1)
+            )
 
         # additional sanity check: container uuids must be all distinct
         cn_uuids = {self._ublock(f).patch_uuid for f in self._files}
@@ -368,7 +350,7 @@ class IH5Record:
         ret = cls.__new__(cls)
         ret._has_writable = True
         ret._files = [cls._new_container(path)]
-        ret._ublocks = {path: IH5UserBlock.create(prev=None, path=path)}
+        ret._ublocks = {path: IH5UserBlock.create(prev=None)}
         return ret
 
     @classmethod
@@ -427,7 +409,7 @@ class IH5Record:
             raise ValueError("There already exists a writable container, commit first!")
 
         path = self._next_patch_filepath()
-        self._ublocks[path] = IH5UserBlock.create(prev=self._ublock(-1), path=path)
+        self._ublocks[path] = IH5UserBlock.create(prev=self._ublock(-1))
         self._files.append(self._new_container(path))
         self._has_writable = True
 
@@ -452,7 +434,7 @@ class IH5Record:
             # so if this is done, it should not be used anymore.
         return self._delete_latest_container()
 
-    def commit(self) -> None:
+    def commit(self, **kwargs) -> None:
         """Complete the current writable container (base or patch) for the record.
 
         Will perform checks on the new container and throw an exception on failure.
@@ -476,10 +458,24 @@ class IH5Record:
         self._files[-1] = h5py.File(filepath, "r")
         self._has_writable = False
 
+    def _fixes_after_merge(self, merged_file, ub):
+        """Hook for subclasses into merge process.
+
+        The method is called after creating the merged container, but before
+        updating its user block on disk.
+
+        The passed userblock is a prepared userblock with updated HDF5 hashsum for the
+        merged container and adapted prev_patch field, as will it be written to the file.
+        Additional changes done to it in-place will be included.
+
+        The passed filename can be used to perform additional necessary actions.
+        """
+        pass
+
     def merge(self, target: Path) -> Path:
         """Given a path with a record name, merge current record into new container.
 
-        Returns full filename of the single resulting container file.
+        Returns new resulting container.
         """
         self._expect_open()
         if self._has_writable:
@@ -489,11 +485,16 @@ class IH5Record:
             h5_copy_group_to_group(self["/"], ds["/"])
             cfile = ds.containers[0]  # store filename to override userblock afterwards
 
-        # compute new merged userblock and store it
-        ub = self._ublock(0).merge(self._ublock(-1), cfile)
+        # compute new merged userblock
+        ub = self._ublock(-1).copy(update={"prev_patch": self._ublock(0).prev_patch})
+        # update hashsum with saved new merged hdf5 payload
         chksum = hashsum_file(cfile, skip_bytes=USER_BLOCK_SIZE)
         ub.hdf5_hashsum = chksum
-        ub.save()
+
+        self._fixes_after_merge(cfile, ub) # for subclass hooks
+
+        self._set_ublock(-1, ub)
+        ub.save(cfile)
         return cfile
 
     @classmethod

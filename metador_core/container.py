@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional, Type
 
 from .hashutils import DirDiff, DirHashsums, dir_hashsums, rel_symlink
-from .ih5.manifest import ManifestFile
-from .ih5.record import HASH_ALG, IH5Record, IH5UserBlock
+from .ih5.manifest import IH5ManifestFile
+from .ih5.record import IH5Record, IH5UserBlock
 from .packer.util import MetadorValidationErrors
 
 
@@ -24,7 +24,7 @@ class MetadorContainer:
 
     _path: Path
     _record: Optional[IH5Record]
-    _manifest: Optional[ManifestFile]
+    _manifest: Optional[IH5ManifestFile]
 
     MANIFEST_EXT = f"{IH5Record.FILE_EXT}mf.json"
 
@@ -37,7 +37,7 @@ class MetadorContainer:
         return self._record
 
     @property
-    def manifest(self) -> Optional[ManifestFile]:
+    def manifest(self) -> Optional[IH5ManifestFile]:
         return self._manifest
 
     @classmethod
@@ -46,7 +46,7 @@ class MetadorContainer:
         return Path(f"{record}{cls.MANIFEST_EXT}")
 
     @classmethod
-    def _manifest_match(cls, mf: ManifestFile, ub: IH5UserBlock) -> bool:
+    def _manifest_match(cls, mf: IH5ManifestFile, ub: IH5UserBlock) -> bool:
         """Check that a manifest matches a certain patch."""
         return (
             ub.record_uuid == mf.record_uuid
@@ -91,7 +91,7 @@ class MetadorContainer:
                 msg = f"Manifest file '{hsfp}' does not exist! Record incomplete!"
                 raise FileNotFoundError(msg)
         else:  # load the existing manifest file
-            ret._manifest = ManifestFile.parse_file(hsfp)
+            ret._manifest = IH5ManifestFile.parse_file(hsfp)
 
         # if opening or reading or parsing fails, exception will be thrown
         if not only_manifest:
@@ -287,10 +287,10 @@ class MetadorContainer:
                 raise errs
 
         # prepare new manifest file
-        self._manifest = ManifestFile.create(self._record.ih5_meta[-1], packer)
+        self._manifest = IH5ManifestFile.from_userblock(self._record.ih5_meta[-1])
         # compute hashsums and diff of directory (the packer will get the diff)
-        self._manifest.hashsums = dir_hashsums(data_dir, HASH_ALG)
-        diff = DirDiff.compare(old_hashsums, self._manifest.hashsums)
+        self._manifest.hashsums = dir_hashsums(data_dir)
+        diff = DirDiff.compare(old_hashsums, self._manifest.srcdir_hashsums)
         if diff.is_empty and not allow_unchanged:
             # kill the new patch, restore old state
             self._record._delete_latest_container()

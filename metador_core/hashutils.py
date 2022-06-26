@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import os
 from enum import Enum
+from io import BytesIO
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Union
 
@@ -18,8 +19,10 @@ _hash_alg = {
 """Supported hashsum algorithms."""
 
 
-def hashsum(data: BinaryIO, alg: str):
+def hashsum(data: Union[bytes, BinaryIO], alg: str):
     """Compute hashsum from given binary file stream using selected algorithm."""
+    if isinstance(data, bytes):
+        data = BytesIO(data)
     try:
         h = _hash_alg[alg]()
     except KeyError:
@@ -38,7 +41,7 @@ DEF_HASH_ALG = "sha256"
 """Algorithm to use and string to prepend to a resulting hashsum."""
 
 
-def qualified_hashsum(data: BinaryIO, alg: str = DEF_HASH_ALG):
+def qualified_hashsum(data: Union[bytes, BinaryIO], alg: str = DEF_HASH_ALG):
     """Like hashsum, but prepends the algorithm to the string."""
     return f"{alg}:{hashsum(data, alg)}"
 

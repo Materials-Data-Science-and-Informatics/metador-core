@@ -1,3 +1,4 @@
+"""Test plain IH5 record."""
 from pathlib import Path
 from uuid import uuid1
 
@@ -6,7 +7,6 @@ import numpy as np
 import pytest
 
 from metador_core.ih5.containers import IH5Record, IH5UserBlock
-from metador_core.ih5.skeleton import ih5_skeleton, init_stub_container
 
 
 def test_open_empty_record():
@@ -137,7 +137,6 @@ def test_larger_userblock_open(tmp_ds_path):
     rub = IH5UserBlock.load(cfile)
     assert rub == ub
     assert rub._userblock_size == 2048
-    assert rub._filename == cfile
 
 
 def test_userblock_missing_save_fail(tmp_ds_path):
@@ -251,7 +250,8 @@ def test_open_scrambled_filenames(tmp_ds_path):
 
 
 def test_check_baseless_fileset_open(tmp_ds_path):
-    # try opening an incomplete (patches only) set of files
+    # try opening an incomplete (patches only) set of files forming a patch chain
+    # (not many reasons to do it, but technically there is nothing special about a base)
     with IH5Record.create(tmp_ds_path) as ds:
         ds.commit()
         for _ in range(3):
@@ -269,7 +269,6 @@ def test_check_baseless_fileset_open(tmp_ds_path):
         pass
 
 
-@pytest.mark.skip(reason="FIXME")
 def test_create_patch_then_merge(tmp_ds_path_factory):
     dsname, target = tmp_ds_path_factory(), tmp_ds_path_factory()
     with IH5Record.create(dsname) as ds:
@@ -290,13 +289,11 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
 
         ds.commit()
 
-        ds._ublock(-1).is_stub = True
-        with pytest.raises(ValueError):  # stub patch -> should fail
-            ds.merge(target)
-        ds._ublock(-1).is_stub = False
-
         # now merge record and compare contents to original
         merged_file = ds.merge(target)
+        # merged_file = merged.containers[-1]
+        # print(merged_file)
+        # merged.close()
         with IH5Record.open(target) as ds2:
             # check user block
             assert ds2.uuid == ds.uuid
@@ -339,95 +336,8 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
         assert ds["qux/new_entry"][()] == b"amazing data"  # type: ignore
 
 
-@pytest.mark.skip(reason="FIXME")
-def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
-    # create a little normal record with multiple patches
-    dsname = tmp_ds_path_factory()
-    stubname = tmp_ds_path_factory()
-    with IH5Record.create(dsname) as ds:
-        ds["foo/bar"] = [1, 2, 3]
-        ds.commit()
-        ds.create_patch()
-        ds["foo/bar"].attrs["qux"] = 42  # type: ignore
-        ds["data"] = "interesting data"
-        ds.commit()
-        ds.create_patch()
-        ds["data"].attrs["key"] = "value"  # type: ignore
-        ds["foo/muh"] = 1337
-        ds["foo/tokill"] = "this will be deleted"
-        ds.commit()
-
-        ds_files = ds.containers
-        ds_ub = ds.ih5_meta[-1]
-        ds_sk = ih5_skeleton(ds)
-
-        # create the stub
-        stub = create_stub_base(stubname, ds_ub, ds_sk)
-        assert ds_ub.record_uuid == stub.ih5_meta[0].record_uuid
-        assert ds_ub.patch_uuid == stub.ih5_meta[0].patch_uuid
-        assert ds_ub.patch_index == stub.ih5_meta[0].patch_index
-        assert stub.ih5_meta[0].exts["stubs"]["is_stub_container"]
-        assert ih5_skeleton(stub) == ds_sk
-
-        # create patch on top of stub
-        stub.create_patch()
-        del stub["foo/tokill"]
-        del stub["foo/bar"]
-        stub["/foo/bar/blub"] = True
-        stub["data"].attrs["key2"] = "othervalue"
-        stub["foo/bar"].attrs["qax"] = 987  # type: ignore
-        stub.commit()
-
-        assert len(stub.containers) == 2
-        stub_files = stub.containers
-        stub_skel = ih5_skeleton(stub)
-        assert stub_skel == {
-            "data": "dataset",
-            "data@key": "attribute",
-            "data@key2": "attribute",
-            "foo": "group",
-            "foo/bar": "group",
-            "foo/bar@qax": "attribute",
-            "foo/bar/blub": "dataset",
-            "foo/muh": "dataset",
-        }
-
-    # open real record with new patch in stub
-    with IH5Record([*ds_files, stub_files[-1]]) as ds:
-        # first success is that it even opens without complaining.
-        # now check that it's the same skeleton with the real data:
-        assert ih5_skeleton(ds) == stub_skel
-        # check the attributes are merged and values look as expeted
-        assert set(ds["data"].attrs.keys()) == set(["key", "key2"])
-        assert set(ds["foo/bar"].attrs.keys()) == set(["qax"])
-        assert "foo/muh" in ds
-        assert "foo/bar/blub" in ds
-
-
-@pytest.mark.skip(reason="FIXME")
-def test_valid_stub_ok(tmp_ds_path_factory):
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
-        ds_ub = ds.ih5_meta[-1]
-        with pytest.raises(ValueError):
-            skel = {
-                "foo@atr": "a",  # first creates the attribute...
-                "foo": "v",  # ...then explicitly value
-                "qux/bar": "v",  # ... first implicitly create group
-                "qux": "g",  # ...then explicitly
-            }
-            # in this order it still should work fine
-            create_stub_base(tmp_ds_path_factory(), ds_ub, skel)
-
-
-@pytest.mark.skip(reason="FIXME")
-def test_invalid_stub_fail(tmp_ds_path_factory):
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
-        ds_ub = ds.ih5_meta[-1]
-        with pytest.raises(ValueError):
-            create_stub_base(tmp_ds_path_factory(), ds_ub, {"foo": "invalid"})
-
-
 def test_clear_empty(tmp_ds_path):
+    # A cleared out multi-patch container is recognized as empty correctly.
     with IH5Record.create(tmp_ds_path) as ds:
         assert ds.is_empty
         ds.attrs["atr"] = "value"
@@ -447,7 +357,7 @@ def test_clear_empty(tmp_ds_path):
 
 
 def test_delete_record(tmp_ds_path):
-    # check that deleting closes and removes all files
+    # Deleting closes and removes all files.
     with IH5Record.create(tmp_ds_path) as ds:
         for _ in range(3):
             ds.commit()
@@ -461,7 +371,7 @@ def test_delete_record(tmp_ds_path):
 
 
 def test_get(tmp_ds_path):
-    # dict-like get method with default
+    # dict-like get method with default fallback value
     with IH5Record.create(tmp_ds_path) as ds:
         assert ds.get("foo") is None
         assert ds.get("foo", 123) == 123
@@ -490,7 +400,9 @@ def test_create_dataset(tmp_ds_path):
 
 
 # --------
-# check that exceptions are correctly triggered by manipulating data into invalid states
+# Test opening containers with various failures
+# by manipulating data into invalid states and
+# checking that exceptions are correctly triggered
 
 
 def test_check_ublock_inconsistent_dsuuid_fail(tmp_ds_path):
@@ -515,7 +427,7 @@ def test_check_ublock_inconsistent_checksum_fail(tmp_ds_path):
         ub.hdf5_hashsum = (
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         )
-        ub.save(ub._filename)
+        ub.save(ds._files[-1].filename)
 
     with pytest.raises(ValueError):
         IH5Record.open(tmp_ds_path)
@@ -553,10 +465,10 @@ def test_check_ublock_base_patch_idx_order_fail(tmp_ds_path):
         ds.commit()
         ub = ds._ublock(0)
         ub.patch_index = 123
-        ub.save(ub._filename)
+        ub.save(ds._files[0].filename)
 
         with pytest.raises(ValueError):
-            ds._check_ublock(ds._ublock(1), ds._ublock(0))
+            ds._check_ublock(ds._files[1].filename, ds._ublock(1), ds._ublock(0))
 
 
 def test_check_ublock_base_patch_uuid_mismatch_fail(tmp_ds_path):
@@ -577,19 +489,6 @@ def test_check_ublock_multiple_same_patch_uuid_fail(tmp_ds_path):
         ds.commit()
         ds.create_patch()
         ds._ublock(1).patch_uuid = ds._ublock(0).patch_uuid
-        ds.commit()
-
-    with pytest.raises(ValueError):
-        IH5Record.open(tmp_ds_path)
-
-
-@pytest.mark.skip(reason="FIXME")
-def test_check_ublock_patch_stub_fail(tmp_ds_path):
-    # make that there are multiple files with the same patch UUID
-    with IH5Record.create(tmp_ds_path) as ds:
-        ds.commit()
-        ds.create_patch()
-        ds._ublock(1).is_stub = True
         ds.commit()
 
     with pytest.raises(ValueError):

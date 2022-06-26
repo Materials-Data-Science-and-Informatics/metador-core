@@ -1,67 +1,58 @@
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, parse_obj_as
 
 import metador_core.schema.types as t
 from metador_core.ih5.record import IH5Record
 from metador_core.packer.util import MetadorValidationErrors
-from metador_core.schema.common import FileMeta, ImageMeta, TableMeta
-from metador_core.schema.core import PluginPkgMeta
 
-
-def parse_as(type_hint, val):
-    """Parse simple types into pydantic models."""
-
-    class DummyModel(BaseModel):
-        __root__: type_hint
-
-    return DummyModel(__root__=val).__root__
+# from metador_core.schema.common import FileMeta, ImageMeta, TableMeta
 
 
 def test_str_types():
     # nonempty_str
-    parse_as(t.nonempty_str, "a")
+    parse_obj_as(t.nonempty_str, "a")
     with pytest.raises(ValidationError):
-        parse_as(t.nonempty_str, "")
+        parse_obj_as(t.nonempty_str, "")
 
     # mimetype_str
-    parse_as(t.mimetype_str, "application/json")
-    parse_as(t.mimetype_str, "application/JSON;q=0.9;v=abc")
+    parse_obj_as(t.mimetype_str, "application/json")
+    parse_obj_as(t.mimetype_str, "application/JSON;q=0.9;v=abc")
     with pytest.raises(ValidationError):
-        parse_as(t.mimetype_str, "invalid/mime/type")
+        parse_obj_as(t.mimetype_str, "invalid/mime/type")
     with pytest.raises(ValidationError):
-        parse_as(t.mimetype_str, "invalid mime")
+        parse_obj_as(t.mimetype_str, "invalid mime")
     with pytest.raises(ValidationError):
-        parse_as(t.mimetype_str, "invalidMime")
+        parse_obj_as(t.mimetype_str, "invalidMime")
 
     # hashsum_str
-    parse_as(t.hashsum_str, "sha256:aebf")
-    parse_as(t.hashsum_str, "md5:aebf")
+    parse_obj_as(t.hashsum_str, "sha256:aebf")
+    parse_obj_as(t.hashsum_str, "sha512:aebf")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, "invalid:aebf")
+        parse_obj_as(t.hashsum_str, "wrong:aebf")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, "md5:invalid")
+        parse_obj_as(t.hashsum_str, "sha512:invalid")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, "md5")
+        parse_obj_as(t.hashsum_str, "sha256")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, "md5:")
+        parse_obj_as(t.hashsum_str, "sha256:")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, "aebf")
+        parse_obj_as(t.hashsum_str, "aebf")
     with pytest.raises(ValidationError):
-        parse_as(t.hashsum_str, ":aebf")
+        parse_obj_as(t.hashsum_str, ":aebf")
 
     # PintUnit
-    parse_as(t.PintUnit, "meter / (second * kg) ** 2")
-    parse_as(t.PintUnit, "dimensionless")
-    parse_as(t.PintUnit, t.PintUnit.Parsed("second"))
-    parse_as(t.PintUnit, "1")
+    parse_obj_as(t.PintUnit, "meter / (second * kg) ** 2")
+    parse_obj_as(t.PintUnit, "dimensionless")
+    parse_obj_as(t.PintUnit, t.PintUnit.Parsed("second"))
+    parse_obj_as(t.PintUnit, "1")
     with pytest.raises(ValidationError):
-        parse_as(t.PintUnit, "invalid")
+        parse_obj_as(t.PintUnit, "invalid")
     with pytest.raises(ValidationError):
-        parse_as(t.PintUnit, "2")
+        parse_obj_as(t.PintUnit, "2")
     with pytest.raises(ValidationError):
-        parse_as(t.PintUnit, "")
+        parse_obj_as(t.PintUnit, "")
     with pytest.raises(ValidationError):
-        parse_as(t.PintUnit, 123)
+        parse_obj_as(t.PintUnit, 123)
 
     class SomeModel(BaseModel):
         u: t.PintUnit
@@ -69,23 +60,7 @@ def test_str_types():
     SomeModel(u="meters * second").schema_json().lower().find("pint") >= 0  # type: ignore
 
 
-@pytest.mark.skip(reason="FIXME")
-def test_nodemeta():
-    # check that the union types are correct
-    assert set(NodeMeta.types()) == set([FileMeta, ImageMeta, TableMeta])
-
-    # check that parsing yields the desired object type
-    ret = NodeMeta.parse_obj(
-        {
-            "type": "table",
-            "title": "hello",
-            "columns": [{"title": "hello", "unit": "m"}],
-        }
-    )
-    assert isinstance(ret, TableMeta)
-
-
-@pytest.mark.skip(reason="FIXME")
+@pytest.mark.skip(reason="FIXME port to equivalent tests in new API")
 def test_filemeta(tmp_path, tmp_ds_path):
     # get metadata for a file, save to yaml, load from yaml, check it
     file = tmp_path / "myfile.txt"

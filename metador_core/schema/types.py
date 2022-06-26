@@ -15,9 +15,7 @@ nonempty_str = Annotated[str, Field(min_length=1)]
 mimetype_str = Annotated[str, Field(regex=r"^[^ /;]+/[^ /;]+(;[^ /;]+)*$")]
 
 # a hashsum string is to be prepended by the used algorithm
-# the INVALID hashsum is only there to allow dummy hashsum placeholders to be parsed
-# it should never end up in a serialized record!
-_hashalg_regex = f"(?:{'|'.join(list(_hash_alg.keys())+['INVALID'])})"
+_hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
 hashsum_str = Annotated[str, Field(regex=r"^" + _hashalg_regex + r":[0-9a-fA-F]+$")]
 
 

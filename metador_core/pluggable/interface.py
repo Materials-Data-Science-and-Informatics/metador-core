@@ -3,7 +3,7 @@
 import re
 from typing import Any, Dict
 
-from ..schema.core import EnvMeta, PluginPkgMeta
+from ..schema.core import PluginPkgMeta
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
