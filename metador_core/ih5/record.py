@@ -1,5 +1,5 @@
 """
-Management of immutable HDF5 container records.
+Immutable HDF5 container records.
 
 A record consists of a base container and a number of patch containers.
 This allows a record to work in settings where files are immutable, but still
@@ -46,6 +46,9 @@ def hashsum_file(filename: Path, skip_bytes: int = 0) -> str:
 
 class IH5UserBlock(BaseModel):
     """IH5 metadata object parser and writer for the HDF5 user block.
+
+    The user block stores technical administrative information linking together
+    multiple HDF5 files that form a base container + patch sequence.
 
     The userblock begins with the magic format string, followed by a newline,
     followed by a string encoding the length of the user block, followed by a newline,
@@ -155,17 +158,13 @@ class IH5Record:
     One file is a base container (with no linked predecessor state),
     the remaining files are a linear sequence of patch containers.
 
-    Runtime invariants:
+    Runtime invariants to be upheld before/after each method call (after __init__):
 
     * all files of an instance are open for reading (until `close()` is called)
     * all files in `_files` are in patch index order
     * at most one file is open in writable mode (if any, it is the last one)
     * modifications are possible only after `create` or `create_patch` was called
         and until `commit` or `discard_patch` was called, and at no other time
-
-    Only creation of and access to containers is supported.
-    Renaming or deleting a container collection is not supported.
-    For this, use `find_containers` and apply standard tools.
     """
 
     # Characters that may appear in a record name.
@@ -256,7 +255,7 @@ class IH5Record:
             raise ValueError("record is not open!")
 
     def _clear(self):
-        """Clear all contents."""
+        """Clear all contents of the record."""
         for k in self.attrs.keys():
             del self.attrs[k]
         for k in self.keys():
@@ -282,7 +281,8 @@ class IH5Record:
 
     @property
     def ih5_meta(self) -> List[IH5UserBlock]:
-        return [self._ublock(i) for i in range(len(self._files))]
+        """Return user block metadata, in container patch order."""
+        return [self._ublock(i).copy() for i in range(len(self._files))]
 
     @property
     def read_only(self) -> bool:
@@ -442,6 +442,9 @@ class IH5Record:
         After this, continuing to edit the writable container is prohibited.
         Instead, it is added to the record as a read-only base container or patch.
         """
+        if kwargs:
+            raise ValueError(f"Unknown keyword arguments: {kwargs}")
+
         self._expect_open()
         if not self._has_writable:
             raise ValueError("Record is read-only, nothing to commit!")
@@ -459,7 +462,7 @@ class IH5Record:
         self._has_writable = False
 
     def _fixes_after_merge(self, merged_file, ub):
-        """Hook for subclasses into merge process.
+        """Run hook for subclasses into merge process.
 
         The method is called after creating the merged container, but before
         updating its user block on disk.
@@ -491,7 +494,7 @@ class IH5Record:
         chksum = hashsum_file(cfile, skip_bytes=USER_BLOCK_SIZE)
         ub.hdf5_hashsum = chksum
 
-        self._fixes_after_merge(cfile, ub) # for subclass hooks
+        self._fixes_after_merge(cfile, ub)  # for subclass hooks
 
         self._set_ublock(-1, ub)
         ub.save(cfile)

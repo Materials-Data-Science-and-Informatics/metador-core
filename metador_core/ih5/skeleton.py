@@ -6,7 +6,6 @@ ignoring the actual data content (attribute values and datasets).
 This can be used to implement manifest file and support "patching in thin air",
 i.e. without having the actual container.
 """
-from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import h5py
@@ -87,8 +86,7 @@ def init_stub_base(target: IH5Record, src_ub: IH5UserBlock, src_skel: Dict[str, 
     """
     init_stub_skeleton(target, src_skel)
     # mark as base container
-    target._set_ublock(-1, src_ub.copy( update={"prev_patch": None}))
+    target._set_ublock(-1, src_ub.copy(update={"prev_patch": None}))
     # commit() will also fix the hashsum
     # passed arg is a marker flag (for IH5MF commit())
     target.commit(__is_stub__=True)
-

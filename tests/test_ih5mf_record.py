@@ -1,28 +1,34 @@
 """Test IH5MF record with manifest."""
 from pathlib import Path
 from uuid import uuid1
-from metador_core.ih5.record import IH5Record, IH5UserBlock
-from metador_core.ih5.manifest import IH5UBExtManifest, IH5MFRecord, IH5ManifestFile
 
 import pytest
+
+from metador_core.ih5.manifest import IH5Manifest, IH5MFRecord, IH5UBExtManifest
+from metador_core.ih5.record import IH5Record, IH5UserBlock
+
 
 def latest_manifest_filepath(ds):
     return ds._manifest_filepath(ds._files[-1].filename)
 
+
 def test_ubext_manifest():
     ub = IH5UserBlock.create()
     assert IH5UBExtManifest.get(ub) is None
-    ubext = IH5UBExtManifest(is_stub_container=True, manifest_uuid=uuid1(),
-                             manifest_hashsum="sha256:0")
+    ubext = IH5UBExtManifest(
+        is_stub_container=True, manifest_uuid=uuid1(), manifest_hashsum="sha256:0"
+    )
     ubext.update(ub)
     assert IH5UBExtManifest.get(ub) == ubext
+
 
 def test_fresh_record_no_manifest_exception(tmp_ds_path):
     with IH5MFRecord.create(tmp_ds_path) as ds:
         with pytest.raises(ValueError):
-            ds.manifest # fresh uncommitted record has no manifest
+            ds.manifest  # fresh uncommitted record has no manifest
         ds.commit()
-        ds.manifest # no exception now
+        ds.manifest  # no exception now
+
 
 def test_commit_with_exts(tmp_ds_path):
     with IH5MFRecord.create(tmp_ds_path) as ds:
@@ -45,7 +51,7 @@ def test_load_ih5mf_as_ih5(tmp_ds_path):
         ds.commit()
         mf_files.append(latest_manifest_filepath(ds))
 
-        assert len(ds.ih5_meta[-1].ub_exts.keys()) > 0 # userblock ext present
+        assert len(ds.ih5_meta[-1].ub_exts.keys()) > 0  # userblock ext present
 
     # Manifest files exist for each patch
     assert all(map(lambda x: Path(x).is_file(), mf_files))
@@ -56,12 +62,14 @@ def test_load_ih5mf_as_ih5(tmp_ds_path):
         assert ds["foo/bar"][()] == b"hello"
         assert ds["foo/baz"][()] == b"world"
 
+
 def test_commit_no_patch_fail(tmp_ds_path):
     # opening ih5mf with latest container lacking correct ub ext should fail
     with IH5MFRecord.create(tmp_ds_path) as ds:
         ds.commit()
-        with pytest.raises(ValueError): # not writable
+        with pytest.raises(ValueError):  # not writable
             ds.commit()
+
 
 def test_missing_ub_ext_fail(tmp_ds_path):
     # opening ih5mf with latest container lacking correct ub ext should fail
@@ -69,13 +77,14 @@ def test_missing_ub_ext_fail(tmp_ds_path):
         ds.commit()
     with IH5Record.open(tmp_ds_path) as ds:
         ds.create_patch()
-        ds.commit() # patch without manifest!
+        ds.commit()  # patch without manifest!
     with IH5MFRecord.open(tmp_ds_path) as ds:
         with pytest.raises(ValueError):  # no manifest
             ds.manifest
-        ds.create_patch() # create a patch just to add the manifest on commit
+        ds.create_patch()  # create a patch just to add the manifest on commit
         ds.commit()
-        ds.manifest # now exists
+        ds.manifest  # now exists
+
 
 def test_missing_latest_manifest_fail(tmp_ds_path):
     # opening ih5mf with latest container lacking manifest should fail
@@ -87,9 +96,10 @@ def test_missing_latest_manifest_fail(tmp_ds_path):
         ds.commit()
         ds_mf = latest_manifest_filepath(ds)
 
-    ds_mf.unlink() # kill latest manifest
+    ds_mf.unlink()  # kill latest manifest
     with pytest.raises(ValueError):
         IH5MFRecord.open(tmp_ds_path)
+
 
 def test_modified_latest_manifest_fail(tmp_ds_path):
     # opening ih5mf with latest container lacking manifest should fail
@@ -102,10 +112,11 @@ def test_modified_latest_manifest_fail(tmp_ds_path):
         ds_mf = latest_manifest_filepath(ds)
 
     with open(ds_mf, "w") as f:
-        f.write("{}") # overwrite manifest... changes hashsum
+        f.write("{}")  # overwrite manifest... changes hashsum
 
     with pytest.raises(ValueError):
         IH5MFRecord.open(tmp_ds_path)
+
 
 def test_create_stub_from_mf_and_patch(tmp_ds_path_factory):
     # Skeleton from manifest can be used to create a valid stub and patch it
@@ -136,6 +147,7 @@ def test_create_stub_from_mf_and_patch(tmp_ds_path_factory):
     with IH5MFRecord(files, manifest_file=mf2) as ds:
         assert ds["qux"][()] == b"patch"
 
+
 def test_merge_stub_fail(tmp_ds_path_factory):
     # Merging with a stub container fails
     ds_path = tmp_ds_path_factory()
@@ -158,41 +170,48 @@ def test_merge_stub_fail(tmp_ds_path_factory):
             stub.merge(merged_path)
         assert str(e).find("stub") >= 0
 
+
 def test_merge_correct(tmp_ds_path_factory):
     # Merging should preserve latest manifest
     ds1_path = tmp_ds_path_factory()
     ds2_path = tmp_ds_path_factory()
     mf1_path = ""
     files = []
+    # manifest extension names
+    ext1 = "test_mfext"
+    ext2 = "fresh_mfext"
     with IH5MFRecord.create(ds1_path) as ds:
+
         ds["foo/bar"] = "hello"
-        ds.commit(manifest_exts={"test_mfext": "hello"})
+        ds.commit(manifest_exts={ext1: "hello"})
         mf_v1 = ds.manifest
 
         ds.create_patch()
         ds["foo/baz"] = "world"
-        ds.commit()  
+        ds.manifest.manifest_exts[ext2] = "world"
+        ds.commit()
         mf_v2 = ds.manifest
 
         # new manifest should be fresh but inherit attached data
         assert mf_v1.manifest_uuid != mf_v2.manifest_uuid
-        assert mf_v1.manifest_exts == mf_v2.manifest_exts
+        assert mf_v1.manifest_exts.get(ext1) == mf_v2.manifest_exts.get(ext1)
+        assert mf_v2.manifest_exts.get(ext2) == "world"
 
         files = ds.containers
         mf1_path = latest_manifest_filepath(ds)
 
         ds.merge(ds2_path)
 
-
     with IH5MFRecord.open(ds2_path) as ds:
-        #we should open this successfully...
+        # we should open this successfully...
 
         # now check that the manifest agrees
         mf2_path = latest_manifest_filepath(ds)
-        mf1 = IH5ManifestFile.parse_file(mf1_path)
-        mf2 = IH5ManifestFile.parse_file(mf2_path)
+        mf1 = IH5Manifest.parse_file(mf1_path)
+        mf2 = IH5Manifest.parse_file(mf2_path)
         assert mf1 == mf2
-        assert "test_mfext" in mf2.manifest_exts  # also has the extension
+        assert ext1 in mf2.manifest_exts  # also has the extensions
+        assert ext2 in mf2.manifest_exts
 
         # create a new patch on top of merged container
         ds.create_patch()
