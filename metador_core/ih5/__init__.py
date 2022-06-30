@@ -5,13 +5,18 @@ values and attributes. It **does not** support [hard, symbolic or external
 links](https://docs.h5py.org/en/latest/high/group.html#link-classes),
 so the data must be self-contained and strictly hierarchical.
 
+
 **Correspondence of IH5 overlay classes and raw h5py classes:**
 
 | IH5 API      | h5py         |
 | ------------ | ------------ |
 | `IH5Record`  | [h5py.File](https://docs.h5py.org/en/latest/high/file.html) |
 | `IH5Group`   | [h5py.Group](https://docs.h5py.org/en/latest/high/group.html) |
-| `IH5Record` | [h5py.Dataset](https://docs.h5py.org/en/latest/high/dataset.html) |
+| `IH5Dataset` | [h5py.Dataset](https://docs.h5py.org/en/latest/high/dataset.html) |
+| `IH5AttributeManager` | [h5py.AttributeManager](https://docs.h5py.org/en/latest/high/attr.html) |
+
+Anything that can be done to an IH5 Group, Dataset or AttributeManager can also be done to
+the h5py counterparts.
 
 If you are missing some functionality from h5py in the overlay classes,
 please contact us or open an issue and we will see whether and how the missing
@@ -23,7 +28,7 @@ A quite minimal working example:
 
 ```python
 # just use IH5Record instead of h5py.File:
-from metador_core.ih5 import IH5Record
+from metador_core.ih5.container import IH5Record
 
 
 # initial creation:

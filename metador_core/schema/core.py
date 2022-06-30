@@ -1,35 +1,43 @@
-"""Metadata models for Metador."""
+"""Core Metadata schemas for Metador that are essential for the container API."""
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from pydantic import AnyHttpUrl, NonNegativeInt
+from pydantic import AnyHttpUrl
 
 from .interface import MetadataSchema
-from .types import nonempty_str
+from .types import nonempty_str, SemVerTuple
 
 
 class PluginRef(MetadataSchema):
-    """Reference to a metador plugin.
+    """(Partial) reference to a metador plugin.
 
-    This class is only there to be subclassed for specific "marker schemas".
-    Therefore it is not registered as a schema plugin (which are assumed to make sense).
+    This class can be subclassed for specific "marker schemas".
 
-    An abstract PluginRef is not a useful schema to register at a container node.
+    It is not registered as a schema plugin, because it is too general on its own.
     """
 
-    python_pkg: Optional[nonempty_str]
+    pkg: Optional[nonempty_str]
     """Name of the Python package containing the plugin."""
 
-    python_pkg_version: Optional[Tuple[int, int, int]]
-    """Version of Python package."""
+    pkg_version: Optional[SemVerTuple]
+    """Version of the Python package."""
 
-    plugin_group: Optional[nonempty_str]
-    """Metador pluggable, i.e. entry point group."""
+    group: Optional[nonempty_str]
+    """Metador pluggable group name, i.e. name of the entry point group."""
 
-    plugin_name: nonempty_str
-    """Registered entry point."""
+    name: nonempty_str
+    """Registered entry point name inside an entry point group."""
+
+
+class FullPluginRef(PluginRef):
+    """Fully qualified plugin reference."""
+
+    # make entries non-optional
+    pkg: nonempty_str
+    pkg_version: SemVerTuple
+    group: nonempty_str
 
 
 class PluginPkgMeta(MetadataSchema):
@@ -38,7 +46,7 @@ class PluginPkgMeta(MetadataSchema):
     name: nonempty_str
     """Name of the Python package."""
 
-    version: Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
+    version: SemVerTuple
     """Version of the Python package."""
 
     repository_url: Optional[AnyHttpUrl] = None
@@ -46,6 +54,19 @@ class PluginPkgMeta(MetadataSchema):
 
     plugins: Dict[str, List[str]] = {}
     """Dict from metador plugin groups to list of entrypoint names (provided plugins)."""
+
+    @classmethod
+    def for_package(cls, package_name: str) -> PluginPkgMeta:
+        """Get metadata about a Metador plugin package."""
+        # avoid circular import by importing here
+        from ..pluggable.bootstrap import _pgb_package_meta
+        from ..pluggable.utils import pkgmeta_from_dist
+        from importlib_metadata import distribution
+
+        ret = _pgb_package_meta.get(package_name)  # look up in registered
+        if ret is None:  # won't be there if its not registering plugins (yet)...
+            ret = pkgmeta_from_dist(distribution(package_name))
+        return ret
 
 
 class EnvMeta(MetadataSchema):

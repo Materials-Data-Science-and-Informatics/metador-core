@@ -4,7 +4,8 @@ import re
 
 from pint import Unit
 from pint.errors import UndefinedUnitError
-from pydantic import Field
+from pydantic import Field, NonNegativeInt
+from typing import Tuple
 from typing_extensions import Annotated
 
 from ..hashutils import _hash_alg
@@ -17,6 +18,8 @@ mimetype_str = Annotated[str, Field(regex=r"^[^ /;]+/[^ /;]+(;[^ /;]+)*$")]
 # a hashsum string is to be prepended by the used algorithm
 _hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
 hashsum_str = Annotated[str, Field(regex=r"^" + _hashalg_regex + r":[0-9a-fA-F]+$")]
+
+SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 
 
 class PintUnit:

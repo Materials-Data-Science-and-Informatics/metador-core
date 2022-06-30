@@ -2,7 +2,7 @@ import h5py
 import numpy as np
 import pytest
 
-from metador_core.ih5.containers import IH5Dataset, IH5Group, IH5Record
+from metador_core.ih5.container import IH5Dataset, IH5Group, IH5Record
 from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, H5Type, IH5InnerNode, IH5Node
 from metador_core.ih5.skeleton import ih5_type_skeleton
 

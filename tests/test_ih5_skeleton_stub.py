@@ -1,7 +1,7 @@
 """Test skeleton and stub creation (decoupled from manifest file)."""
 import pytest
 
-from metador_core.ih5.containers import IH5Record
+from metador_core.ih5.container import IH5Record
 from metador_core.ih5.skeleton import ih5_skeleton, init_stub_skeleton, init_stub_base
 
 def test_ih5_skeleton(tmp_ds_path_factory):

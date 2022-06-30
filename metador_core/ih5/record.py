@@ -22,7 +22,7 @@ from uuid import UUID, uuid1
 
 import h5py
 from pydantic import BaseModel, Field, PrivateAttr
-from typing_extensions import Annotated, Final
+from typing_extensions import Annotated, Final, Literal
 
 from ..hashutils import qualified_hashsum
 from ..schema.types import hashsum_str
@@ -188,11 +188,16 @@ class IH5Record:
         """Given a record path, return path to canonical base container name."""
         return Path(f"{record_path}{cls.FILE_EXT}")
 
+    def _infer_name(self) -> str:
+        """Inferred name of record (i.e. common filename prefix of the containers)."""
+        path = Path(self._files[0].filename)
+        return path.name.split(self.FILE_EXT)[0].split(self.PATCH_INFIX)[0]
+
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
         path = Path(self._files[0].filename).parent
         patch_index = self._ublock(-1).patch_index + 1
-        res = f"{path}/{self.name}{self.PATCH_INFIX}{patch_index}{self.FILE_EXT}"
+        res = f"{path}/{self._infer_name()}{self.PATCH_INFIX}{patch_index}{self.FILE_EXT}"
         return Path(res)
 
     def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
@@ -269,12 +274,6 @@ class IH5Record:
         return self._ublock(0).record_uuid
 
     @property
-    def name(self) -> str:
-        """Inferred name of record (i.e. common filename prefix of the containers)."""
-        path = Path(self._files[0].filename)
-        return path.name.split(self.FILE_EXT)[0].split(self.PATCH_INFIX)[0]
-
-    @property
     def containers(self) -> List[Path]:
         """List of container filenames this record consists of."""
         return [Path(f.filename) for f in self._files]
@@ -288,6 +287,14 @@ class IH5Record:
     def read_only(self) -> bool:
         """Return whether this record is read-only at the moment."""
         return not self._has_writable
+
+    # for consistency with h5py.File
+    @property
+    def mode(self) -> Literal["r", "r+"]:
+        if self.read_only:
+            return "r"
+        else:
+            return "r+"
 
     @property
     def is_empty(self) -> bool:
@@ -520,35 +527,16 @@ class IH5Record:
 
     # ---- pass through HDF5 group methods to an implicit root group instance ----
 
+    # helper, more efficient than going through self["/"] in the following methods
     def _root_group(self) -> IH5Group:
         return IH5Group(self._files)
 
-    @property
-    def attrs(self):
-        """See [h5py.Group.attrs](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.attrs)."""
-        return self._root_group().attrs
+    def __getattr__(self, key):
+        # takes care of forwarding all non-special methods
+        return getattr(self._root_group(), key)
 
-    def create_dataset(self, gpath: str, *args, **kwargs) -> IH5Dataset:
-        """See [h5py.Group.create_group](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.create_group)."""
-        return self._root_group().create_dataset(gpath, *args, **kwargs)
-
-    def create_group(self, gpath: str) -> IH5Group:
-        """See [h5py.Group.create_group](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.create_group)."""
-        return self._root_group().create_group(gpath)
-
-    def visit(self, func: Callable[[str], Optional[Any]]) -> Any:
-        """See [h5py.Group.visit](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.visit)."""
-        return self._root_group().visit(func)
-
-    def visititems(self, func: Callable[[str, object], Optional[Any]]) -> Any:
-        """See [h5py.Group.visititems](https://docs.h5py.org/en/latest/high/group.html#h5py.Group.visititems)."""
-        return self._root_group().visititems(func)
-
-    def __iter__(self):
-        return iter(self._root_group())
-
-    def __contains__(self, key):
-        return key in self._root_group()
+    def __getitem__(self, key):
+        return self._root_group()[key]
 
     def __setitem__(self, key, value):
         self._root_group()[key] = value
@@ -556,20 +544,11 @@ class IH5Record:
     def __delitem__(self, key):
         del self._root_group()[key]
 
-    def __getitem__(self, key):
-        return self._root_group()[key]
+    def __iter__(self):
+        return iter(self._root_group())
+
+    def __contains__(self, key):
+        return key in self._root_group()
 
     def __len__(self):
         return len(self._root_group())
-
-    def get(self, key: str, default=None):
-        return self._root_group().get(key, default)
-
-    def keys(self):
-        return self._root_group().keys()
-
-    def values(self):
-        return self._root_group().values()
-
-    def items(self):
-        return self._root_group().items()

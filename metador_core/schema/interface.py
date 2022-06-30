@@ -6,12 +6,22 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 from pydantic_yaml import YamlModelMixin
 
-# from ..ih5.record import IH5Record, IH5Dataset
+import h5py
+from ..ih5.protocols import H5FileLike, H5DatasetLike
 from ..packer.util import MetadorValidationErrors
 from .types import PintUnit
+from typing import Union, Optional
 
-# TODO: needs to be decoupled from stubs and IH5 and hidden into metador interface
-# also will save us from circular imports
+
+def schemas():
+    """Access the schema plugin interface."""
+    from .pluggable import PluggableSchema  # avoid circular import
+    return PluggableSchema
+
+
+def schema_ref(schema_name: str):
+    """Return a FullPluginRef for a schema based on its registered name."""
+    return schemas().fullname(schema_name)
 
 
 class MetadataSchema(YamlModelMixin, BaseModel):
@@ -22,6 +32,18 @@ class MetadataSchema(YamlModelMixin, BaseModel):
     class Config:
         use_enum_values = True  # to serialize enums properly
         json_encoders = {PintUnit.Parsed: lambda x: str(x)}  # for SI units
+
+    @classmethod
+    def parent_schema(cls):
+        """Override to declare parent schema plugin as FullPluginRef.
+
+        By declaring a parent schema you agree to the following contract:
+        Any data that can be loaded using this schema MUST also be
+        loadable by the parent schema (with possible information loss).
+        """
+        return None
+
+    # Convenience functions for packers (TODO move to packer interface)
 
     @classmethod
     def from_file(cls, path: Path):
@@ -37,59 +59,60 @@ class MetadataSchema(YamlModelMixin, BaseModel):
             errs.add(str(path), str(e))
             raise errs
 
-    # @classmethod
-    # def from_record(cls, rec: IH5Record, path: str):
-    #     """Get JSON-serialized metadata from a record as a model instance.
+    @classmethod
+    def from_container(cls, rec: H5FileLike, path: str):
+        """Load JSON-serialized metadata from a container.
 
-    #     If the path is not existing or cannot be parsed, will raise MetadorValidationErrors.
-    #     If the path exists, but is a stub value, will return None.
-    #     Otherwise, will return the parsed model instance.
-    #     """
-    #     if path not in rec:
-    #         raise MetadorValidationErrors({path: ["not found!"]})
-    #     val = None
-    #     try:
-    #         val = rec[path]
-    #         if not isinstance(val, IH5Dataset):
-    #             raise MetadorValidationErrors({path: ["Expected dataset!"]})
-    #         dat = val[()]
-    #         if isinstance(dat, h5py.Empty):
-    #             return None
-    #         else:
-    #             return cls.parse_raw(dat, content_type="application/json")
-    #     except (TypeError, JSONDecodeError) as e:
-    #         msg = f"Cannot parse {type(val).__name__} as JSON: {str(e)}"
-    #         raise MetadorValidationErrors({path: [msg]})
-    #     except ValidationError as e:
-    #         raise MetadorValidationErrors({path: [str(e)]})
+        If the path is not existing or cannot be parsed, will raise MetadorValidationErrors.
+        If the path exists, but is a stub value (h5py.Empty), will return None.
+        Otherwise, will return the parsed model instance.
+        """
+        if path not in rec:
+            raise MetadorValidationErrors({path: ["not found!"]})
+        val = None
+        try:
+            val = rec[path]
+            if not isinstance(val, H5DatasetLike):
+                raise MetadorValidationErrors({path: ["Expected dataset!"]})
+            dat = val[()]
+            if isinstance(dat, h5py.Empty):
+                return None
+            else:
+                assert isinstance(dat, bytes)
+                return cls.parse_raw(dat, content_type="application/json")
+        except (TypeError, JSONDecodeError) as e:
+            msg = f"Cannot parse {type(val).__name__} as JSON: {str(e)}"
+            raise MetadorValidationErrors({path: [msg]})
+        except ValidationError as e:
+            raise MetadorValidationErrors({path: [str(e)]})
 
-    # @classmethod
-    # def from_path(cls, path: Union[Path, str], record: Optional[IH5Record] = None):
-    #     """Read instance from a file path or from a path relative to a given record.
+    @classmethod
+    def from_path(cls, path: Union[Path, str], record: Optional[H5FileLike] = None):
+        """Read instance from a file path or from a path relative to a given record.
 
-    #     JSON and YAML supported for file paths,
-    #     only JSON allowed from record datasets and attributes.
+        JSON and YAML supported for file paths,
+        only JSON allowed from record datasets and attributes.
 
-    #     Wraps `from_record` and `from_file` in a unified function.
-    #     """
-    #     if record:
-    #         return cls.from_record(record, str(path))
-    #     else:
-    #         return cls.from_file(Path(path))
+        Wraps `from_record` and `from_file` in a unified function.
+        """
+        if record:
+            return cls.from_container(record, str(path))
+        else:
+            return cls.from_file(Path(path))
 
-    # @classmethod
-    # def check_path(cls, path: Union[Path, str], record: Optional[IH5Record] = None):
-    #     """Check instance at a file path or a path inside a given record.
+    @classmethod
+    def check_path(cls, path: Union[Path, str], record: Optional[H5FileLike] = None):
+        """Check instance at a file path or a path inside a container.
 
-    #     JSON and YAML supported for file paths,
-    #     only JSON allowed from record datasets and attributes.
+        JSON and YAML supported for file paths,
+        only JSON allowed from record datasets and attributes.
 
-    #     Will treat `h5py.Empty` as valid metadata (in order to work for stub records).
+        Will treat `h5py.Empty` as valid metadata (in order to work for stub records).
 
-    #     Returns errors if any.
-    #     """
-    #     try:
-    #         cls.from_path(path, record=record)
-    #     except MetadorValidationErrors as e:
-    #         return e
-    #     return MetadorValidationErrors()
+        Returns errors if any.
+        """
+        try:
+            cls.from_path(path, record=record)
+        except MetadorValidationErrors as e:
+            return e
+        return MetadorValidationErrors()

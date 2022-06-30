@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 import pytest
 
-from metador_core.ih5.containers import IH5Record, IH5UserBlock
+from metador_core.ih5.container import IH5Record, IH5UserBlock
 
 
 def test_open_empty_record():
@@ -65,7 +65,7 @@ def test_create_open(tmp_ds_path):
     assert len(ds.containers) == 1
     assert len(IH5Record.find_containers(tmp_ds_path)) == 1
     assert str(ds.containers[0]).find(str(tmp_ds_path)) == 0
-    assert ds.name == tmp_ds_path.name
+    assert ds._infer_name() == tmp_ds_path.name
     assert ds.uuid == ds.ih5_meta[0].record_uuid
 
     # add some data

@@ -1,14 +1,14 @@
 """Base functionality for declaring validated plugin types for Metador."""
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from importlib_metadata import entry_points
+from importlib_metadata import entry_points, distribution
 from typing_extensions import Final
 
 from ..schema.core import PluginPkgMeta
 from .interface import PGB_GROUP_PREFIX, Pluggable
+from .utils import pkgmeta_from_dist
 
 # get all entrypoints
 _eps = entry_points()
@@ -17,39 +17,6 @@ _eps = entry_points()
 # Used as global cache for looking up info about required packages.
 # (will be exposed through Pluggable)
 _pgb_package_meta: Dict[str, PluginPkgMeta] = {}
-
-
-def pkgmeta_from_dist(dist):
-    """Extract required metadata from importlib_metadata distribution object."""
-    ver = dist.version
-    if not re.fullmatch("[0-9]+\\.[0-9]+\\.[0-9]+", ver):
-        msg = f"Invalid version string of {dist.name}: {ver}"
-        raise TypeError(msg)
-    ver = tuple(map(int, ver.split(".")))
-
-    epgs = filter(
-        lambda x: x.startswith(PGB_GROUP_PREFIX),
-        dist.entry_points.groups,
-    )
-    eps = {
-        epg.lstrip(PGB_GROUP_PREFIX): list(
-            map(lambda x: x.name, dist.entry_points.select(group=epg))
-        )
-        for epg in epgs
-    }
-
-    def is_repo_url(kv):
-        return kv[0] == "Project-URL" and kv[1].startswith("Repository,")
-
-    repo_url: Optional[str] = None
-    try:
-        repo_url = next(filter(is_repo_url, dist.metadata.items()))
-        repo_url = repo_url[1].split()[1]  # from "Repository, http://..."
-    except StopIteration:
-        pass
-    return PluginPkgMeta(
-        name=dist.name, version=ver, plugins=eps, repository_url=repo_url
-    )
 
 
 class LoadedPlugin:
@@ -91,7 +58,7 @@ Dict of Pluggable name -> Plugin entrypoint name -> Entrypoint info object.
 """
 
 
-def project_eps(pgb_name, func):
+def _project_eps(pgb_name, func):
     """Project out a component of the entry point objects of a pluggable group."""
     return {k: func(v) for k, v in _loaded_pluggables[pgb_name].items()}
 
@@ -99,7 +66,7 @@ def project_eps(pgb_name, func):
 # load actual registered pluggables
 for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
     # check the pluggable itself
-    Pluggable.check_plugin_common(pgb_name, pgb)
+    Pluggable._check_plugin_common(pgb_name, pgb)
     if pgb_name in _loaded_pluggables:
         msg = f"Pluggable name already registered: '{pgb_name}' ({pgb})"
         raise TypeError(msg)
@@ -114,15 +81,23 @@ for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
 
     # on success attach the loaded ones to the class
     pgb.ep._NAME = pgb_name
-    pgb.ep._LOADED_PLUGINS = project_eps(pgb_name, lambda v: v.ep)
-    pgb.ep._PLUGIN_PKG = project_eps(pgb_name, lambda v: v.pkg_name)
+    pgb.ep._LOADED_PLUGINS = _project_eps(pgb_name, lambda v: v.ep)
+    pgb.ep._PLUGIN_PKG = _project_eps(pgb_name, lambda v: v.pkg_name)
 
-# set up shared lookup for package metadata
+# set up shared lookup for package metadata, shared by all plugin groups
 Pluggable._NAME = PGB_PLUGGABLE
 Pluggable._PKG_META = _pgb_package_meta
 
+# the core package is the one registering the "schema" plugin group.
+# Use that knowledge to hack in that this package also provides "pluggable":
+_this_pkg_name = _loaded_pluggables["pluggable"]["schema"].pkg_name
+_pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
+
+# take care of setting up the Pluggable group object, as its not fully initialized yet:
+
 # Manually append the pluggable meta-interface as a proper pluggable itself
-Pluggable._LOADED_PLUGINS = project_eps(PGB_PLUGGABLE, lambda v: v.ep)
+Pluggable._LOADED_PLUGINS = _project_eps(PGB_PLUGGABLE, lambda v: v.ep)
 Pluggable._LOADED_PLUGINS[PGB_PLUGGABLE] = Pluggable
-Pluggable._PLUGIN_PKG = project_eps(PGB_PLUGGABLE, lambda v: v.pkg_name)
-Pluggable._PLUGIN_PKG[PGB_PLUGGABLE] = Pluggable._PLUGIN_PKG["schema"]
+Pluggable._PLUGIN_PKG = _project_eps(PGB_PLUGGABLE, lambda v: v.pkg_name)
+# register this package as provider of pluggables (this package actually registers schema)
+Pluggable._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name

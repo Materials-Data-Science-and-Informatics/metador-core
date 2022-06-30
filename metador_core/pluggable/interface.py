@@ -3,10 +3,15 @@
 import re
 from typing import Any, Dict
 
-from ..schema.core import PluginPkgMeta
+from ..schema.core import PluginPkgMeta, FullPluginRef
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
+
+# TODO: sub-pluggables (e.g. subtypes of schema plugins)
+# when we get to mappings with special properties that we want to mark
+# each child should also count for the parent.
+# For now a flat system suffices.
 
 
 class PluggableMetaclass(type):
@@ -55,17 +60,7 @@ class Pluggable(metaclass=PluggableMetaclass):
     """
 
     @classmethod
-    def packages(cls) -> Dict[str, PluginPkgMeta]:
-        """Return metadata of all packages providing metador plugins."""
-        return dict(cls._PKG_META)
-
-    @classmethod
-    def provider(cls, ep_name: str) -> PluginPkgMeta:
-        """Return package metadata of Python package providing this plugin."""
-        return cls._PKG_META[cls._PLUGIN_PKG[ep_name]]
-
-    @classmethod
-    def check_plugin_common(cls, ep_name: str, ep: Any):
+    def _check_plugin_common(cls, ep_name: str, ep: Any):
         """Perform common checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -75,12 +70,32 @@ class Pluggable(metaclass=PluggableMetaclass):
             raise TypeError(msg)
 
     @classmethod
+    def packages(cls) -> Dict[str, PluginPkgMeta]:
+        """Return metadata of all packages providing metador plugins."""
+        return dict(cls._PKG_META)
+
+    @classmethod
+    def fullname(cls, ep_name) -> FullPluginRef:
+        pkginfo = cls.provider(ep_name)
+        return FullPluginRef(
+            pkg=pkginfo.name,
+            pkg_version=pkginfo.version,
+            group=cls.name,
+            name=ep_name,
+        )
+
+    @classmethod
+    def provider(cls, ep_name: str) -> PluginPkgMeta:
+        """Return package metadata of Python package providing this plugin."""
+        return cls._PKG_META[cls._PLUGIN_PKG[ep_name]]
+
+    @classmethod
     def check(cls, ep_name: str, ep: Any):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
         """
-        cls.check_plugin_common(ep_name, ep)
+        cls._check_plugin_common(ep_name, ep)
         cls.check_plugin(ep_name, ep)
 
     @classmethod

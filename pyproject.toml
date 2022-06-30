@@ -19,6 +19,7 @@ pandas = "^1.4.1"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
 Pillow = "^9.1.1"
 importlib-metadata = "^4.11.4"
+wrapt = "^1.14.1"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.17.0"
@@ -35,9 +36,11 @@ packer = "metador_core.packer.pluggable:PluggablePacker"
 
 [tool.poetry.plugins.metador_schema]
 # Metador supports entry-point-based custom metadata schemas.
-core_plugin = "metador_core.schema.core:PluginPkgMeta"
-core_env = "metador_core.schema.core:EnvMeta"
+# the following one is mandatory and is used in every container
+metador_container_env = "metador_core.schema.core:EnvMeta"
+# this one only is mandatory for containers that were packed by a packer plugin
 packer_info = "metador_core.packer.interface:PackerInfo"
+# these are optional and can be used by some packer
 common_file  = "metador_core.schema.common:FileMeta"
 common_image = "metador_core.schema.common:ImageMeta"
 common_table = "metador_core.schema.common:TableMeta"

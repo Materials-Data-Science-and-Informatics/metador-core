@@ -55,17 +55,17 @@ class IH5Manifest(BaseModel):
             manifest_exts=exts,
         )
 
-    def to_bytes(self) -> bytes:
-        """Serialize and return bytes."""
+    def __bytes__(self) -> bytes:
+        """Serialize to JSON and return UTF-8 encoded bytes to be written in a file."""
         # add a newline, as otherwise behaviour with text editors will be confusing
         # (e.g. vim automatically adds a trailing newline that it hides)
         # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
         return (self.json(indent=2) + "\n").encode(encoding="utf-8")
 
     def save(self, path: Path):
-        """Save manifest (as returned by to_bytes) into a file."""
+        """Save manifest (as returned by bytes()) into a file."""
         with open(path, "wb") as f:
-            f.write(self.to_bytes())
+            f.write(bytes(self))
             f.flush()
 
 
@@ -234,7 +234,7 @@ class IH5MFRecord(IH5Record):
         IH5UBExtManifest(
             is_stub_container=is_stub,
             manifest_uuid=mf.manifest_uuid,
-            manifest_hashsum=qualified_hashsum(mf.to_bytes()),
+            manifest_hashsum=qualified_hashsum(bytes(mf)),
         ).update(new_ub)
 
         # try writing new container

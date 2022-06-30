@@ -10,7 +10,7 @@ from PIL import Image
 from typing_extensions import Literal
 
 from ..hashutils import file_hashsum
-from .interface import MetadataSchema
+from .interface import MetadataSchema, schema_ref
 from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 
@@ -20,9 +20,6 @@ class FileMeta(MetadataSchema):
     The type is preferably given as mime-type, otherwise implied py file extension.
     For previews, the shown title is the provided title, otherwise the file name.
     """
-
-    type: Literal["file"]
-
     filename: nonempty_str
     hashsum: hashsum_str
     mimetype: Optional[mimetype_str] = None
@@ -36,7 +33,6 @@ class FileMeta(MetadataSchema):
         Title will be left empty.
         """
         return FileMeta(
-            type="file",
             filename=path.name,
             hashsum=file_hashsum(path),
             mimetype=magic.from_file(path, mime=True),
@@ -44,11 +40,13 @@ class FileMeta(MetadataSchema):
 
 
 class ImageMeta(FileMeta):
-    type: Literal["image"]  # type: ignore
-
     # dimensions in pixels
     width: int
     height: int
+
+    @classmethod
+    def parent_schema(cls):
+        return schema_ref("common_file")
 
     @classmethod
     def for_file(cls, path: Path) -> FileMeta:
@@ -60,7 +58,6 @@ class ImageMeta(FileMeta):
         with Image.open(path) as img:
             width, height = img.size
         return ImageMeta(
-            type="image",
             filename=path.name,
             hashsum=file_hashsum(path),
             mimetype=magic.from_file(path, mime=True),

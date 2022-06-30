@@ -80,6 +80,15 @@ class IH5Node:
         """
         return hash((id(self._files), self._gpath, self._cidx))
 
+    def _parent_path(self):
+        """Return path of the parent node (the root is its own parent)."""
+        if self._gpath == "/":
+            return "/"
+        segs = self._gpath.split("/")[:-1]
+        if segs == ['']:
+            return "/"
+        return "/".join(segs)
+
     @property
     def name(self) -> str:
         return self._gpath
@@ -466,6 +475,10 @@ class IH5Dataset(IH5Node):
         self._expect_open()
         return IH5AttributeManager(self._files, self._gpath, self._cidx)
 
+    @property
+    def parent(self):
+        return IH5Group(self._files)[self._parent_path()]
+
     # for a dataset, instead of paths the numpy data is indexed. at this level
     # the patching mechanism ends, so it's just passing through to h5py
 
@@ -499,6 +512,10 @@ class IH5Dataset(IH5Node):
 
 class IH5Group(IH5InnerNode):
     """`IH5Node` representing a `h5py.Group`."""
+
+    @property
+    def parent(self):
+        return self[self._parent_path()]
 
     @classmethod
     def _latest_container_idx(cls, files, gpath) -> Optional[int]:
