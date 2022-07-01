@@ -68,6 +68,8 @@ and when whe major version update happens, the migration consists of simply rena
 """
 from __future__ import annotations
 
+from itertools import dropwhile
+from uuid import uuid1
 from typing import (
     Optional,
     List,
@@ -76,8 +78,8 @@ from typing import (
     ValuesView,
     ItemsView,
     Set,
-    Tuple,
     Dict,
+    Tuple
 )
 from typing_extensions import Final
 
@@ -106,10 +108,13 @@ METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}toc"
 """Path of group with the Metador metadata index structure of the container."""
 
 
-def _is_metador_path(path: str) -> bool:
-    """Returns True iff the path of this node is Metador-internal."""
+def _is_metador_path(path: str, pref: str = METADOR_PREF) -> bool:
+    """Returns True iff the path of this node is Metador-internal (metador_*).
+
+    Optional argument can set a different prefix that path segments are checked for.
+    """
     # first case is for relative paths, second for later path segments and absolute paths
-    return path.startswith(METADOR_PREF) or path.find(f"/{METADOR_PREF}") >= 0
+    return path.startswith(pref) or path.find(f"/{pref}") >= 0
 
 
 class ROAttributeManager(wrapt.ObjectProxy):
@@ -140,7 +145,13 @@ class ROAttributeManager(wrapt.ObjectProxy):
 
 
 class MetadorNode(wrapt.ObjectProxy):
-    """Wrapper for h5py and IH5 Groups and Datasets providing Metador-specific features."""
+    """Wrapper for h5py and IH5 Groups and Datasets providing Metador-specific features.
+
+    In addition to the Metadata management, also provides helpers to reduce possible
+    mistakes in implementing interfaces by allowing to mark nodes as read_only
+    (regardless of the writability of the underlying opened container) and as
+    local_only (restricting access to data and metadata that is not below this node).
+    """
 
     def __init__(self, mc: MetadorContainer, node, **kwargs):
         super().__init__(node)
@@ -173,7 +184,7 @@ class MetadorNode(wrapt.ObjectProxy):
     def _child_node_kwargs(self):
         """Return kwargs to be passed to a child node.
 
-        Ensures that read_only and local_only status is passed down."""
+        Ensures that read_only and local_only status is passed down correctly."""
         return {
             "read_only": self.read_only,
             "local_only": self.local_only,
@@ -191,7 +202,7 @@ class MetadorNode(wrapt.ObjectProxy):
         else:
             return val
 
-    # make it transparent
+    # make wrapper transparent
 
     def __repr__(self):
         return repr(self.__wrapped__)
@@ -220,6 +231,7 @@ class MetadorNode(wrapt.ObjectProxy):
 
     @property
     def meta(self) -> MetadorMeta:
+        """Access the interface to metadata attached to this node."""
         return MetadorMeta(self)
 
     # wrap existing methods as needed
@@ -257,7 +269,7 @@ class MetadorNode(wrapt.ObjectProxy):
 # TODO: can this be done somehow with wrapt.decorator but still without boilerplate?
 # problem is it wants a function, but we need to look it up by name first
 # so we hand-roll the decorator for now.
-def _wrap_method(method: str, is_read_only: bool = False):
+def _wrap_method(method: str, is_read_only_method: bool = False):
     """Wrap a method called on a HDF5 entity.
 
     Prevents user from creating or deleting reserved entities/names by hand.
@@ -273,13 +285,15 @@ def _wrap_method(method: str, is_read_only: bool = False):
             msg = f"Trying to use {method} on a Metador-internal path: '{name}'"
             raise ValueError(msg)
 
-        if not is_read_only and obj.read_only:
+        if obj.local_only and name[0] == "/":
+            msg = "This entity is marked as local_only! Cannot use an absolute path!"
+            raise ValueError(msg)
+
+        if not is_read_only_method and obj.read_only:
             msg = "This entity is marked as read_only!"
             raise ValueError(msg)
 
         ret = getattr(obj.__wrapped__, method)(name, *args, **kwargs)
-        # if need_toc_sync:
-        #     obj._sync
         return obj._wrap_if_node(ret)
 
     return wrapped_method
@@ -288,15 +302,20 @@ def _wrap_method(method: str, is_read_only: bool = False):
 class MetadorGroup(MetadorNode):
     """Wrapper for a HDF5 Group."""
 
-    get = _wrap_method("get", is_read_only=True)
-    __getitem__ = _wrap_method("__getitem__", is_read_only=True)
+    # these access entities in read-only way:
+
+    get = _wrap_method("get", is_read_only_method=True)
+    __getitem__ = _wrap_method("__getitem__", is_read_only_method=True)
+
+    # these just create new entities with no metadata attached:
+
     __setitem__ = _wrap_method("__setitem__")
     create_group = _wrap_method("create_group")
     require_group = _wrap_method("require_group")
     create_dataset = _wrap_method("create_dataset")
     require_dataset = _wrap_method("require_dataset")
 
-    # following all must be filtered to hide metador-specific structures
+    # following all must be filtered to hide metador-specific structures:
 
     # must wrap nodes passed into the callback function and filter visited names
     def visititems(self, func):
@@ -314,7 +333,9 @@ class MetadorGroup(MetadorNode):
 
         return self.visititems(wrapped_func)
 
-    # filter the items, derive other filtered container-like functions based on that
+    # following also depend on the filtered sequence, directly
+    # filter the items, derive other related functions based on that
+
     def items(self):
         return (
             (k, self._wrap_if_node(v))
@@ -339,16 +360,18 @@ class MetadorGroup(MetadorNode):
 
     # these we can take care of but are a bit more tricky to think through
 
-    # special case: when we delete, we must also delete the metadata
-    # and sync the toc
-    # -> iterate all stored objects, prune links in TOC
     def __delitem__(self, key):
-        _wrap_method("__delitem__")(self, key)
-        print("TODO: cleanup toc")
-        raise NotImplementedError
+        node = self[key]
+        # clean up metadata (recursively, if a group)
+        node.meta._destroy()
+        if isinstance(node, MetadorGroup):
+            node.visititems(lambda _, node: node.meta._destroy())
+        # kill the actual data
+        return _wrap_method("__delitem__")(self, key)
 
     def move(self, source: str, dest: str):
-        # TODO: this needs the relinking of all metadata TOC entries
+        # TODO: this needs the relinking of all moved metadata objects in the TOC
+        # first do move, on success move metadata
         raise NotImplementedError
 
     def copy(self, source, dest, **kwargs):
@@ -363,7 +386,8 @@ class MetadorGroup(MetadorNode):
         # also disallow setting the expand_* and set them to true, shallow=False
         raise NotImplementedError
 
-    # some features we simply won't support
+    # anything else we simply won't support
+    # def __getattr__(self, key):
 
     def create_virtual_dataset(self, *args, **kwargs):
         raise AttributeError("Unsupported operation.")
@@ -396,42 +420,54 @@ class MetadorContainer(wrapt.ObjectProxy):
     """
 
     def _find_orphan_meta(self) -> List[str]:
-        """Return list of paths to metadata that has no user node anymore."""
+        """Return list of paths to metadata that has no corresponding user node anymore."""
         ret: List[str] = []
 
         def collect_orphans(name: str):
-            if MetadorMeta._is_meta_dir(name):
-                if MetadorMeta._data_dir(name) not in self:
+            if _is_meta_dir(name):
+                if _data_path(name) not in self:
                     ret.append(name)
 
         self.__wrapped__.visit(collect_orphans)
         return ret
+
+    def repair(self, keep_orphans: bool = True):
+        """Repair container structure on best-effort basis.
+
+        This will ensure that the TOC points to existing metadata objects
+        and that all metadata objects are listed in the TOC.
+
+        If keep_orphans = False, will erase metadata not belonging to an existing node.
+
+        Notice that missing schema plugin dependency metadata cannot be restored.
+        """
+        if not keep_orphans:
+            for path in self._find_orphan_meta():
+                del self.__wrapped__[path]
+        self.toc._find_broken_links(repair=True)
+        self.toc._find_missing_links(repair=True)
 
     def __init__(self, obj: H5FileLike):
         if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
             raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
         super().__init__(obj)
 
-        ver = self.version
+        ver = self.spec_version
         if ver is None and self.mode == "r":
             msg = "Container is read-only and does not look like a Metador container! "
             msg += "Please open in writable mode to initialize Metador structures!"
             raise ValueError(msg)
-        if ver >= [2]:
+        if ver is not None and ver >= [2]:
             msg = "Unsupported Metador container version: {ver}"
             raise ValueError(msg)
 
         if ver is None:  # writable -> mark as a metador container
             self.__wrapped__[METADOR_VERSION_PATH] = LATEST_SPEC_VERSION
 
-        # if we are here, we should have a valid metador container or a fresh one
-
-        # init in-memory map between paths and TOC entries (scan container)
-        # and other things for quick lookup
+        # if we are here, we should have an existing metador container, or a fresh one
         self._self_toc = MetadorTOC(self)
-        # and then can also check if everything is in sync
 
-    # make it transparent
+    # make wrapper transparent
 
     def __repr__(self):
         return repr(self.__wrapped__)
@@ -439,7 +475,7 @@ class MetadorContainer(wrapt.ObjectProxy):
     # ---- new container-level interface ----
 
     @property
-    def version(self) -> Optional[List[int]]:
+    def spec_version(self) -> Optional[List[int]]:
         """Return Metador container specification version for this container."""
         ver = self.__wrapped__.get(METADOR_VERSION_PATH, None)
         if ver is not None:
@@ -502,7 +538,6 @@ def _is_meta_dir(path: str) -> bool:
     """Return whether the path is a metadata base dir (but not an inner path!)"""
     return path.split("/")[-1].startswith(METADOR_META_PREF)
 
-
 def _meta_dir(node: MetadorNode) -> str:
     """Return path to base group containing metadata for given node."""
     segs = node.name.split("/")
@@ -515,7 +550,7 @@ def _meta_dir(node: MetadorNode) -> str:
     return "/".join(segs)
 
 
-def _data_dir(meta_dir_path: str):
+def _data_path(meta_dir_path: str) -> str:
     """Reverse for _meta_dir - given a metadata group path, give correct node path.
 
     Path can be relative or absolute.
@@ -528,6 +563,19 @@ def _data_dir(meta_dir_path: str):
         segs.pop()
     return "/".join(segs)
 
+def _meta_obj_to_base_path(meta_obj_path: str) -> str:
+    """Given a path to a stored metadata object, return the base path prefix."""
+    # do we need this? jumping up the raw node parents would be quicker
+    # e.g. when going through TOC results
+
+def _meta_obj_to_toc_path(meta_obj_path: str) -> str:
+    """Return correct path in TOC for the given metadata object path."""
+    # NOTE: can't be inverted, but link at the returned path points back to the arg.!
+    segs = list(dropwhile(lambda x: not x.startswith(METADOR_META_PREF),
+                    meta_obj_path.split("/")))
+    segs[0] = METADOR_TOC_PATH
+    return "/".join(segs)
+
 
 _SCHEMAS = schemas()
 
@@ -538,7 +586,7 @@ class MetadorMeta:
     def __init__(self, node: MetadorNode):
         self._node = node  # user data node for which we manage metadata
         self._mc = self._node._self_container  # main object (for quick access)
-        self._dir = _meta_dir(node)  # group path for metadata storage
+        self._base_dir = _meta_dir(node)  # group path for metadata storage
 
     def _destroy(self):
         """Remove all metadata objects, unlink them in TOC and remove metadata dir."""
@@ -548,10 +596,10 @@ class MetadorMeta:
     def _meta_schema_dir(self, schema_name: str = "") -> Optional[str]:
         """Return hierarchical path to a schema name."""
         if not schema_name:
-            return self._dir
+            return self._base_dir
         # try to resolve parent path based on found structure
         pp: str = self._mc.toc._parent_path(schema_name) or ""
-        return self._dir + "/" + pp
+        return self._base_dir + "/" + pp
 
     def _get_raw(self, schema_name: str) -> Optional[H5DatasetLike]:
         """Returns raw dataset node for an exact schema name."""
@@ -601,7 +649,8 @@ class MetadorMeta:
         """
         basepath = self._meta_schema_dir(schema_name)
         if basepath not in self._mc.__wrapped__:
-            return set()  # no such subdirectory -> no objects
+            # no metadata subdirectory -> no objects (important case!)
+            return set()  
 
         entries: Set[str] = set()
 
@@ -691,8 +740,89 @@ class MetadorMeta:
         return any(transitive)
 
 
+def _split_meta_obj_path(path: str) -> Tuple[str, str, str, str]:
+    """Splits full path to a metadata object inside metadata directory of a node.
+
+    Returns tuple with:
+        Path to metadata base directory
+        schema parents (except for schema itself)
+        schema name
+        uuid
+    
+    "/some/path/to/metador_meta_something/schema/subschema/=uuid" results in:
+    ('/some/path/to/metador_meta_something', 'schema/subschema', 'subschema', 'uuid')
+    """
+    segs = path.lstrip("/").split("/")
+    uuid = segs.pop()[1:]
+    node_meta_base = ""
+    schema_path = ""
+    schema_name = ""
+    found_meta_base = False
+    for seg in segs:
+        if found_meta_base:
+            schema_path += f"/{seg}"
+            schema_name = seg
+        else:
+            node_meta_base += f"/{seg}"
+        if seg.startswith(METADOR_META_PREF):
+            found_meta_base = True
+    return (node_meta_base, schema_path[1:], schema_name, uuid)
+
 class MetadorTOC:
     """Interface to the Metador metadata index of a container."""
+
+    def _find_broken_links(self, repair: bool=False) -> List[str]:
+        """Return list of UUIDs in TOC not pointing to an existing metadata object."""
+        broken = []
+        for uuid in self._toc_path_from_uuid.keys():
+            target = self._resolve_link(uuid)
+            if target not in self._container.__wrapped__:
+                broken.append(uuid)
+        if repair:
+            for uuid in broken:
+                self._unregister_link(uuid)
+        return broken
+
+    def _find_missing_links(self, repair: bool = False) -> List[str]:
+        """Return list of paths to metadata objects not listed in TOC."""
+        missing = []
+
+        def collect_missing(name, node):
+            if not _is_metador_path(name, METADOR_META_PREF):
+                return  # not a metador metadata path
+            leaf = name.split("/")[-1]
+            if not leaf[0] == "=":
+                return  # metadata objects are named =SOME_UUID
+            uuid = leaf[1:]
+
+            known = uuid in self._toc_path_from_uuid
+            # UUID collision - used in TOC, but points to other object
+            # (requires fixing up the name of this object / new UUID)
+            # but technically THIS object IS missing in the TOC!
+            collision = known and self._resolve_link(uuid) != node.name
+
+            if not known or collision:
+                missing.append(node.name)
+
+        self._container.__wrapped__.visititems(collect_missing)
+
+        if not repair:
+            return missing
+
+        # Repair missing links (objects get new UUIDs)
+        for path in missing:
+            meta_dir, schema_path, schema_name, uuid = _split_meta_obj_path(path)
+            if self._parent_path(schema_name) is None: # not in schema lookup table
+                # add the unknown schema parent path based on inferred info
+                self._parent_paths[schema_path] = schema_name
+                self._unknown_schemas.add(schema_name)
+            # link the object with new UUID
+            target_path = self._register_link(meta_dir, schema_name)
+            self._container.__wrapped__.move(path, target_path)
+
+        return missing
+
+    # --------
 
     def _parent_path(self, schema_name: str) -> Optional[str]:
         """Like Schemas.parent_path, but works also with unknown schemas in container."""
@@ -701,24 +831,83 @@ class MetadorTOC:
             pp = "/".join(_SCHEMAS.parent_path(schema_name))
         return pp
 
-    # TODO: resolve schemas to full names and allow to get their provider
-    # (like in pluggable, but based on container-embedded data)
+    def _fresh_uuid(self) -> str:
+        """Return a UUID string not used for a metadata object in the container yet."""
+        fresh = False
+        ret = ""
+        # NOTE: here a very unlikely race condition is present if parallelized
+        while not fresh:
+            ret = str(uuid1())
+            fresh = ret not in self._toc_path_from_uuid
+        self._toc_path_from_uuid[ret] = ""  # not assigned yet, but blocked
+        return ret
+
+    def _register_link(self, node_meta_base: str, schema_name: str) -> str:
+        """Create a link for a metadata object, returning its target location.
+
+        The link points to the returned path (object must be placed there).
+        """
+        schema_path = self._parent_path(schema_name)
+        assert schema_path is not None
+        link_name = self._fresh_uuid()
+        toc_path = f"{METADOR_TOC_PATH}/{schema_path}/={link_name}"
+        target_path = f"{node_meta_base}/{schema_path}/={link_name}"
+        self._toc_path_from_uuid[link_name] = toc_path
+        self._container.__wrapped__[toc_path] = target_path # create (broken) link
+        return target_path
+
+    def _unregister_link(self, uuid: str):
+        """Unregister metadata object in TOC given its UUID.
+
+        Will remove the object and clean up empty directories in the TOC.
+        """
+        # delete the link itself
+        toc_link_path = self._toc_path_from_uuid[uuid]
+        link_node = self._container.__wrapped__[toc_link_path]
+        parent_node = link_node.parent
+        del self._container.__wrapped__[toc_link_path]
+
+        # clean up empty groups
+        while parent_node.name != METADOR_TOC_PATH:
+            if len(parent_node):
+                break  # non-empty
+            empty_group = parent_node.name
+            parent_node = parent_node.parent
+            # NOTE: here we could plug in removing useless dependencies in stored env
+            # If the schema is empty, its package is not a dependency anymore
+            # if the package does not provide any used schemas
+            del self._container.__wrapped__[empty_group]
+
+        # remove the TOC dir itself, if empty
+        if parent_node.name == METADOR_TOC_PATH and not len(parent_node):
+            del self._container.__wrapped__[METADOR_TOC_PATH]
+        # now the uuid counts as "free" again
+        del self._toc_path_from_uuid[uuid]
+
+    def _resolve_link(self, uuid: str) -> str:
+        """Get the path a uuid in the TOC points to."""
+        toc_link_path = self._toc_path_from_uuid[uuid]
+        return self._container.__wrapped__[toc_link_path][()].decode("utf-8")
+
+    def _update_link(self, uuid: str, new_target: str):
+        """Update target of an existing link to point to a new location."""
+        toc_link_path = self._toc_path_from_uuid[uuid]
+        del self._container.__wrapped__[toc_link_path]
+        self._container.__wrapped__[toc_link_path] = new_target
 
     def __init__(self, container: MetadorContainer):
         self._container = container
 
         # 1. compute parent paths based on present TOC structure
         # (we need it to efficiently traverse possibly unknown schemas/objects)
-
         # 2. collect metadata object uuids
-
         self._parent_paths: Dict[str, str] = {}
-        self._path_from_uuid: Dict[str, str] = {}
+        self._toc_path_from_uuid: Dict[str, str] = {}
 
         def collect_schemas(path):
             schema_name = path.split("/")[-1]
             if schema_name[0] == "=":  # links/metadata entries start with =
-                self._path_from_uuid[schema_name[1:]] = path
+                self._toc_path_from_uuid[schema_name[1:]] = f"{METADOR_TOC_PATH}/{path}"
             else:
                 self._parent_paths[schema_name] = path
 
@@ -741,3 +930,6 @@ class MetadorTOC:
         is not suitable for the embedded data using a schema of the same name.
         """
         return set(self._unknown_schemas)
+
+
+    # TODO: query API like with node meta, but now for whole container

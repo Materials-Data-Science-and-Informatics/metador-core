@@ -74,13 +74,13 @@ class H5GroupLike(H5NodeLike, Protocol):
 
     # MutableMapping-like
 
-    def __getitem__(self, key: str) -> H5NodeLike:
+    def __getitem__(self, name: str):
         ...
 
-    def __setitem__(self, key: str, value):
+    def __setitem__(self, name: str, obj):
         ...
 
-    def __delitem__(self, key: str):
+    def __delitem__(self, name: str):
         ...
 
     def __iter__(self) -> Iterable[str]:
@@ -91,7 +91,7 @@ class H5GroupLike(H5NodeLike, Protocol):
 
     # Container-like
 
-    def __contains__(self, key: str) -> bool:
+    def __contains__(self, name: str) -> bool:
         ...
 
     # dict-like extras
@@ -105,7 +105,7 @@ class H5GroupLike(H5NodeLike, Protocol):
     def items(self) -> ItemsView[str, H5NodeLike]:
         ...
 
-    def get(self, key: str, *args, **kwargs) -> Any:
+    def get(self, name: str, *args, **kwargs) -> Any:
         ...
 
     # h5py specific
@@ -138,7 +138,7 @@ class H5FileLike(H5GroupLike, Protocol):
 
     # context manager
 
-    def __enter__(self):
+    def __enter__(self) -> H5FileLike:
         ...
 
     def __exit__(self, ex_type, ex_value, ex_traceback):

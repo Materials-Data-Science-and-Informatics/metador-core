@@ -1,4 +1,6 @@
 # don't add test containers
+*.h5
+*.hd5
 *.ih5
 *.ih5mf.json
 tmp*/
