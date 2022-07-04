@@ -7,7 +7,6 @@ from typing import List, Optional
 
 import magic
 from PIL import Image
-from typing_extensions import Literal
 
 from ..hashutils import file_hashsum
 from .interface import MetadataSchema, schema_ref
@@ -71,8 +70,10 @@ class ColumnHead(MetadataSchema):
     unit: PintUnit
 
 
-class TableMeta(MetadataSchema):
-    type: Literal["table"]
+class TableMeta(FileMeta):
 
-    title: nonempty_str
+    @classmethod
+    def parent_schema(cls):
+        return schema_ref("common_file")
+
     columns: List[ColumnHead]

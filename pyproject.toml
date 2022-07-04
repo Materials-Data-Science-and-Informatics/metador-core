@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "metador-core"
 version = "0.1.0"
-description = "Metador container and plugin management."
+description = "Metador core library providing container and plugin interfaces."
 authors = ["a.pirogov <a.pirogov@fz-juelich.de>"]
-repository = "https://github.com/Materials-Data-Science-and-Informatics/metador"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 license = "MIT"
 
 [tool.poetry.dependencies]
@@ -35,12 +35,12 @@ schema = "metador_core.schema.pluggable:PluggableSchema"
 packer = "metador_core.packer.pluggable:PluggablePacker"
 
 [tool.poetry.plugins.metador_schema]
-# Metador supports entry-point-based custom metadata schemas.
-# the following one is mandatory and is used in every container
+# Metador is build around pluggable metadata schemas.
+# The following one is mandatory and is used in every valid container:
 metador_container_env = "metador_core.schema.core:EnvMeta"
-# this one only is mandatory for containers that were packed by a packer plugin
+# This one only is mandatory for containers packed by a packer plugin:
 packer_info = "metador_core.packer.interface:PackerInfo"
-# these are optional and can be used by some packer
+# These are optional and can be used freely, e.g. by some packer:
 common_file  = "metador_core.schema.common:FileMeta"
 common_image = "metador_core.schema.common:ImageMeta"
 common_table = "metador_core.schema.common:TableMeta"

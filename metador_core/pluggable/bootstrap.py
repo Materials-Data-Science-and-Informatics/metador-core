@@ -68,18 +68,12 @@ for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
     # check the pluggable itself
     Pluggable._check_plugin_common(pgb_name, pgb)
     if pgb_name in _loaded_pluggables:
-        msg = f"Pluggable name already registered: '{pgb_name}' ({pgb})"
-        raise TypeError(msg)
-    if not issubclass(pgb.ep, Pluggable):
-        msg = f"Pluggable must be parent class of pluggable: '{pgb_name}'"
+        msg = f"{pgb_name}: Pluggable name already registered"
         raise TypeError(msg)
 
     # load plugins for that pluggable
     _loaded_pluggables[pgb_name] = LoadedPlugin.get_plugins(pgb_name)
-    for ep_name, ep in _loaded_pluggables[pgb_name].items():
-        pgb.ep.check(ep_name, ep.ep)
-
-    # on success attach the loaded ones to the class
+    # attach the loaded ones to the class
     pgb.ep._NAME = pgb_name
     pgb.ep._LOADED_PLUGINS = _project_eps(pgb_name, lambda v: v.ep)
     pgb.ep._PLUGIN_PKG = _project_eps(pgb_name, lambda v: v.pkg_name)
@@ -101,3 +95,12 @@ Pluggable._LOADED_PLUGINS[PGB_PLUGGABLE] = Pluggable
 Pluggable._PLUGIN_PKG = _project_eps(PGB_PLUGGABLE, lambda v: v.pkg_name)
 # register this package as provider of pluggables (this package actually registers schema)
 Pluggable._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
+
+# now can use the class structures safely:
+
+# check the plugins according to pluggable rules
+# (at this point all installed plugins of same kind can be cross-referenced)
+for pgb_name in _loaded_pluggables.keys():
+    pgb = Pluggable[pgb_name]  # type: ignore
+    for ep_name, ep in pgb.items():
+        pgb._check(ep_name, ep)

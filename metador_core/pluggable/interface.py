@@ -1,4 +1,5 @@
 """Meta-interface for pluggable interfaces."""
+from __future__ import annotations
 
 import re
 from typing import Any, Dict
@@ -30,17 +31,17 @@ class PluggableMetaclass(type):
     def keys(self):
         return self._LOADED_PLUGINS.keys()
 
-    def __getitem__(self, key):
-        return self._LOADED_PLUGINS[key]
-
     def values(self):
         return self._LOADED_PLUGINS.values()
 
+    def items(self):
+        return self._LOADED_PLUGINS.items()
+
+    def __getitem__(self, key):
+        return self._LOADED_PLUGINS[key]
+
     def get(self, key, default=None):
         return self._LOADED_PLUGINS.get(key, default)
-
-    def dict(self):
-        return dict(self._LOADED_PLUGINS)
 
 
 class Pluggable(metaclass=PluggableMetaclass):
@@ -49,7 +50,6 @@ class Pluggable(metaclass=PluggableMetaclass):
     They must implement the check method and be listed as pluggable.
     The name of their entrypoint defines the name of the pluggable group.
     """
-
     _PLUGIN_PKG: Dict[str, str]
     """Dict from entry points to package name in environment providing them."""
 
@@ -60,19 +60,18 @@ class Pluggable(metaclass=PluggableMetaclass):
     """
 
     @classmethod
-    def _check_plugin_common(cls, ep_name: str, ep: Any):
-        """Perform common checks on a registered plugin.
-
-        Raises a TypeError with message in case of failure.
-        """
-        if not re.fullmatch("[A-Za-z0-9_-]+", ep_name):
-            msg = f"Invalid pluggable name: '{ep_name}'"
-            raise TypeError(msg)
-
-    @classmethod
     def packages(cls) -> Dict[str, PluginPkgMeta]:
         """Return metadata of all packages providing metador plugins."""
         return dict(cls._PKG_META)
+
+    @classmethod
+    def provider(cls, ep_name: str) -> PluginPkgMeta:
+        """Return package metadata of Python package providing this plugin."""
+        pkg = cls._PLUGIN_PKG.get(ep_name)
+        if pkg is None:
+            msg = f"Did not find package providing {cls._NAME} plugin: {ep_name}"
+            raise KeyError(msg)
+        return cls._PKG_META[pkg]
 
     @classmethod
     def fullname(cls, ep_name) -> FullPluginRef:
@@ -84,13 +83,19 @@ class Pluggable(metaclass=PluggableMetaclass):
             name=ep_name,
         )
 
+    # ----
     @classmethod
-    def provider(cls, ep_name: str) -> PluginPkgMeta:
-        """Return package metadata of Python package providing this plugin."""
-        return cls._PKG_META[cls._PLUGIN_PKG[ep_name]]
+    def _check_plugin_common(cls, ep_name: str, ep: Any):
+        """Perform common checks on a registered plugin.
+
+        Raises a TypeError with message in case of failure.
+        """
+        if not re.fullmatch("[A-Za-z0-9_-]+", ep_name):
+            msg = f"{ep_name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
+            raise TypeError(msg)
 
     @classmethod
-    def check(cls, ep_name: str, ep: Any):
+    def _check(cls, ep_name: str, ep: Any):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -103,5 +108,13 @@ class Pluggable(metaclass=PluggableMetaclass):
         """Perform pluggable-specific checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
+
+        To be overridden in subclasses for plugin group specific checks.
         """
-        raise NotImplementedError
+        if cls != Pluggable:
+            raise NotImplementedError
+
+        # we want this to be checked for Pluggable groups, but not other subclasses
+        if not issubclass(ep, Pluggable):
+            msg = f"{ep_name}: {ep} must be subclass of {cls}"
+            raise TypeError(msg)

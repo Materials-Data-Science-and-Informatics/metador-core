@@ -20,6 +20,8 @@ class PluginRef(MetadataSchema):
 
     pkg: Optional[nonempty_str]
     """Name of the Python package containing the plugin."""
+    # NOTE: must be part of full name, because package provides versioning
+    # still, plugin names must be globally unique (NOTE: or we must load EPs differently)
 
     pkg_version: Optional[SemVerTuple]
     """Version of the Python package."""
@@ -38,6 +40,25 @@ class FullPluginRef(PluginRef):
     pkg: nonempty_str
     pkg_version: SemVerTuple
     group: nonempty_str
+
+    def supports(self, other: FullPluginRef) -> bool:
+        """Return whether this plugin supports objects marked by given reference.
+
+        True iff the package name, plugin group and plugin name agree,
+        and the package of this reference has equal or larger minor version.
+        """
+        if self.pkg != other.pkg:
+            return False
+        if self.group != other.group:
+            return False
+        if self.name != other.name:
+            return False
+        if self.pkg_version[0] != other.pkg_version[0]:  # major
+            return False
+        if self.pkg_version[1] < other.pkg_version[1]:  # minor
+            return False
+        return True
+
 
 
 class PluginPkgMeta(MetadataSchema):
