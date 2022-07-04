@@ -43,7 +43,15 @@ class MetadataSchema(YamlModelMixin, BaseModel):
         """
         return None
 
-    # Convenience functions for packers (TODO move to packer interface)
+    def __bytes__(self) -> bytes:
+        """Serialize to JSON and return UTF-8 encoded bytes to be written in a file."""
+        # add a newline, as otherwise behaviour with text editors will be confusing
+        # (e.g. vim automatically adds a trailing newline that it hides)
+        # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
+        return (self.json() + "\n").encode(encoding="utf-8")
+
+    # Convenience functions for packers (TODO move to packer interface / helpers)
+    # Schemas should not be coupled to packer-specific features
 
     @classmethod
     def from_file(cls, path: Path):

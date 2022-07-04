@@ -14,8 +14,6 @@ from typing import Any, Callable, Dict, List, Optional
 import h5py
 import numpy as np
 
-# TODO: maybe support track_order in create_group? possibly useful but messy to implement
-
 # dataset value marking a deleted group, dataset or attribute
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
 

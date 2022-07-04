@@ -15,14 +15,9 @@ class PluggableSchema(Pluggable):
 
     A subschema MUST NOT override existing parent field definitions.
 
-    (TODO: we could weaken this to:
+    (NOTE: with some caveats, we technically could weaken this to:
     A subschema SHOULD only extend a parent by new fields.
-    It MAY override parent fields with more specific types.
-
-    In that case, provide runtime check of parent validity as optional feature
-    and also check parent consistency as optional feature of container wrapper,
-    and document behaviour if consistency is not ensured (arbitrary parent parse)
-    )
+    It MAY override parent fields with more specific types.)
 
     All registered schemas can be used anywhere in a Metador container to annotate
     any group or dataset with metadata objects following that schema.

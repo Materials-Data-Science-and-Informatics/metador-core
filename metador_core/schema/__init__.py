@@ -1,1 +1,1 @@
-"""Core and common metador schemas."""
+"""Definition of Metador schema interface and core schemas."""

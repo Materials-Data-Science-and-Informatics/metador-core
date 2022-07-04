@@ -18,14 +18,6 @@ class IH5Manifest(BaseModel):
 
     It contains the skeleton of the container, in order to be able to create a
     patch for an IH5Record the data is not locally available for (but manifest is).
-
-    TODO: following info applies to the "packer" manifest extension
-    For IH5 containers created by a packer plugin from a well-defined directory
-    it also collects the current hashsums for all files in the source directory
-    at the time of the creation of a certain patch, and info about the used packer.
-
-    The correct packer plugin can figure out what needs to be included in a patch
-    based on the changes in the raw unpacked data directory (that must be available).
     """
 
     # uuid for the manifest file itself (so the filename does not matter)

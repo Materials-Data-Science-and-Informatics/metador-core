@@ -1,46 +1,62 @@
 """Metador interface to manage metadata in HDF5 containers.
 
-Works with plain h5py.File and IH5Record subclasses.
+Works with plain h5py.File and IH5Record subclasses and can be extended to work
+with any type of archive providing the required functions in a h5py-like interface.
 
-The compliance with the Metador container specification is ensured by using the provided
-MetadorContainer interface.
+When assembling a container, the compliance with the Metador container specification is
+ensured by using it through the MetadorContainer interface.
 
-Metador container specification:
+Technical Metador container specification (not required for users):
+
+Metador uses only HDF5 Groups and Datasets. We call both kinds of objects Nodes.
 
 Users are free to lay out data in the container as they please, with one exception:
-a user-defined entity MUST NOT have a name starting with "metador_".
-"metador_" is a reserved prefix for group, dataset and attribute names.
+a user-defined Node MUST NOT have a name starting with "metador_".
+"metador_" is a reserved prefix for Group and Dataset names used to manage
+technical bookkeeping structures that are needed for providing all container features.
 
 For each HDF5 Group or Dataset there MAY exist a corresponding
-directory for Metador-compatible metadata that is prefixed with "metador_meta_".
+Group for Metador-compatible metadata that is prefixed with "metador_meta_".
 
-For "/foo/bar" the metadata is to be found:
-    in a group "/foo/metador_meta_bar", if "/foo/bar" is a dataset,
-    in a group "/foo/bar/metador_meta_" if it is a group.
+For "/foo/bar" the metadata is to be found...
+    ...in a group "/foo/metador_meta_bar", if "/foo/bar" is a dataset,
+    ...in a group "/foo/bar/metador_meta_" if it is a group.
 We write meta("/foo/bar") to denote that group.
 
 Given schemas with entrypoint names X, Y and Z such that X is the parent schema of Y,
 and Y is the parent schema of Z and a node "/foo/bar" annotated by a JSON object of
 type Z, that JSON object MUST be stored as a newline-terminated, utf-8 encoded byte
-sequence at the path meta("/foo/bar")/X/Y/Z/json.
+sequence at the path meta("/foo/bar")/X/Y/Z/=UUID, where the UUID is unique in the
+container.
 
-Data inheritence / subschema consistency:
-Any objects of a subtype of schema X that stored at the same node MUST result
+For metadata attached to an object we expect the following to hold:
+
+Node instance uniqueness:
+Each schema MAY be instantiated explicitly for each node at most ONCE.
+Collections thus must be represented on schema-level whenever needed.
+
+Parent Validity:
+Any object of a subschema MUST also be a valid instance of all its parent schemas.
+The schema developers are responsible to ensure this by correct implementation
+of subschemas.
+
+Parent Consistency:
+Any objects of a subtype of schema X that stored at the same node SHOULD result
 in the same object when parsed as X (they agree on the "common" information).
 Thus, any child object can be used to retrieve the same parent view on the data.
+The container creator is responsible for ensuring this property. In case it is not
+fulfilled, retrieving data for a more abstract type will yield it from ANY present subtype
+instance (but always the same one, as long as the container does not change)!
 
-A container MUST have a "/metador_toc" group, containing a lookup index of all nodes
-that are annotated by an object following a registered metadata schema. This index
-structure MUST be in sync with the node metadata annotations.
+If at least one metadata object it stored, a container MUST have a "/metador_toc" Group,
+containing a lookup index of all metadata objects following a registered metadata schema.
+This index structure MUST be in sync with the node metadata annotations.
+Keeping this structure in sync is responsibility of the container interface.
 
 This means (using the previous example) that for "/foo/bar" annotated by Z there also
-exists a dataset "/metador_toc/X/Y/Z/#N" containing the full path to the data node, i.e.
-"/foo/bar", where N is any string (e.g. an increasing number). There is no kind of
-ordering encoded in the chosen string N. The # symbol is used to distinguish node links
-from child schema entry point names (a comment in the pyproject.toml file and thus
-impossible as a regular entry point name). Conversely, there must not be any empty
-entry-point named groups (without paths to any node) and all listed paths must point to
-an existing node.
+exists a dataset "/metador_toc/X/Y/Z/=UUID" containing the full path to the metadata node,
+i.e. "meta(/foo/bar)/X/Y/Z/=UUID". Conversely, there must not be any empty entry-point
+named Groups, and all listed paths in the TOC must point to an existing node.
 
 A valid container MUST contain a dataset /metador_version string of the form "X.Y"
 
@@ -48,11 +64,7 @@ A correctly implemented library supporting an older minor version MUST be able o
 container with increased minor version without problems (by ignoring unknown data),
 so for a minor update of this specification only new entities may be defined.
 
-Known technical and deliberate limitations:
-
-Each node can be annotated by at most one json object of each registered schema type.
-Collections thus must be represented on schema-level whenever needed.
-This is a deliberate design decision.
+Known technical limitations:
 
 Due to the fact that versioning of plugins such as schemas is coupled to the versioning
 of the respective Python packages, it is not (directly) possible to use two different
@@ -60,15 +72,13 @@ versions of the same schema in the same environment (with the exception of mappi
 they may bring their own equivalent schema classes).
 
 Minor version updates of packages providing schemas must ensure that the classes providing
-schemas are backward-compatible.
+schemas are backward-compatible (i.e. can parse instances of older minor versions).
 
-Major version updates must be performed in two phases. First, the new
-non-backward-compatible version is registered under a new name in parallel,
-and when whe major version update happens, the migration consists of simply renaming.
+Major version updates must also provide mappings migrating between the old and new schema
+versions. In case that the schema did not change, the mapping is simply the identity.
 """
 from __future__ import annotations
 
-from itertools import dropwhile
 from uuid import uuid1
 from typing import (
     Optional,
@@ -79,43 +89,15 @@ from typing import (
     ItemsView,
     Set,
     Dict,
-    Tuple
 )
-from typing_extensions import Final
-
 import wrapt
 import h5py
 
-from .ih5.container import IH5Record
-from .ih5.protocols import H5FileLike, H5DatasetLike, H5NodeLike
-from .ih5.overlay import H5Type, node_h5type
-from .schema.interface import schemas, MetadataSchema
-
-LATEST_SPEC_VERSION: Final[str] = "1.0"
-"""Version of container spec created by this module."""
-# NOTE: don't forget to change it when something about the container structure changes!
-
-METADOR_PREF: Final[str] = "metador_"
-"""Reserved prefix for group and dataset names."""
-
-METADOR_META_PREF: Final[str] = METADOR_PREF + "meta_"
-"""Sub-prefix for group that stores group or dataset metadata."""
-
-METADOR_VERSION_PATH: Final[str] = f"/{METADOR_PREF}version"
-"""Path of dataset with the Metador container version of the container."""
-
-METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}toc"
-"""Path of group with the Metador metadata index structure of the container."""
-
-
-def _is_metador_path(path: str, pref: str = METADOR_PREF) -> bool:
-    """Returns True iff the path of this node is Metador-internal (metador_*).
-
-    Optional argument can set a different prefix that path segments are checked for.
-    """
-    # first case is for relative paths, second for later path segments and absolute paths
-    return path.startswith(pref) or path.find(f"/{pref}") >= 0
-
+from . import utils as M
+from ..ih5.container import IH5Record
+from ..ih5.protocols import H5FileLike, H5DatasetLike
+from ..ih5.overlay import H5Type, node_h5type
+from ..schema.interface import schemas, MetadataSchema
 
 class ROAttributeManager(wrapt.ObjectProxy):
     """Wrapper for AttributeManager-like objects to protect from accidental mutation.
@@ -125,20 +107,20 @@ class ROAttributeManager(wrapt.ObjectProxy):
 
     # read-only methods listed in h5py AttributeManager API:
     _self_ALLOWED = {"keys", "values", "items", "get", "get_id"}
-    _self_MSG = "This attribute set belongs to an entity marked as read_only!"
+    _self_MSG = "This attribute set belongs to a node marked as read_only!"
 
     def __getattr__(self, key):
-        if key not in self._self_ALLOWED:
-            raise ValueError(self._self_MSG)
+        if hasattr(self.__wrapped__, key) and key not in self._self_ALLOWED:
+            raise RuntimeError(self._self_MSG)
         return getattr(self.__wrapped__, key)
 
     # this does not go through getattr
     def __setitem__(self, key, value):
-        raise ValueError(self._self_MSG)
+        raise RuntimeError(self._self_MSG)
 
     # this does not go through getattr
     def __delitem__(self, key, value):
-        raise ValueError(self._self_MSG)
+        raise RuntimeError(self._self_MSG)
 
     def __repr__(self):
         return repr(self.__wrapped__)
@@ -167,6 +149,14 @@ class MetadorNode(wrapt.ObjectProxy):
         if kwargs:
             raise ValueError(f"Unknown keyword arguments: {kwargs}")
 
+    def _guard_path(self, path: str):
+        if M.is_internal_path(path):
+            msg = f"Trying to use a Metador-internal path: '{path}'"
+            raise ValueError(msg)
+        if self.local_only and path[0] == "/":
+            msg = f"Node is marked as local_only, cannot use absolute path '{path}'!"
+            raise ValueError(msg)
+
     @property
     def local_only(self) -> bool:
         """Return whether this node is local-only."""
@@ -176,10 +166,15 @@ class MetadorNode(wrapt.ObjectProxy):
     def read_only(self) -> bool:
         """Return whether this node is read-only.
 
-        If True, no mutable methods should be called and will be prevented if possible.
+        If True, no mutating methods should be called and will be prevented if possible.
         If this is a Group, will inherit this status to children.
         """
         return self._self_read_only
+
+    def _guard_mut_method(self, method: str = "this method"):
+        if self.read_only:
+            msg = f"Cannot use method '{method}', the node is marked as read_only!"
+            raise RuntimeError(msg)
 
     def _child_node_kwargs(self):
         """Return kwargs to be passed to a child node.
@@ -280,19 +275,9 @@ def _wrap_method(method: str, is_read_only_method: bool = False):
 
     def wrapped_method(obj, name, *args, **kwargs):
         # obj will be the self of the wrapper instance
-
-        if _is_metador_path(name):
-            msg = f"Trying to use {method} on a Metador-internal path: '{name}'"
-            raise ValueError(msg)
-
-        if obj.local_only and name[0] == "/":
-            msg = "This entity is marked as local_only! Cannot use an absolute path!"
-            raise ValueError(msg)
-
-        if not is_read_only_method and obj.read_only:
-            msg = "This entity is marked as read_only!"
-            raise ValueError(msg)
-
+        obj._guard_path(name)
+        if not is_read_only_method:
+            obj._guard_mut_method(method)
         ret = getattr(obj.__wrapped__, method)(name, *args, **kwargs)
         return obj._wrap_if_node(ret)
 
@@ -320,7 +305,7 @@ class MetadorGroup(MetadorNode):
     # must wrap nodes passed into the callback function and filter visited names
     def visititems(self, func):
         def wrapped_func(name, node):
-            if _is_metador_path(node.name):
+            if M.is_internal_path(node.name):
                 return  # skip path/node
             return func(name, self._wrap_if_node(node))
 
@@ -340,7 +325,7 @@ class MetadorGroup(MetadorNode):
         return (
             (k, self._wrap_if_node(v))
             for k, v in self.__wrapped__.items()
-            if not _is_metador_path(v.name)
+            if not M.is_internal_path(v.name)
         )
 
     def values(self):
@@ -361,6 +346,9 @@ class MetadorGroup(MetadorNode):
     # these we can take care of but are a bit more tricky to think through
 
     def __delitem__(self, key):
+        self._guard_mut_method("__delitem__")
+        self._guard_path(key)
+
         node = self[key]
         # clean up metadata (recursively, if a group)
         node.meta._destroy()
@@ -370,9 +358,30 @@ class MetadorGroup(MetadorNode):
         return _wrap_method("__delitem__")(self, key)
 
     def move(self, source: str, dest: str):
-        # TODO: this needs the relinking of all moved metadata objects in the TOC
-        # first do move, on success move metadata
-        raise NotImplementedError
+        self._guard_mut_method("move")
+        self._guard_path(source)
+        self._guard_path(dest)
+
+        src_metadir = self[source].meta._base_dir
+        # if actual data move fails, an exception will prevent the rest
+        self.__wrapped__.move(source, dest)
+
+        # if we're here, no problems -> proceed with moving metadata
+        dst_node = self[dest]
+        if isinstance(dst_node, MetadorDataset):
+            dst_metadir = dst_node.meta._base_dir
+            # dataset has its metadata stored in parallel -> need to take care of it
+            meta_base = dst_metadir
+            if src_metadir in self.__wrapped__:
+                self.__wrapped__.move(src_metadir, dst_metadir)
+        else:
+            # directory where to fix up metadata object TOC links
+            # when a group was moved, all metadata is contained in dest -> search it
+            meta_base = dst_node.name
+
+        # re-link metadata object TOC links
+        if meta_base in self.__wrapped__:
+            self._self_container.toc._find_missing_links(meta_base, repair=True, update=True)
 
     def copy(self, source, dest, **kwargs):
         # name: Optional[str] = kwargs.pop("name", None)
@@ -387,24 +396,30 @@ class MetadorGroup(MetadorNode):
         raise NotImplementedError
 
     # anything else we simply won't support
-    # def __getattr__(self, key):
-
-    def create_virtual_dataset(self, *args, **kwargs):
-        raise AttributeError("Unsupported operation.")
-
-    def build_virtual_dataset(self):
-        raise AttributeError("Unsupported operation.")
+    def __getattr__(self, key):
+        if hasattr(self.__wrapped__, key):
+            raise AttributeError(f"Unsupported operation: {key}")
+        else:
+            msg = f"'{type(self).__name__}' object has no attribute '{key}'"
+            raise AttributeError(msg)
 
 
 class MetadorDataset(MetadorNode):
     """Metador wrapper for a HDF5 Dataset."""
 
+    # manually assembled from public methods h5py.Dataset provides
+    _self_FORBIDDEN = {"resize", "make_scale", "write_direct", "flush"}
+
+    # prevent mutating method calls of node is marked as read_only
+
     def __setitem__(self, *args, **kwargs):
-        # prevent writing if dataset is marked as RO (regardless of file open mode)
-        if self.read_only:
-            raise ValueError("This dataset is marked as read_only!")
+        self._guard_mutable_method("__setitem__")
         return self.__wrapped__.__setitem__(*args, **kwargs)
 
+    def __getattr__(self, key):
+        if self.read_only and key in self._self_FORBIDDEN:
+            self._guard_mutable_method(key)
+        return getattr(self.__wrapped__, key)
 
 # NOTE: one could try writing a ZIP wrapper providing the minimal HDF5 like API and
 # to make it work it just needs to be registered for H5Type and implement the protocol
@@ -424,8 +439,8 @@ class MetadorContainer(wrapt.ObjectProxy):
         ret: List[str] = []
 
         def collect_orphans(name: str):
-            if _is_meta_dir(name):
-                if _data_path(name) not in self:
+            if M.is_meta_base_path(name):
+                if M.to_data_node_path(name) not in self:
                     ret.append(name)
 
         self.__wrapped__.visit(collect_orphans)
@@ -445,7 +460,7 @@ class MetadorContainer(wrapt.ObjectProxy):
             for path in self._find_orphan_meta():
                 del self.__wrapped__[path]
         self.toc._find_broken_links(repair=True)
-        self.toc._find_missing_links(repair=True)
+        self.toc._find_missing_links("/", repair=True)
 
     def __init__(self, obj: H5FileLike):
         if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
@@ -462,7 +477,7 @@ class MetadorContainer(wrapt.ObjectProxy):
             raise ValueError(msg)
 
         if ver is None:  # writable -> mark as a metador container
-            self.__wrapped__[METADOR_VERSION_PATH] = LATEST_SPEC_VERSION
+            self.__wrapped__[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION
 
         # if we are here, we should have an existing metador container, or a fresh one
         self._self_toc = MetadorTOC(self)
@@ -477,7 +492,7 @@ class MetadorContainer(wrapt.ObjectProxy):
     @property
     def spec_version(self) -> Optional[List[int]]:
         """Return Metador container specification version for this container."""
-        ver = self.__wrapped__.get(METADOR_VERSION_PATH, None)
+        ver = self.__wrapped__.get(M.METADOR_VERSION_PATH, None)
         if ver is not None:
             return list(map(int, ver[()].decode("utf-8").split(".")))
 
@@ -491,6 +506,10 @@ class MetadorContainer(wrapt.ObjectProxy):
         """Return dict from embedded schema names to the providing package information."""
         # TODO: based on env info in the TOC
         raise NotImplementedError
+
+    def __enter__(self):
+        self.__wrapped__.__enter__()
+        return self # return the wrapped MetadorContainer back, not raw!
 
     # ---- pass through HDF5 group methods to a wrapped root group instance ----
 
@@ -508,7 +527,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 
     # we want these also to be forwarded to the wrapped group, not the raw object:
 
-    def __getitem__(self, key) -> H5NodeLike:
+    def __getitem__(self, key) -> MetadorGroup:
         return self._root_group()[key]
 
     def __setitem__(self, key: str, value):
@@ -531,51 +550,6 @@ class MetadorContainer(wrapt.ObjectProxy):
 # Now we come to the main part - interfacing with metadata in containers
 # --------
 
-# some helpers
-
-
-def _is_meta_dir(path: str) -> bool:
-    """Return whether the path is a metadata base dir (but not an inner path!)"""
-    return path.split("/")[-1].startswith(METADOR_META_PREF)
-
-def _meta_dir(node: MetadorNode) -> str:
-    """Return path to base group containing metadata for given node."""
-    segs = node.name.split("/")
-    if isinstance(node, MetadorDataset):
-        segs[-1] = METADOR_META_PREF + segs[-1]
-    elif segs == ["", ""]:  # name was "/"
-        segs[-1] = METADOR_META_PREF
-    else:
-        segs.append(METADOR_META_PREF)
-    return "/".join(segs)
-
-
-def _data_path(meta_dir_path: str) -> str:
-    """Reverse for _meta_dir - given a metadata group path, give correct node path.
-
-    Path can be relative or absolute.
-    Will not check validity of the passed path, assumes it is fitting the scheme!
-    """
-    segs = meta_dir_path.split("/")
-    pl = len(METADOR_META_PREF)
-    segs[-1] = segs[-1][pl:]
-    if segs[-1] == "" and (len(segs) > 2 or segs[0] != ""):
-        segs.pop()
-    return "/".join(segs)
-
-def _meta_obj_to_base_path(meta_obj_path: str) -> str:
-    """Given a path to a stored metadata object, return the base path prefix."""
-    # do we need this? jumping up the raw node parents would be quicker
-    # e.g. when going through TOC results
-
-def _meta_obj_to_toc_path(meta_obj_path: str) -> str:
-    """Return correct path in TOC for the given metadata object path."""
-    # NOTE: can't be inverted, but link at the returned path points back to the arg.!
-    segs = list(dropwhile(lambda x: not x.startswith(METADOR_META_PREF),
-                    meta_obj_path.split("/")))
-    segs[0] = METADOR_TOC_PATH
-    return "/".join(segs)
-
 
 _SCHEMAS = schemas()
 
@@ -584,17 +558,18 @@ class MetadorMeta:
     """Interface to Metador metadata objects stored at a single HDF5 node."""
 
     def __init__(self, node: MetadorNode):
-        self._node = node  # user data node for which we manage metadata
-        self._mc = self._node._self_container  # main object (for quick access)
-        self._base_dir = _meta_dir(node)  # group path for metadata storage
+        self._mc = node._self_container  # needed for read/write access
+        self._read_only = node.read_only  # inherited from node marker
+        # used all over the place, so precompute once:
+        self._base_dir = M.to_meta_base_path(node.name, is_dataset=isinstance(node, MetadorDataset)) 
 
     def _destroy(self):
-        """Remove all metadata objects, unlink them in TOC and remove metadata dir."""
+        """Unregister and delete all metadata objects attached to the node."""
         for schema_name in iter(self):
             del self[schema_name]  # each delete should clean itself up
 
     def _meta_schema_dir(self, schema_name: str = "") -> Optional[str]:
-        """Return hierarchical path to a schema name."""
+        """Return full hierarchical path to a schema name."""
         if not schema_name:
             return self._base_dir
         # try to resolve parent path based on found structure
@@ -606,15 +581,12 @@ class MetadorMeta:
         dir_path = self._meta_schema_dir(schema_name)
         if dir_path is None:
             return None  # unknown schema
-        dir = self._node.__wrapped__.get(dir_path)
+        dir = self._mc.__wrapped__.get(dir_path)
         if dir is None:
             return None  # non-existing metadata
         for name, node in dir.items():
             if name[0] == "=":  # metadata dataset byte objects start with =
                 return node  # return first match
-
-    # def _parse_as(self, node: H5DatasetLike, schema_name: str) -> MetadataSchema:
-    #     return schemas()[schema_name].parse_raw(node[()])  # type: ignore
 
     def _is_unknown_schema(self, schema_name: str) -> bool:
         # we have no such schema in our plugin environment
@@ -627,9 +599,11 @@ class MetadorMeta:
         if self._is_unknown_schema(schema_name):
             raise ValueError(f"Unknown or incompatible schema: {schema_name}")
 
-    # public interface:
+    def _guard_read_only(self):
+        if self._read_only:
+            raise ValueError("This node is marked as read_only!")
 
-    # start with methods having non-transitive semantics (considers exact schemas)
+    # public interface:
 
     def get_bytes(self, schema_name: str) -> Optional[bytes]:
         """Get bytes for an object belonging (exactly!) to the given schema, if present.
@@ -639,7 +613,7 @@ class MetadorMeta:
         if (ret := self._get_raw(schema_name)) is not None:
             return ret[()]
 
-    def find(self, schema_name: str = "") -> Set[str]:
+    def find(self, schema_name: str = "", **kwargs) -> Set[str]:
         """List schema names of all attached metadata objects with given schema as a base.
 
         This will include possibly unknown schema names.
@@ -647,6 +621,10 @@ class MetadorMeta:
         Only the physically embedded instances are included.
         For transitive closure, add schema names along the parent_path of the schemas.
         """
+        include_parents = kwargs.pop("include_parents", False)
+        if kwargs:
+            raise ValueError(f"Unknown keyword arguments: {kwargs}")
+
         basepath = self._meta_schema_dir(schema_name)
         if basepath not in self._mc.__wrapped__:
             # no metadata subdirectory -> no objects (important case!)
@@ -657,16 +635,20 @@ class MetadorMeta:
         def collect(path):
             # path is relative to basepath
             segs = path.split("/")
-            # marker for object, use to distinguish from group
-            # as entry points may not contain = symbols by setuptools spec
+            # = is marker for object, use to distinguish from a group
+            # (entry points may not contain = symbols by setuptools spec)
             if segs[-1][0] == "=":
-                if len(segs) > 1:
-                    entries.add(segs[-2])
-                elif schema_name:
-                    entries.add(schema_name)
+                matching_schema = segs[-2] if len(segs) > 1 else schema_name
+                entries.add(matching_schema)
+                if include_parents:
+                    entries.update(segs[:-1])
+                    if schema_name:
+                        entries.add(schema_name)
 
-        self._node.__wrapped__[basepath].visit(collect)
+        self._mc.__wrapped__[basepath].visit(collect)
         return entries
+
+    # start with methods having non-transitive semantics (considers exact schemas)
 
     def __iter__(self) -> Iterator[str]:
         """Iterator listing schema names of all actually attached metadata objects.
@@ -690,22 +672,40 @@ class MetadorMeta:
         return {name: self.get[name] for name in self.find()}  # type: ignore
 
     def __delitem__(self, schema_name: str):
-        if self._node._read_only:
-            raise ValueError("This entity is marked as read_only!")
-        # TODO: remove from TOC
-        # remove empty dirs
-        # remove package info of that schema, if no instances left
-        raise NotImplementedError
+        self._guard_read_only()
+        node = self._get_raw(schema_name)
+        if node is None:
+            raise KeyError(schema_name)
+        # unregister in TOC (will also clean up empty dirs and deps there
+        uuid = M.split_meta_obj_path(node.name)[-1]
+        self._mc.toc._unregister_link(uuid)
+        # clean up empty dirs at the in the node metadata dir
+        parent_node = node.parent
+        del self._mc.__wrapped__[node.name]
+        while parent_node.name != self._base_dir:
+            if len(parent_node):
+                break  # non-empty
+            empty_group_path = parent_node.name
+            parent_node = parent_node.parent
+            del self._mc.__wrapped__[empty_group_path]
+        # remove the base dir itself, if empty
+        if parent_node.name == self._base_dir and not len(parent_node):
+            del self._mc.__wrapped__[self._base_dir]
 
-    # following only work with known (i.e. registered/correct) schema
+    # all following only work with known (i.e. registered/correct) schema:
 
     def __setitem__(self, schema_name: str, value: MetadataSchema):
-        if self._node._read_only:
-            raise ValueError("This entity is marked as read_only!")
-        # create required dirs
-        # TODO: add to TOC
-        # add package info for new schema, if not already included
-        raise NotImplementedError
+        self._guard_read_only()
+        self._guard_unknown_schema(schema_name)
+        if self._get_raw(schema_name):
+            raise ValueError(f"Metadata object for schema {schema_name} exists!")
+
+        schema_class: Type[MetadataSchema] = _SCHEMAS[schema_name]  # type: ignore
+        if not isinstance(value, schema_class):
+            raise ValueError(f"Metadata object is invalid for schema {schema_name}!")
+
+        obj_path = self._mc.toc._register_link(self._base_dir, schema_name)
+        self._mc.__wrapped__[obj_path] = bytes(value)
 
     # following have transitive semantics (i.e. logic also works with parent schemas)
 
@@ -713,66 +713,42 @@ class MetadorMeta:
         """Get a parsed metadata object (if it exists) matching the given known schema.
 
         Will also accept a child schema object and parse it as the parent schema.
-        If multiple suitable objects are found, will pick any of those to parse it.
+        If multiple suitable objects are found, picks the alphabetically first to parse it.
         """
         self._guard_unknown_schema(schema_name)
-        if not (candidates := self.find(schema_name)):
+        # don't include parents, because we need to parse some physical instance
+        candidates = self.find(schema_name)
+        if not candidates:
             return None
-        # NOTE: here we might get data from an unknown child schema
+        # NOTE: here we might get also data from an unknown child schema
         # but as the requested schema is known and compatible, we know it must work!
-        dat: Optional[bytes] = self.get_bytes(next(iter(candidates)))
+        dat: Optional[bytes] = self.get_bytes(next(iter(sorted(candidates))))
         assert dat is not None  # getting bytes of a found candidate!
         # parse with the correct schema and return the instance object
         return _SCHEMAS[schema_name].parse_raw(dat)  # type: ignore
 
     def __getitem__(self, schema_name: str) -> MetadataSchema:
-        """Like get, but will raise KeyError or failure."""
+        """Like get, but will raise KeyError on failure."""
         ret = self.get(schema_name)
         if ret is None:
-            raise KeyError
+            raise KeyError(schema_name)
         return ret
 
     def __contains__(self, schema_name: str) -> bool:
         """Check whether a suitable metadata object for given known schema exists."""
         self._guard_unknown_schema(schema_name)
-        physical = self.find(schema_name)
-        transitive = filter(lambda x: schema_name in _SCHEMAS.parent_path(x), physical)
-        return any(transitive)
-
-
-def _split_meta_obj_path(path: str) -> Tuple[str, str, str, str]:
-    """Splits full path to a metadata object inside metadata directory of a node.
-
-    Returns tuple with:
-        Path to metadata base directory
-        schema parents (except for schema itself)
-        schema name
-        uuid
-    
-    "/some/path/to/metador_meta_something/schema/subschema/=uuid" results in:
-    ('/some/path/to/metador_meta_something', 'schema/subschema', 'subschema', 'uuid')
-    """
-    segs = path.lstrip("/").split("/")
-    uuid = segs.pop()[1:]
-    node_meta_base = ""
-    schema_path = ""
-    schema_name = ""
-    found_meta_base = False
-    for seg in segs:
-        if found_meta_base:
-            schema_path += f"/{seg}"
-            schema_name = seg
-        else:
-            node_meta_base += f"/{seg}"
-        if seg.startswith(METADOR_META_PREF):
-            found_meta_base = True
-    return (node_meta_base, schema_path[1:], schema_name, uuid)
+        return bool(self.find(schema_name, include_parents=True))
 
 class MetadorTOC:
     """Interface to the Metador metadata index of a container."""
 
     def _find_broken_links(self, repair: bool=False) -> List[str]:
-        """Return list of UUIDs in TOC not pointing to an existing metadata object."""
+        """Return list of UUIDs in TOC not pointing to an existing metadata object.
+
+        Will use loaded cache of UUIDs and check them, without scanning the container.
+
+        If repair is set, will remove those broken links.
+        """
         broken = []
         for uuid in self._toc_path_from_uuid.keys():
             target = self._resolve_link(uuid)
@@ -783,12 +759,18 @@ class MetadorTOC:
                 self._unregister_link(uuid)
         return broken
 
-    def _find_missing_links(self, repair: bool = False) -> List[str]:
-        """Return list of paths to metadata objects not listed in TOC."""
+    def _find_missing_links(self, path: str, repair: bool = False, update: bool = False) -> List[str]:
+        """Return list of paths to metadata objects not listed in TOC.
+
+        If repair is set, will create missing entries in TOC.
+
+        If update is set, will reassign existing UUID if possible (this only makes
+        sense when objects have been moved, otherwise it simply breaks the other link)
+        """
         missing = []
 
         def collect_missing(name, node):
-            if not _is_metador_path(name, METADOR_META_PREF):
+            if not M.is_internal_path(node.name, M.METADOR_META_PREF):
                 return  # not a metador metadata path
             leaf = name.split("/")[-1]
             if not leaf[0] == "=":
@@ -802,23 +784,27 @@ class MetadorTOC:
             collision = known and self._resolve_link(uuid) != node.name
 
             if not known or collision:
-                missing.append(node.name)
+                missing.append(node.name)  # absolute paths!
 
-        self._container.__wrapped__.visititems(collect_missing)
+        self._container.__wrapped__[path].visititems(collect_missing)
 
         if not repair:
             return missing
 
         # Repair missing links (objects get new UUIDs)
         for path in missing:
-            meta_dir, schema_path, schema_name, uuid = _split_meta_obj_path(path)
-            if self._parent_path(schema_name) is None: # not in schema lookup table
+            meta_dir, schema_path, schema_name, uuid = M.split_meta_obj_path(path)
+
+            if self._parent_path(schema_name) is None: # schema not in lookup table?
                 # add the unknown schema parent path based on inferred info
                 self._parent_paths[schema_path] = schema_name
                 self._unknown_schemas.add(schema_name)
-            # link the object with new UUID
-            target_path = self._register_link(meta_dir, schema_name)
-            self._container.__wrapped__.move(path, target_path)
+
+            if update and uuid in self._toc_path_from_uuid:
+                self._update_link(uuid, path)  # update target for existing UUID
+            else:  # link the object with a new UUID
+                target_path = self._register_link(meta_dir, schema_name)
+                self._container.__wrapped__.move(path, target_path)
 
         return missing
 
@@ -850,7 +836,7 @@ class MetadorTOC:
         schema_path = self._parent_path(schema_name)
         assert schema_path is not None
         link_name = self._fresh_uuid()
-        toc_path = f"{METADOR_TOC_PATH}/{schema_path}/={link_name}"
+        toc_path = f"{M.METADOR_TOC_PATH}/{schema_path}/={link_name}"
         target_path = f"{node_meta_base}/{schema_path}/={link_name}"
         self._toc_path_from_uuid[link_name] = toc_path
         self._container.__wrapped__[toc_path] = target_path # create (broken) link
@@ -868,7 +854,7 @@ class MetadorTOC:
         del self._container.__wrapped__[toc_link_path]
 
         # clean up empty groups
-        while parent_node.name != METADOR_TOC_PATH:
+        while parent_node.name != M.METADOR_TOC_PATH:
             if len(parent_node):
                 break  # non-empty
             empty_group = parent_node.name
@@ -879,8 +865,8 @@ class MetadorTOC:
             del self._container.__wrapped__[empty_group]
 
         # remove the TOC dir itself, if empty
-        if parent_node.name == METADOR_TOC_PATH and not len(parent_node):
-            del self._container.__wrapped__[METADOR_TOC_PATH]
+        if parent_node.name == M.METADOR_TOC_PATH and not len(parent_node):
+            del self._container.__wrapped__[M.METADOR_TOC_PATH]
         # now the uuid counts as "free" again
         del self._toc_path_from_uuid[uuid]
 
@@ -907,12 +893,12 @@ class MetadorTOC:
         def collect_schemas(path):
             schema_name = path.split("/")[-1]
             if schema_name[0] == "=":  # links/metadata entries start with =
-                self._toc_path_from_uuid[schema_name[1:]] = f"{METADOR_TOC_PATH}/{path}"
+                self._toc_path_from_uuid[schema_name[1:]] = f"{M.METADOR_TOC_PATH}/{path}"
             else:
                 self._parent_paths[schema_name] = path
 
-        if METADOR_TOC_PATH in self._container.__wrapped__:
-            self._container.__wrapped__[METADOR_TOC_PATH].visit(collect_schemas)
+        if M.METADOR_TOC_PATH in self._container.__wrapped__:
+            self._container.__wrapped__[M.METADOR_TOC_PATH].visit(collect_schemas)
 
         # 3. collect the schemas that we don't know already
         self._unknown_schemas = set(self._parent_paths.keys()) - set(_SCHEMAS.keys())
@@ -931,5 +917,4 @@ class MetadorTOC:
         """
         return set(self._unknown_schemas)
 
-
-    # TODO: query API like with node meta, but now for whole container
+    # TODO: query API like with node meta find(), but now for whole container

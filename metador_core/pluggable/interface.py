@@ -9,11 +9,6 @@ from ..schema.core import PluginPkgMeta, FullPluginRef
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
 
-# TODO: sub-pluggables (e.g. subtypes of schema plugins)
-# when we get to mappings with special properties that we want to mark
-# each child should also count for the parent.
-# For now a flat system suffices.
-
 
 class PluggableMetaclass(type):
     """Metaclass to provide dict-like interface to access plugins by name."""
