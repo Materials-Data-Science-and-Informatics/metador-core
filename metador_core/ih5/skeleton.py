@@ -1,4 +1,4 @@
-"""IH5 skeletons and stubs.
+"""IH5 skeletons and stubs (low-level structures used by IH5MFRecord).
 
 A skeleton is documenting the tree structure of a HDF5-like container,
 ignoring the actual data content (attribute values and datasets).
@@ -10,8 +10,8 @@ from typing import Any, Dict, Tuple
 
 import h5py
 
-from .overlay import H5Type
-from .record import IH5Dataset, IH5Record, IH5UserBlock
+from .overlay import H5Type, IH5Dataset
+from .record import IH5Record, IH5UserBlock
 
 IH5TypeSkeleton = Dict[str, Tuple[H5Type, Any]]
 
@@ -58,7 +58,7 @@ def ih5_skeleton(ds: IH5Record) -> Dict[str, str]:
 
 def init_stub_skeleton(ds: IH5Record, skel: Dict[str, str]):
     """Fill a passed fresh container with stub structure based on a skeleton."""
-    if not ds.is_empty:
+    if len(ds) or len(ds.attrs):
         raise ValueError("Container not empty, cannot initialize stub structure here!")
 
     for k, v in skel.items():
@@ -80,13 +80,8 @@ def init_stub_skeleton(ds: IH5Record, skel: Dict[str, str]):
 def init_stub_base(target: IH5Record, src_ub: IH5UserBlock, src_skel: Dict[str, str]):
     """Prepare a stub base container, given empty target, source user block and skeleton.
 
-    Will commit the base container to prevent accidental changes.
-
     Patches on top of this container will work with the original container.
     """
     init_stub_skeleton(target, src_skel)
     # mark as base container
     target._set_ublock(-1, src_ub.copy(update={"prev_patch": None}))
-    # commit() will also fix the hashsum
-    # passed arg is a marker flag (for IH5MF commit())
-    target.commit(__is_stub__=True)

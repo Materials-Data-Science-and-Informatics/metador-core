@@ -2,20 +2,21 @@ from __future__ import annotations
 
 from json.decoder import JSONDecodeError
 from pathlib import Path
+from typing import Optional, Union
 
+import h5py
 from pydantic import BaseModel, ValidationError
 from pydantic_yaml import YamlModelMixin
 
-import h5py
-from ..ih5.protocols import H5FileLike, H5DatasetLike
+from ..ih5.protocols import H5DatasetLike, H5FileLike
 from ..packer.util import MetadorValidationErrors
 from .types import PintUnit
-from typing import Union, Optional
 
 
 def schemas():
     """Access the schema plugin interface."""
     from .pluggable import PluggableSchema  # avoid circular import
+
     return PluggableSchema
 
 

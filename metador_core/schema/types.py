@@ -1,11 +1,11 @@
 """Useful types to use in pydantic models."""
 
 import re
+from typing import Tuple
 
 from pint import Unit
 from pint.errors import UndefinedUnitError
 from pydantic import Field, NonNegativeInt
-from typing import Tuple
 from typing_extensions import Annotated
 
 from ..hashutils import _hash_alg

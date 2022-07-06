@@ -1,8 +1,9 @@
 """Defines schema as pluggable entity."""
 
+from typing import List, get_type_hints
+
 from ..pluggable.interface import Pluggable
 from .interface import MetadataSchema
-from typing import List, get_type_hints
 
 
 class PluggableSchema(Pluggable):

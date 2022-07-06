@@ -19,6 +19,7 @@ class FileMeta(MetadataSchema):
     The type is preferably given as mime-type, otherwise implied py file extension.
     For previews, the shown title is the provided title, otherwise the file name.
     """
+
     filename: nonempty_str
     hashsum: hashsum_str
     mimetype: Optional[mimetype_str] = None
@@ -71,7 +72,6 @@ class ColumnHead(MetadataSchema):
 
 
 class TableMeta(FileMeta):
-
     @classmethod
     def parent_schema(cls):
         return schema_ref("common_file")

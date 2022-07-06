@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from pydantic import AnyHttpUrl
 
 from .interface import MetadataSchema
-from .types import nonempty_str, SemVerTuple
+from .types import SemVerTuple, nonempty_str
 
 
 class PluginRef(MetadataSchema):
@@ -60,7 +60,6 @@ class FullPluginRef(PluginRef):
         return True
 
 
-
 class PluginPkgMeta(MetadataSchema):
     """Metadata of a Python package containing Metador plugins."""
 
@@ -80,9 +79,10 @@ class PluginPkgMeta(MetadataSchema):
     def for_package(cls, package_name: str) -> PluginPkgMeta:
         """Get metadata about a Metador plugin package."""
         # avoid circular import by importing here
+        from importlib_metadata import distribution
+
         from ..pluggable.bootstrap import _pgb_package_meta
         from ..pluggable.utils import pkgmeta_from_dist
-        from importlib_metadata import distribution
 
         ret = _pgb_package_meta.get(package_name)  # look up in registered
         if ret is None:  # won't be there if its not registering plugins (yet)...

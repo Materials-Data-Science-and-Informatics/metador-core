@@ -142,32 +142,35 @@ class IH5MFRecord(IH5Record):
         return Path(f"{str(record)}{cls.MANIFEST_EXT}")
 
     # Override to also load and check latest manifest
-    def __init__(self, paths: List[Path], **kwargs):
-        manifest_file: Path = kwargs.pop("manifest_file", None)
-        super().__init__(paths, **kwargs)
+    @classmethod
+    def _open(cls, paths: List[Path], **kwargs):
+        manifest_file: Optional[Path] = kwargs.pop("manifest_file", None)
+        ret: IH5MFRecord = super()._open(paths, **kwargs)
 
         # if not given explicitly, infer correct manifest filename
         # based on logically latest container (they are sorted after parent init)
         if manifest_file is None:
-            manifest_file = self._manifest_filepath(self._files[-1].filename)
+            manifest_file = cls._manifest_filepath(ret._files[-1].filename)
 
         # for latest container, check linked manifest (if any) against given/inferred one
-        ub = self._ublock(-1)
+        ub = ret._ublock(-1)
         ubext = IH5UBExtManifest.get(ub)
         if ubext is not None:
             if not manifest_file.is_file():
                 msg = f"Manifest file {manifest_file} does not exist, cannot open!"
-                raise ValueError(f"{self._files[-1].filename}: {msg}")
+                raise ValueError(f"{ret._files[-1].filename}: {msg}")
 
             chksum = hashsum_file(manifest_file)
             if ubext.manifest_hashsum != chksum:
                 msg = "Manifest has been modified, unexpected hashsum!"
-                raise ValueError(f"{self._files[-1].filename}: {msg}")
+                raise ValueError(f"{ret._files[-1].filename}: {msg}")
 
-            self._manifest = IH5Manifest.parse_file(manifest_file)
+            ret._manifest = IH5Manifest.parse_file(manifest_file)
             # NOTE: as long as we enforce checksum of manifest, this failure can't happen:
             # if ubext.manifest_uuid != self._manifest.manifest_uuid:
             #     raise ValueError(f"{ub._filename}: Manifest file has wrong UUID!")
+        # all looks good
+        return ret
 
     # Override to also check user block extension
     def _check_ublock(
@@ -195,7 +198,7 @@ class IH5MFRecord(IH5Record):
             self.manifest.save(self._manifest_filepath(file))
 
     # Override to prevent merge if a stub is present
-    def merge(self, target: Path):
+    def merge_files(self, target: Path):
         def is_stub(x):
             ext = IH5UBExtManifest.get(x)
             # missing ext -> not a stub (valid stub has ext + is marked as stub)
@@ -204,12 +207,12 @@ class IH5MFRecord(IH5Record):
         if any(map(is_stub, self.ih5_meta)):
             raise ValueError("Cannot merge, files contain a stub!")
 
-        return super().merge(target)
+        return super().merge_files(target)
 
     # Override to create skeleton and dir hashsums, write manifest and add to user block
     # Will inherit old manifest extensions, unless overridden by passed argument
-    def commit(self, **kwargs) -> None:
-        # is_stub == True only if called from init_stub_base!!! (NOT for the "end-user"!)
+    def commit_patch(self, **kwargs) -> None:
+        # is_stub == True only if called from create_stub!!! (NOT for the "end-user"!)
         is_stub = kwargs.pop("__is_stub__", False)
         exts = kwargs.pop("manifest_exts", None)
 
@@ -232,7 +235,7 @@ class IH5MFRecord(IH5Record):
         # try writing new container
         self._set_ublock(-1, new_ub)
         try:
-            super().commit(**kwargs)
+            super().commit_patch(**kwargs)
         except ValueError as e:  # some checks failed
             self._set_ublock(-1, old_ub)  # reset current user block
             raise e
@@ -275,8 +278,10 @@ class IH5MFRecord(IH5Record):
         ubext.update(user_block)
 
         # create and finalize the stub (override userblock and create skeleton structure)
-        ds = IH5MFRecord.create(Path(record))
-        init_stub_base(ds, user_block, skeleton)
-        assert ds.read_only
+        ds = IH5MFRecord._create(Path(record))
+        init_stub_base(ds, user_block, skeleton)  # prepares structure and user block
+        # commit_patch() completes stub + fixes the hashsum
+        ds.commit_patch(__is_stub__=True)
+        assert ds.mode == "r"
 
         return ds

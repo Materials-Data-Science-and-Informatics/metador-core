@@ -1,13 +1,20 @@
+from typing import Union
+
 import h5py
 import numpy as np
 import pytest
 
-from metador_core.ih5.container import IH5Dataset, IH5Group, IH5Record
-from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, H5Type, IH5InnerNode, IH5Node
+from metador_core.ih5.container import (
+    IH5AttributeManager,
+    IH5Dataset,
+    IH5Group,
+    IH5Record,
+)
+from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, H5Type, IH5Node
 from metador_core.ih5.skeleton import ih5_type_skeleton
 
 
-def create_entries(node: IH5InnerNode):
+def create_entries(node: Union[IH5Group, IH5AttributeManager]):
     node["array"] = [0, 0, 0]
     node["bool"] = False
     node["int"] = 0
@@ -18,7 +25,7 @@ def create_entries(node: IH5InnerNode):
 def fill_dummy_ds(ds: IH5Record, flat: bool):
     def next_patch():
         if not flat:
-            ds.commit()
+            ds.commit_patch()
             ds.create_patch()
 
     create_entries(ds["/"])
@@ -44,10 +51,10 @@ def dummy_ds_factory(tmp_ds_path_factory):
     records = []
 
     def get_ds(flat: bool, commit: bool):
-        ds = IH5Record.create(tmp_ds_path_factory())
+        ds = IH5Record(tmp_ds_path_factory(), "w")
         fill_dummy_ds(ds, flat)
         if commit:
-            ds.commit()
+            ds.commit_patch()
         records.append(ds)
         return ds
 
@@ -59,24 +66,23 @@ def dummy_ds_factory(tmp_ds_path_factory):
 # --------
 
 
-def test_node_instance_checks():
+def test_node_instance_checks(tmp_ds_path):
     # test that instance creation expectedly fails due to sanity checks
-    with pytest.raises(ValueError):
-        IH5Node([], "bla", 0)
-    with pytest.raises(ValueError):
-        IH5Node([None], "", 0)  # type: ignore
-    with pytest.raises(ValueError):
-        IH5Node([None], "bla", -1)  # type: ignore
-    with pytest.raises(ValueError):
-        IH5Node([None], "bla", 1)  # type: ignore
-    IH5Node([None], "bla", 0)  # type: ignore
+    with IH5Record(tmp_ds_path, "w") as ds:
+        with pytest.raises(ValueError):
+            IH5Node(ds, "", 0)  # type: ignore
+        with pytest.raises(ValueError):
+            IH5Node(ds, "/bla", -1)  # type: ignore
+        with pytest.raises(ValueError):
+            IH5Node(ds, "bla", 1)  # type: ignore
+        IH5Node(ds, "/bla", 0)  # type: ignore
 
 
 def test_ih5node_compare(tmp_ds_path_factory):
     # nodes from same open record with same path and creation index should be equal
     # everything else should not.
     ds1name, ds2name = tmp_ds_path_factory(), tmp_ds_path_factory()
-    with IH5Record.create(ds1name) as ds1:
+    with IH5Record(ds1name, "w") as ds1:
         ds1["/foo"] = "bar"
         foo = ds1["/foo"]
 
@@ -84,34 +90,43 @@ def test_ih5node_compare(tmp_ds_path_factory):
         assert ds1["/foo"] == foo
         assert ds1["/"] != foo  # different path
 
-        ds1.commit()
+        ds1.commit_patch()
         ds1.create_patch()
         assert ds1["/foo"] == foo  # still same patch
         del ds1["/foo"]
         ds1["/foo"] = "blub"
         assert ds1["/foo"] != foo  # now different patch
 
-        with IH5Record.create(ds2name) as ds2:
+        with IH5Record(ds2name, "w") as ds2:
             ds2["/foo"] = "bar"
             assert ds2["/"] == ds2["/"]
             assert ds2["/foo"] != foo  # different record
 
 
-def test_abs_and_rel_path(tmp_ds_path):
-    with IH5Record.create(tmp_ds_path) as ds:
+def test_abs_rel_parent_path(tmp_ds_path):
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["grp/foo/bar"] = 123
 
         assert ds["grp"]._abs_path("foo") == "/grp/foo"
         assert ds["grp"]._abs_path("/foo") == "/foo"
+        assert ds["/"]._abs_path("foo") == "/foo"
+        assert ds["/"]._abs_path("/") == "/"
+
         assert ds["grp"]._rel_path("/grp/foo/bar") == "foo/bar"
         assert ds["grp"]._rel_path("foo") == "foo"
+        assert ds["/"]._rel_path("/foo/bar") == "foo/bar"
+        assert ds["/"]._rel_path("/foo/bar") == "foo/bar"
         with pytest.raises(RuntimeError):
             ds["grp"]._rel_path("/invalid")
+
+        assert ds["grp/foo/bar"]._parent_path() == "/grp/foo"  # type: ignore
+        assert ds["grp/foo"]._parent_path() == "/grp"
+        assert ds["/"]._parent_path() == "/"
 
 
 def test_check_key(tmp_ds_path):
     # attributes cannot have slashes, paths cannot be empty
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         with pytest.raises(ValueError):
             ds[""] = 1
         with pytest.raises(ValueError):
@@ -132,22 +147,22 @@ def test_check_key(tmp_ds_path):
 
 def test_latest_container_idx(tmp_ds_path):
     # test finding most recent entity at a path
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["foo/bar"] = 123
-        ds.commit()
-        assert IH5Group._latest_container_idx(ds._files, "/foo/bar") == 0
+        ds.commit_patch()
+        assert IH5Group._latest_idx(ds._files, "/foo/bar") == 0
         ds.create_patch()
         del ds["foo/bar"]
-        ds.commit()
-        assert IH5Group._latest_container_idx(ds._files, "/foo/bar") is None
+        ds.commit_patch()
+        assert IH5Group._latest_idx(ds._files, "/foo/bar") is None
         ds.create_patch()
         ds["foo/bar"] = 456
-        ds.commit()
-        assert IH5Group._latest_container_idx(ds._files, "/foo/bar") == 2
+        ds.commit_patch()
+        assert IH5Group._latest_idx(ds._files, "/foo/bar") == 2
 
 
 def test_visit(tmp_ds_path):
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["grp/foo/bar"] = 123
         ds.attrs["rootattr"] = "yay"  # type: ignore
         ds["grp/foo/bar"].attrs["someattr"] = "value"  # type: ignore
@@ -179,10 +194,10 @@ def test_visit(tmp_ds_path):
 
 
 def test_set_inside_value(tmp_ds_path):
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["a"] = [1, 2, 3]
         a = ds["a"]
-        ds.commit()
+        ds.commit_patch()
 
         # cannot set, no current patch
         with pytest.raises(ValueError) as e:
@@ -218,12 +233,12 @@ def test_set_inside_value(tmp_ds_path):
 
 def test_create_virtual_fail(tmp_ds_path):
     # _create_virtual should fail when the path already exists
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["a/b/c"] = 123
         assert not ds["a"]._create_virtual("b")  # should not work, is a group
         assert not ds["a"]._create_virtual("b/c")  # should not work, is a value
 
-        ds.commit()
+        ds.commit_patch()
         ds.create_patch()
         del ds["a/b/c"]
         assert "a/b/c" not in ds
@@ -231,7 +246,7 @@ def test_create_virtual_fail(tmp_ds_path):
 
 
 def test_forbidden_entities_fail(tmp_ds_path):
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         # we should not be able to set a DEL value or a SUB attr key
         with pytest.raises(ValueError) as e:
             ds["a/b/c"] = DEL_VALUE
@@ -345,14 +360,14 @@ def test_delete_nonexisting_fail(dummy_ds_factory):
 
 def test_create_access_relative_absolute(tmp_ds_path):
     # create datasets/groups using relative and absolute paths
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         nested = ds.create_group("nested")
         nested.create_group("deep")
         nested.create_group("/toplevel")
         nested["data"] = 123
         nested["data"].attrs["key"] = "value"  # type: ignore
         nested["/moredata"] = 456
-        ds.commit()
+        ds.commit_patch()
 
         assert ih5_type_skeleton(ds) == {
             "moredata": (H5Type.dataset, np.int64),
@@ -372,7 +387,6 @@ def test_create_access_relative_absolute(tmp_ds_path):
         # cannot access, no such entity
         with pytest.raises(KeyError) as e:
             ds["nested/missing"]
-        assert str(e).lower().find("exist") >= 0
 
 
 def test_fresh_patch_overlay(dummy_ds_factory):
@@ -409,7 +423,7 @@ def test_fresh_patch_overlay(dummy_ds_factory):
     # set an attribute
     ds["a/c/d"].attrs["key"] = 1337  # type: ignore
 
-    ds.commit()
+    ds.commit_patch()
 
     # check expected values
     assert "b" not in ds
@@ -460,11 +474,11 @@ def test_clear_all_override(dummy_ds_factory):
     ds.create_patch()
     clear_and_verify()
     create_and_verify()
-    ds.commit()
+    ds.commit_patch()
     # clear in one patch, overwrite in another
     ds.create_patch()
     clear_and_verify()
-    ds.commit()
+    ds.commit_patch()
     ds.create_patch()
     create_and_verify()
 
@@ -473,9 +487,9 @@ def test_create_value_patch_delete_value_delete_parent_group(tmp_ds_path):
     # create value inside a group, in next patch remove it,
     # then try removing the corresponding parent group
     # based on actual bug (group removal failed, but should succeed)
-    with IH5Record.create(tmp_ds_path) as ds:
+    with IH5Record(tmp_ds_path, "w") as ds:
         ds["a/b/c"] = 123
-        ds.commit()
+        ds.commit_patch()
         ds.create_patch()
 
         assert ds["a/b/c"][()] == 123  # type: ignore

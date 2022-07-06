@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from ..schema.core import PluginPkgMeta, FullPluginRef
+from ..schema.core import FullPluginRef, PluginPkgMeta
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
@@ -45,6 +45,7 @@ class Pluggable(metaclass=PluggableMetaclass):
     They must implement the check method and be listed as pluggable.
     The name of their entrypoint defines the name of the pluggable group.
     """
+
     _PLUGIN_PKG: Dict[str, str]
     """Dict from entry points to package name in environment providing them."""
 

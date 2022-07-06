@@ -1,6 +1,6 @@
 import h5py
 
-from metador_core.ih5.protocols import H5FileLike, H5GroupLike, H5DatasetLike
+from metador_core.ih5.protocols import H5DatasetLike, H5FileLike, H5GroupLike
 
 
 def test_with_h5(tmp_ds_path):

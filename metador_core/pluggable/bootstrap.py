@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from importlib_metadata import entry_points, distribution
+from importlib_metadata import entry_points
 from typing_extensions import Final
 
 from ..schema.core import PluginPkgMeta
@@ -102,5 +102,5 @@ Pluggable._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
 # (at this point all installed plugins of same kind can be cross-referenced)
 for pgb_name in _loaded_pluggables.keys():
     pgb = Pluggable[pgb_name]  # type: ignore
-    for ep_name, ep in pgb.items():
-        pgb._check(ep_name, ep)
+    for ep_name, ep in pgb.items():  # type: ignore
+        pgb._check(ep_name, ep)  # type: ignore

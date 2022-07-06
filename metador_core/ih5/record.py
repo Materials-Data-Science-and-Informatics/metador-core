@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID, uuid1
 
 import h5py
@@ -26,7 +26,7 @@ from typing_extensions import Annotated, Final, Literal
 
 from ..hashutils import qualified_hashsum
 from ..schema.types import hashsum_str
-from .overlay import IH5Dataset, IH5Group, h5_copy_group_to_group
+from .overlay import IH5Group, h5_copy_from_to
 
 # the magic string we use to identify a valid container
 FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
@@ -148,7 +148,8 @@ class IH5UserBlock(BaseModel):
             f.write(b"\x00")  # mark end of the data
 
 
-T = TypeVar("T", bound="IH5Record")
+OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
+_OPEN_MODES = ["r", "r+", "a", "w", "w-", "x"]
 
 
 class IH5Record:
@@ -163,41 +164,46 @@ class IH5Record:
     * all files of an instance are open for reading (until `close()` is called)
     * all files in `_files` are in patch index order
     * at most one file is open in writable mode (if any, it is the last one)
-    * modifications are possible only after `create` or `create_patch` was called
-        and until `commit` or `discard_patch` was called, and at no other time
+    * modifications are possible only after `create_patch` was called
+        and until `commit_patch` or `discard_patch` was called, and at no other time
     """
 
     # Characters that may appear in a record name.
     # (to be put into regex [..] symbol braces)
-    ALLOWED_NAME_CHARS = r"A-Za-z0-9\-"
+    _ALLOWED_NAME_CHARS = r"A-Za-z0-9\-"
 
     # filenames for a record named NAME are of the shape:
     # NAME[<PATCH_INFIX>.*]?<FILE_EXT>
     # NOTE: the first symbol of these must be one NOT in ALLOWED_NAME_CHARS!
     # This constraint is needed for correctly filtering filenames
-    PATCH_INFIX = ".p"
-    FILE_EXT = ".ih5"
+    _PATCH_INFIX = ".p"
+    _FILE_EXT = ".ih5"
+
+    # attributes
+    _has_writable: bool
+    _files: List[h5py.File]
+    _ublocks: Dict[Path, IH5UserBlock]
 
     @classmethod
     def _is_valid_record_name(cls, name: str) -> bool:
         """Return whether a record name is valid."""
-        return re.match(f"^[{cls.ALLOWED_NAME_CHARS}]+$", name) is not None
+        return re.match(f"^[{cls._ALLOWED_NAME_CHARS}]+$", name) is not None
 
     @classmethod
     def _base_filename(cls, record_path: Path) -> Path:
         """Given a record path, return path to canonical base container name."""
-        return Path(f"{record_path}{cls.FILE_EXT}")
+        return Path(f"{record_path}{cls._FILE_EXT}")
 
     def _infer_name(self) -> str:
         """Inferred name of record (i.e. common filename prefix of the containers)."""
         path = Path(self._files[0].filename)
-        return path.name.split(self.FILE_EXT)[0].split(self.PATCH_INFIX)[0]
+        return path.name.split(self._FILE_EXT)[0].split(self._PATCH_INFIX)[0]
 
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
         path = Path(self._files[0].filename).parent
         patch_index = self._ublock(-1).patch_index + 1
-        res = f"{path}/{self._infer_name()}{self.PATCH_INFIX}{patch_index}{self.FILE_EXT}"
+        res = f"{path}/{self._infer_name()}{self._PATCH_INFIX}{patch_index}{self._FILE_EXT}"
         return Path(res)
 
     def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
@@ -228,7 +234,7 @@ class IH5Record:
         """
         filename = Path(filename)
         # check presence+validity of record uuid (should be the same for all)
-        if ub.record_uuid != self.uuid:
+        if ub.record_uuid != self.ih5_uuid:
             msg = "'record_uuid' inconsistent! Mixed up records?"
             raise ValueError(f"{filename}: {msg}")
 
@@ -266,79 +272,12 @@ class IH5Record:
         for k in self.keys():
             del self[k]
 
-    # ---- public attributes and interface ----
-
-    @property
-    def uuid(self) -> UUID:
-        """Return the common record UUID of the set of containers."""
-        return self._ublock(0).record_uuid
-
-    @property
-    def containers(self) -> List[Path]:
-        """List of container filenames this record consists of."""
-        return [Path(f.filename) for f in self._files]
-
-    @property
-    def ih5_meta(self) -> List[IH5UserBlock]:
-        """Return user block metadata, in container patch order."""
-        return [self._ublock(i).copy() for i in range(len(self._files))]
-
-    @property
-    def read_only(self) -> bool:
-        """Return whether this record is read-only at the moment."""
-        return not self._has_writable
-
-    # for consistency with h5py.File
-    @property
-    def mode(self) -> Literal["r", "r+"]:
-        if self.read_only:
-            return "r"
-        else:
-            return "r+"
-
-    @property
-    def is_empty(self) -> bool:
+    def _is_empty(self) -> bool:
         """Return whether this record currently contains any data."""
         return not self.attrs.keys() and not self.keys()
 
-    def __init__(self, paths: List[Path], **kwargs):
-        """Open a record consisting of a base container + possible set of patches.
-
-        Expects a set of full file paths forming a valid record.
-        Will throw an exception in case of a detected inconsistency.
-        """
-        allow_baseless = kwargs.get("allow_baseless", False)
-        if not paths:
-            raise ValueError("Cannot open empty list of containers!")
-
-        self._has_writable: bool = False
-        self._ublocks = {Path(path): IH5UserBlock.load(path) for path in paths}
-        self._files: List[h5py.File] = [h5py.File(path, "r") for path in paths]
-        # sort files by patch index order (important!)
-        # if something is wrong with the indices, this will throw an exception.
-        self._files.sort(key=lambda f: self._ublock(f).patch_index)
-
-        # check containers and relationship to each other:
-
-        # check first container (it could be a base container and it has no predecessor)
-        if not allow_baseless and self._ublock(0).prev_patch is not None:
-            msg = "base container must not have attribute 'prev_patch'!"
-            raise ValueError(f"{self._files[0].filename}: {msg}")
-        self._check_ublock(self._files[0].filename, self._ublock(0))
-
-        # check successive patches
-        for i in range(1, len(self._files)):
-            self._check_ublock(
-                self._files[i].filename, self._ublock(i), self._ublock(i - 1)
-            )
-
-        # additional sanity check: container uuids must be all distinct
-        cn_uuids = {self._ublock(f).patch_uuid for f in self._files}
-        if len(cn_uuids) != len(self._files):
-            raise ValueError("Some patch_uuid is not unique, invalid file set!")
-
     @classmethod
-    def create(cls: Type[T], record: Union[Path, str], **kwargs) -> T:
+    def _create(cls, record: Union[Path, str], truncate: bool = False):
         """Create a new record consisting of a base container.
 
         The base container is exposed as the `writable` container.
@@ -349,9 +288,8 @@ class IH5Record:
         path = cls._base_filename(record)
 
         # if overwrite flag is set, check and remove old record if present
-        overwrite = kwargs.get("overwrite", False)
-        if overwrite and path.is_file():
-            cls.delete(record)
+        if truncate and path.is_file():
+            cls.delete_files(record)
 
         # create new container
         ret = cls.__new__(cls)
@@ -361,7 +299,64 @@ class IH5Record:
         return ret
 
     @classmethod
-    def find_containers(cls, record: Path) -> List[Path]:
+    def _open(cls, paths: List[Path], **kwargs):
+        """Open a record consisting of a base container + possible set of patches.
+
+        Expects a set of full file paths forming a valid record.
+        Will throw an exception in case of a detected inconsistency.
+        """
+        if not paths:
+            raise ValueError("Cannot open empty list of containers!")
+        allow_baseless: bool = kwargs.pop("allow_baseless", False)
+
+        ret = cls.__new__(cls)
+        ret._has_writable = False
+        ret._ublocks = {Path(path): IH5UserBlock.load(path) for path in paths}
+        ret._files = [h5py.File(path, "r") for path in paths]
+        # sort files by patch index order (important!)
+        # if something is wrong with the indices, this will throw an exception.
+        ret._files.sort(key=lambda f: ret._ublock(f).patch_index)
+
+        # check containers and relationship to each other:
+
+        # check first container (it could be a base container and it has no predecessor)
+        if not allow_baseless and ret._ublock(0).prev_patch is not None:
+            msg = "base container must not have attribute 'prev_patch'!"
+            raise ValueError(f"{ret._files[0].filename}: {msg}")
+        ret._check_ublock(ret._files[0].filename, ret._ublock(0))
+
+        # check successive patches
+        for i in range(1, len(ret._files)):
+            ret._check_ublock(
+                ret._files[i].filename, ret._ublock(i), ret._ublock(i - 1)
+            )
+
+        # additional sanity check: container uuids must be all distinct
+        cn_uuids = {ret._ublock(f).patch_uuid for f in ret._files}
+        if len(cn_uuids) != len(ret._files):
+            raise ValueError("Some patch_uuid is not unique, invalid file set!")
+        # all looks good
+        return ret
+
+    # ---- public attributes and interface ----
+
+    @property
+    def ih5_uuid(self) -> UUID:
+        """Return the common record UUID of the set of containers."""
+        return self._ublock(0).record_uuid
+
+    @property
+    def ih5_files(self) -> List[Path]:
+        """List of container filenames this record consists of."""
+        return [Path(f.filename) for f in self._files]
+
+    @property
+    def ih5_meta(self) -> List[IH5UserBlock]:
+        """Return user block metadata, in container patch order."""
+        return [self._ublock(i).copy() for i in range(len(self._files))]
+
+    @classmethod
+    def find_files(cls, record: Path) -> List[Path]:
         """Return container names that look like they belong to the same record.
 
         This operation is based on purely syntactic pattern matching on file names.
@@ -374,24 +369,55 @@ class IH5Record:
             raise ValueError(f"Invalid record name: '{record.name}'")
 
         record = Path(record)  # in case it was a str
-        globstr = f"{record.name}*{cls.FILE_EXT}"  # rough wildcard pattern
+        globstr = f"{record.name}*{cls._FILE_EXT}"  # rough wildcard pattern
         # filter out possible false positives (i.e. foobar* matching foo* as well)
         paths = []
         for p in record.parent.glob(globstr):
-            if re.match(f"^{record.name}[^{cls.ALLOWED_NAME_CHARS}]", p.name):
+            if re.match(f"^{record.name}[^{cls._ALLOWED_NAME_CHARS}]", p.name):
                 paths.append(p)
         return paths
 
-    @classmethod
-    def open(cls: Type[T], record: Path, **kwargs) -> T:
-        """Open a record for read access.
+    # for consistency with h5py.File:
 
-        This method uses `find_containers` to infer the correct file set.
+    def __init__(self, record: Path, mode: OpenMode = "r", **kwargs):
+        """Open or create a record.
+
+        This method uses `find_files` to infer the correct set of files syntactically.
         """
-        paths = cls.find_containers(record)
-        if not paths:
-            raise FileNotFoundError(f"No containers found for record: {record}")
-        return cls(paths, **kwargs)
+        if mode not in _OPEN_MODES:
+            raise ValueError(f"Unknown file open mode: {mode}")
+
+        if mode[0] == "w" or mode == "x":
+            truncate: bool = mode == "w"
+            ret = self._create(record, truncate=truncate)
+            self.__dict__ = ret.__dict__
+            return
+
+        if mode == "a" or mode[0] == "r":
+            paths = self.find_files(record)
+
+            if not paths:
+                if mode != "a":  # r/r+ need existing containers
+                    raise FileNotFoundError(f"No files found for record: {record}")
+                else:  # a means create new if not existing (will be writable)
+                    ret = self._create(record, truncate=False)
+                    self.__dict__ = ret.__dict__
+                    return
+
+            # open existing (will be ro)
+            ret = self._open(paths, **kwargs)
+            self.__dict__ = ret.__dict__
+
+            if mode == "r+" or mode == "a":  # make writable
+                self.create_patch()  # type: ignore
+            return
+
+    @property
+    def mode(self) -> Literal["r", "r+"]:
+        if not self._has_writable:
+            return "r"
+        else:
+            return "r+"
 
     def close(self) -> None:
         """Commit changes and close all containers that belong to that record.
@@ -402,7 +428,7 @@ class IH5Record:
             return  # nothing to do
 
         if self._has_writable:
-            self.commit()
+            self.commit_patch()
         for f in self._files:
             f.close()
         self._files.clear()
@@ -441,7 +467,7 @@ class IH5Record:
             # so if this is done, it should not be used anymore.
         return self._delete_latest_container()
 
-    def commit(self, **kwargs) -> None:
+    def commit_patch(self, **kwargs) -> None:
         """Complete the current writable container (base or patch) for the record.
 
         Will perform checks on the new container and throw an exception on failure.
@@ -482,7 +508,7 @@ class IH5Record:
         """
         pass
 
-    def merge(self, target: Path) -> Path:
+    def merge_files(self, target: Path) -> Path:
         """Given a path with a record name, merge current record into new container.
 
         Returns new resulting container.
@@ -491,9 +517,15 @@ class IH5Record:
         if self._has_writable:
             raise ValueError("Cannot merge, please commit or discard your changes!")
 
-        with self.create(target) as ds:
-            h5_copy_group_to_group(self["/"], ds["/"])
-            cfile = ds.containers[0]  # store filename to override userblock afterwards
+        with self._create(target) as ds:
+            source_node = self["/"]
+            target_node = ds["/"]
+            for k, v in source_node.attrs.items():  # copy root attributes
+                target_node.attrs[k] = v
+            for name in source_node.keys():  # copy each entity (will recurse)
+                h5_copy_from_to(source_node[name], target_node, name)
+
+            cfile = ds.ih5_files[0]  # store filename to override userblock afterwards
 
         # compute new merged userblock
         ub = self._ublock(-1).copy(update={"prev_patch": self._ublock(0).prev_patch})
@@ -508,12 +540,12 @@ class IH5Record:
         return cfile
 
     @classmethod
-    def delete(cls, record: Path):
+    def delete_files(cls, record: Path):
         """Irreversibly(!) delete all containers matching the record path.
 
         This object is invalid after this operation.
         """
-        for file in cls.find_containers(record):
+        for file in cls.find_files(record):
             file.unlink()
 
     # ---- context manager support (i.e. to use `with`) ----
@@ -522,14 +554,14 @@ class IH5Record:
         return self
 
     def __exit__(self, ex_type, ex_value, ex_traceback):
-        # this will ensure that commit() is called and the files are closed
+        # this will ensure that commit_patch() is called and the files are closed
         self.close()
 
-    # ---- pass through HDF5 group methods to an implicit root group instance ----
+    # ---- like h5py, pass through unknown methods to an implicit root group instance ----
 
     # helper, more efficient than going through self["/"] in the following methods
     def _root_group(self) -> IH5Group:
-        return IH5Group(self._files)
+        return IH5Group(self)
 
     def __getattr__(self, key):
         # takes care of forwarding all non-special methods

@@ -1,7 +1,8 @@
 import re
 from typing import Optional
+
+from ..schema.core import AnyHttpUrl, PluginPkgMeta, SemVerTuple
 from .interface import PGB_GROUP_PREFIX
-from ..schema.core import PluginPkgMeta, SemVerTuple, AnyHttpUrl
 
 # from importlib_metadata import distribution
 # def this_package():

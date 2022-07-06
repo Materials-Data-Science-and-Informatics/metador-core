@@ -6,17 +6,18 @@ Mostly defined for documentation purposes.
 from __future__ import annotations
 
 from typing import (
-    Optional,
     Any,
     Callable,
-    Protocol,
-    runtime_checkable,
-    Iterable,
-    MutableMapping,
-    KeysView,
-    ValuesView,
     ItemsView,
+    Iterable,
+    KeysView,
+    MutableMapping,
+    Optional,
+    Protocol,
+    ValuesView,
+    runtime_checkable,
 )
+
 from typing_extensions import Literal
 
 # NOTE: might also checkout zope.interfaces and see if it makes more sense

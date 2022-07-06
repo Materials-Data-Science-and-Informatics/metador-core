@@ -2,14 +2,15 @@
 import pytest
 
 from metador_core.ih5.container import IH5Record
-from metador_core.ih5.skeleton import ih5_skeleton, init_stub_skeleton, init_stub_base
+from metador_core.ih5.skeleton import ih5_skeleton, init_stub_base, init_stub_skeleton
+
 
 def test_ih5_skeleton(tmp_ds_path_factory):
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
+    with IH5Record(tmp_ds_path_factory(), "w") as ds:
         ds["foo/bar"] = "hello"
         ds.attrs["root_attr"] = 1
         ds["foo"].attrs["group_attr"] = 2
-        ds["foo/bar"].attrs["dataset_attr"] = 3
+        ds["foo/bar"].attrs["dataset_attr"] = 3  # type: ignore
 
         assert ih5_skeleton(ds) == {
             "@root_attr": "attribute",
@@ -19,10 +20,11 @@ def test_ih5_skeleton(tmp_ds_path_factory):
             "foo": "group",
         }
 
+
 def test_init_stub_skeleton(tmp_ds_path_factory):
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
+    with IH5Record(tmp_ds_path_factory(), "w") as ds:
         with pytest.raises(ValueError):
-            skel = { # dict in key creation order. Key order should not matter!
+            skel = {  # dict in key creation order. Key order should not matter!
                 "foo@atr": "attribute",  # first creates the attribute...
                 "foo": "dataset",  # ...then explicitly value
                 "qux/bar": "dataset",  # ... first implicitly create group
@@ -32,14 +34,15 @@ def test_init_stub_skeleton(tmp_ds_path_factory):
             init_stub_skeleton(ds, skel)
 
     # now test failures
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
+    with IH5Record(tmp_ds_path_factory(), "w") as ds:
         with pytest.raises(ValueError):
             init_stub_skeleton(ds, {"foo": "invalid"})  # invalid skeleton
 
-    with IH5Record.create(tmp_ds_path_factory()) as ds:
-        ds["bar"] = "not empty anymore" # not empty, but no collision
+    with IH5Record(tmp_ds_path_factory(), "w") as ds:
+        ds["bar"] = "not empty anymore"  # not empty, but no collision
         with pytest.raises(ValueError):
             init_stub_skeleton(ds, {"foo": "dataset"})  # not empty target
+
 
 def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
     # Test that patching over a stub works correctly and can be used with original.
@@ -47,27 +50,27 @@ def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
     # create a little normal record with multiple patches
     dsname = tmp_ds_path_factory()
     stubname = tmp_ds_path_factory()
-    with IH5Record.create(dsname) as ds:
+    with IH5Record(dsname, "w") as ds:
         ds["foo/bar"] = [1, 2, 3]
-        ds.commit()
+        ds.commit_patch()
         ds.create_patch()
         ds["foo/bar"].attrs["qux"] = 42  # type: ignore
         ds["data"] = "interesting data"
-        ds.commit()
+        ds.commit_patch()
         ds.create_patch()
         ds["data"].attrs["key"] = "value"  # type: ignore
         ds["foo/muh"] = 1337
         ds["foo/tokill"] = "this will be deleted"
-        ds.commit()
+        ds.commit_patch()
 
-        ds_files = ds.containers
+        ds_files = ds.ih5_files
         ds_ub = ds.ih5_meta[-1]
         ds_sk = ih5_skeleton(ds)
 
         # create the stub faking this record
-        with IH5Record.create(stubname) as stub:
+        with IH5Record(stubname, "w") as stub:
             init_stub_base(stub, ds_ub, ds_sk)
-            assert stub.read_only
+            stub.commit_patch()
 
             # should agree on relevant user block infos
             assert ds_ub.record_uuid == stub.ih5_meta[0].record_uuid
@@ -83,10 +86,10 @@ def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
             stub["/foo/bar/blub"] = True
             stub["data"].attrs["key2"] = "othervalue"
             stub["foo/bar"].attrs["qax"] = 987  # type: ignore
-            stub.commit()
+            stub.commit_patch()
 
-            assert len(stub.containers) == 2
-            stub_files = stub.containers
+            assert len(stub.ih5_files) == 2
+            stub_files = stub.ih5_files
             stub_skel = ih5_skeleton(stub)
             assert stub_skel == {
                 "data": "dataset",
@@ -100,7 +103,7 @@ def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
             }
 
     # open real record with new patch in stub
-    with IH5Record([*ds_files, stub_files[-1]]) as ds:
+    with IH5Record._open([*ds_files, stub_files[-1]]) as ds:
         # first success is that it even opens without complaining.
         # now check that it's the same skeleton with the real data:
         assert ih5_skeleton(ds) == stub_skel
@@ -109,5 +112,3 @@ def test_patch_on_stub_works_with_real(tmp_ds_path_factory):
         assert set(ds["foo/bar"].attrs.keys()) == set(["qax"])
         assert "foo/muh" in ds
         assert "foo/bar/blub" in ds
-
-
