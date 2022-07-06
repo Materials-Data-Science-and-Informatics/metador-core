@@ -395,7 +395,7 @@ class IH5Dataset(IH5Node):
 
     @property
     def parent(self) -> IH5Group:
-        return self._record[self._parent_path]
+        return self._record[self._parent_path()]
 
     @property
     def attrs(self):
@@ -521,7 +521,7 @@ class IH5Group(IH5InnerNode):
 
     @property
     def parent(self) -> IH5Group:
-        return self._record[self._parent_path]
+        return self._record[self._parent_path()]
 
     @property
     def attrs(self) -> IH5AttributeManager:
@@ -599,16 +599,17 @@ class IH5Group(IH5InnerNode):
 
     def copy(self, source: CopySource, dest: CopyDest, **kwargs):
         src_node = self[source] if isinstance(source, str) else source
+        name: str = kwargs.pop("name", src_node.name.split("/")[-1])
         dst_name: str
         if isinstance(dest, str):
             # if dest is a path, ignore inferred/passed name
-            segs = dest.split("/")
-            dst_group = self.require_group("/".join(segs[:-1]))
+            segs = self._abs_path(dest).split("/")
+            dst_group = self.require_group("/".join(segs[:-1]) or "/")
             dst_name = segs[-1]
         else:
             # given dest is a group node, use inferred/passed name
             dst_group = dest
-            dst_name = kwargs.pop("name", src_node.name.split("/")[-1])
+            dst_name = name
         return h5_copy_from_to(src_node, dst_group, dst_name, **kwargs)
 
     def move(self, source: str, dest: str):
@@ -682,11 +683,11 @@ def h5_copy_from_to(source_node, target_group, target_path: str, **kwargs):
     Target node must be an existing group object.
     Target path must be fresh path relative to target node.
     """
-    for arg in ["expand_soft", "expand_external" "expand_refs"]:
-        if not kwargs.pop(arg, True):
-            raise ValueError("IH5 does not support keeping references!")
     without_attrs: bool = kwargs.pop("without_attrs", False)
     shallow: bool = kwargs.pop("shallow", False)
+    for arg in ["expand_soft", "expand_external", "expand_refs"]:
+        if not kwargs.pop(arg, True):
+            raise ValueError("IH5 does not support keeping references!")
     if kwargs:
         raise ValueError(f"Unknown keyword arguments: {kwargs}")
 
