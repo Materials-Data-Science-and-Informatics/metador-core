@@ -7,7 +7,8 @@ from importlib_metadata import entry_points
 from typing_extensions import Final
 
 from ..schema.core import PluginPkgMeta
-from .interface import PGB_GROUP_PREFIX, Pluggable
+from . import installed
+from .interface import PGB_GROUP_PREFIX, PluginGroup
 from .utils import pkgmeta_from_dist
 
 # get all entrypoints
@@ -15,14 +16,14 @@ _eps = entry_points()
 
 # dict: Package name -> Installed package metadata.
 # Used as global cache for looking up info about required packages.
-# (will be exposed through Pluggable)
+# (will be exposed through PluginGroup)
 _pgb_package_meta: Dict[str, PluginPkgMeta] = {}
 
 
 class LoadedPlugin:
     """Runtime representation of a Metador plugin and its entrypoint.
 
-    A plugin is defined in a pluggable entrypoint group located in some Python package.
+    A plugin is defined in an entrypoint group located in some Python package.
     """
 
     pkg_name: str
@@ -50,11 +51,11 @@ class LoadedPlugin:
 
 
 # initialize plugin discovery by getting pluggable groups (which are a pluggable).
-PGB_PLUGGABLE: Final[str] = "pluggable"
+PGB_PLUGGABLE: Final[str] = "plugin_group"
 _loaded_pluggables: Dict[str, Dict[str, LoadedPlugin]]
 _loaded_pluggables = {PGB_PLUGGABLE: LoadedPlugin.get_plugins(PGB_PLUGGABLE)}
 """
-Dict of Pluggable name -> Plugin entrypoint name -> Entrypoint info object.
+Dict of PluginGroup name -> Plugin entrypoint name -> Entrypoint info object.
 """
 
 
@@ -63,44 +64,49 @@ def _project_eps(pgb_name, func):
     return {k: func(v) for k, v in _loaded_pluggables[pgb_name].items()}
 
 
+def _create_pgb_group(pgb_name, pgb_cls):
+    installed[pgb_name] = pgb_cls(
+        pgb_name,
+        _project_eps(pgb_name, lambda v: v.pkg_name),
+        _project_eps(pgb_name, lambda v: v.ep),
+    )
+
+
 # load actual registered pluggables
 for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
     # check the pluggable itself
-    Pluggable._check_plugin_common(pgb_name, pgb)
+    PluginGroup._check_plugin_common(pgb_name, pgb)
     if pgb_name in _loaded_pluggables:
-        msg = f"{pgb_name}: Pluggable name already registered"
+        msg = f"{pgb_name}: PluginGroup name already registered"
         raise TypeError(msg)
 
     # load plugins for that pluggable
     _loaded_pluggables[pgb_name] = LoadedPlugin.get_plugins(pgb_name)
-    # attach the loaded ones to the class
-    pgb.ep._NAME = pgb_name
-    pgb.ep._LOADED_PLUGINS = _project_eps(pgb_name, lambda v: v.ep)
-    pgb.ep._PLUGIN_PKG = _project_eps(pgb_name, lambda v: v.pkg_name)
+
+    # attach the loaded group to the module where they will be imported from
+    _create_pgb_group(pgb_name, pgb.ep)
 
 # set up shared lookup for package metadata, shared by all plugin groups
-Pluggable._NAME = PGB_PLUGGABLE
-Pluggable._PKG_META = _pgb_package_meta
+PluginGroup._PKG_META = _pgb_package_meta
+# add plugin group group itself
 
 # the core package is the one registering the "schema" plugin group.
 # Use that knowledge to hack in that this package also provides "pluggable":
-_this_pkg_name = _loaded_pluggables["pluggable"]["schema"].pkg_name
+_this_pkg_name = _loaded_pluggables[PGB_PLUGGABLE]["schema"].pkg_name
 _pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
 
-# take care of setting up the Pluggable group object, as its not fully initialized yet:
-
+# take care of setting up the PluginGroup group object, as its not fully initialized yet:
+_create_pgb_group(PGB_PLUGGABLE, PluginGroup)
 # Manually append the pluggable meta-interface as a proper pluggable itself
-Pluggable._LOADED_PLUGINS = _project_eps(PGB_PLUGGABLE, lambda v: v.ep)
-Pluggable._LOADED_PLUGINS[PGB_PLUGGABLE] = Pluggable
-Pluggable._PLUGIN_PKG = _project_eps(PGB_PLUGGABLE, lambda v: v.pkg_name)
+installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
 # register this package as provider of pluggables (this package actually registers schema)
-Pluggable._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
+installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
 
 # now can use the class structures safely:
 
 # check the plugins according to pluggable rules
 # (at this point all installed plugins of same kind can be cross-referenced)
 for pgb_name in _loaded_pluggables.keys():
-    pgb = Pluggable[pgb_name]  # type: ignore
-    for ep_name, ep in pgb.items():  # type: ignore
-        pgb._check(ep_name, ep)  # type: ignore
+    pgroup: PluginGroup = installed[pgb_name]
+    for ep_name, ep in pgroup.items():
+        pgroup._check(ep_name, ep)

@@ -1,18 +1,17 @@
 """Define packers as pluggable entity."""
 
-from ..pluggable.interface import Pluggable
+from ..plugins.interface import PluginGroup
 from .interface import Packer, PackerInfo
 
 
-class PluggablePacker(Pluggable):
-    @classmethod
-    def packer_info(cls, packer_name):
+class PGPacker(PluginGroup):
+    def packer_info(self, packer_name):
         """Return a PackerInfo object for given packer name."""
-        pkg = cls.provider(packer_name)
+        pkg = self.provider(packer_name)
         return PackerInfo(
             python_pkg=pkg.name,
             python_pkg_version=pkg.version,
-            plugin_group=cls.name,
+            plugin_group=self.name,
             plugin_name=packer_name,
         )
 

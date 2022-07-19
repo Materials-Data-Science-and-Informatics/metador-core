@@ -2,11 +2,11 @@
 
 from typing import List, get_type_hints
 
-from ..pluggable.interface import Pluggable
+from ..plugins.interface import PluginGroup
 from .interface import MetadataSchema
 
 
-class PluggableSchema(Pluggable):
+class PGSchema(PluginGroup):
     """Interface to access installed schema plugins.
 
     A valid schema must be subclass of `MetadataSchema` and also subclass of
@@ -33,8 +33,7 @@ class PluggableSchema(Pluggable):
     but only describe a part of a meaningful metadata object.
     """
 
-    @classmethod
-    def check_plugin(cls, schema_name: str, ep):
+    def check_plugin(self, schema_name: str, ep):
         """Check schema for validity."""
         if not issubclass(ep, MetadataSchema):
             msg = f"{schema_name}: Schema not subclass of MetadataSchema!"
@@ -44,12 +43,12 @@ class PluggableSchema(Pluggable):
         if parent_ref is None:
             return
 
-        parent = cls.get(parent_ref.name)
+        parent = self.get(parent_ref.name)
         if not parent:
             msg = f"{schema_name}: Parent schema {parent_ref} not found!"
             raise TypeError(msg)
 
-        inst_parent_ref = cls.fullname(parent_ref.name)
+        inst_parent_ref = self.fullname(parent_ref.name)
         if not inst_parent_ref.supports(parent_ref):
             msg = f"{schema_name}: Installed parent schema version ({inst_parent_ref}) "
             msg += "incompatible with required version ({parent_ref})!"

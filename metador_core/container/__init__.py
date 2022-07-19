@@ -100,7 +100,8 @@ import wrapt
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
-from ..schema.interface import MetadataSchema, schemas
+from ..plugins import installed
+from ..schema.interface import MetadataSchema
 from . import utils as M
 
 
@@ -673,7 +674,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 # --------
 
 
-_SCHEMAS = schemas()
+_SCHEMAS = installed["schema"]
 
 
 class MetadorMeta:

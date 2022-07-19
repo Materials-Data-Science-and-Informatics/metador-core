@@ -27,12 +27,12 @@ pytest = "^7.0.1"
 pytest-cov = "^3.0.0"
 pdoc = "^10.0.3"
 
-[tool.poetry.plugins.metador_pluggable]
+[tool.poetry.plugins.metador_plugin_group]
 # Metador supports defining custom validated plugin groups.
 # Here we define the default entities used in Metador.
-# For each declared pluggable type, plugins can be defined via entrypoints.
-schema = "metador_core.schema.pluggable:PluggableSchema"
-packer = "metador_core.packer.pluggable:PluggablePacker"
+# For each declared group, plugins can be defined via entrypoints.
+schema = "metador_core.schema.plugingroup:PGSchema"
+packer = "metador_core.packer.plugingroup:PGPacker"
 
 [tool.poetry.plugins.metador_schema]
 # Metador is build around pluggable metadata schemas.

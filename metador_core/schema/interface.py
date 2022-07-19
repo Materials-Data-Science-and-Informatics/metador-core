@@ -13,16 +13,11 @@ from ..packer.util import MetadorValidationErrors
 from .types import PintUnit
 
 
-def schemas():
-    """Access the schema plugin interface."""
-    from .pluggable import PluggableSchema  # avoid circular import
-
-    return PluggableSchema
-
-
 def schema_ref(schema_name: str):
     """Return a FullPluginRef for a schema based on its registered name."""
-    return schemas().fullname(schema_name)
+    from ..plugins import installed
+
+    return installed["schema"].fullname(schema_name)
 
 
 class MetadataSchema(YamlModelMixin, BaseModel):

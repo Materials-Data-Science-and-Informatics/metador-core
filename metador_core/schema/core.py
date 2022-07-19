@@ -81,8 +81,8 @@ class PluginPkgMeta(MetadataSchema):
         # avoid circular import by importing here
         from importlib_metadata import distribution
 
-        from ..pluggable.bootstrap import _pgb_package_meta
-        from ..pluggable.utils import pkgmeta_from_dist
+        from ..plugins.bootstrap import _pgb_package_meta
+        from ..plugins.utils import pkgmeta_from_dist
 
         ret = _pgb_package_meta.get(package_name)  # look up in registered
         if ret is None:  # won't be there if its not registering plugins (yet)...
