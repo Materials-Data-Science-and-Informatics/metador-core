@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict
+from typing import Dict, Generic, ItemsView, KeysView, Type, TypeVar, ValuesView
 
 from ..schema.core import FullPluginRef, PluginPkgMeta
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
 
+T = TypeVar("T")
 
-class PluginGroup:
+
+class PluginGroup(Generic[T]):
     """All pluggable entities in metador are subclasses of this class.
 
     They must implement the check method and be listed as plugin group.
@@ -26,21 +28,21 @@ class PluginGroup:
     _NAME: str
     """Name of this pluggable group."""
 
-    _LOADED_PLUGINS: Dict[str, Any]
+    _LOADED_PLUGINS: Dict[str, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
 
     _PLUGIN_PKG: Dict[str, str]
     """Dict from entry points to package name in environment providing them."""
 
     def __init__(
-        self, name: str, plugin_pkg: Dict[str, str], loaded_plugins: Dict[str, Any]
+        self, name: str, plugin_pkg: Dict[str, str], loaded_plugins: Dict[str, Type[T]]
     ):
         self._NAME = name
         self._PLUGIN_PKG = plugin_pkg
         self._LOADED_PLUGINS = loaded_plugins
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._NAME
 
     @property
@@ -48,19 +50,19 @@ class PluginGroup:
         """Return metadata of all packages providing metador plugins."""
         return dict(self._PKG_META)
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         return self._LOADED_PLUGINS.keys()
 
-    def values(self):
+    def values(self) -> ValuesView[Type[T]]:
         return self._LOADED_PLUGINS.values()
 
-    def items(self):
+    def items(self) -> ItemsView[str, Type[T]]:
         return self._LOADED_PLUGINS.items()
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Type[T]:
         return self._LOADED_PLUGINS[key]
 
-    def get(self, key, default=None):
+    def get(self, key: str, default=None):
         return self._LOADED_PLUGINS.get(key, default)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:
@@ -71,7 +73,7 @@ class PluginGroup:
             raise KeyError(msg)
         return self._PKG_META[pkg]
 
-    def fullname(self, ep_name) -> FullPluginRef:
+    def fullname(self, ep_name: str) -> FullPluginRef:
         pkginfo = self.provider(ep_name)
         return FullPluginRef(
             pkg=pkginfo.name,
@@ -81,8 +83,9 @@ class PluginGroup:
         )
 
     # ----
+
     @classmethod
-    def _check_plugin_common(cls, ep_name: str, ep: Any):
+    def _check_plugin_common(cls, ep_name: str, ep: Type[T]):
         """Perform common checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -91,7 +94,13 @@ class PluginGroup:
             msg = f"{ep_name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
             raise TypeError(msg)
 
-    def _check(self, ep_name: str, ep: Any):
+    def check_is_subclass(self, ep_name: str, ep: Type[T], pg_base: Type):
+        """Check whether plugin has expected parent class (helper method)."""
+        if not issubclass(ep, pg_base):
+            msg = f"{ep_name}: {self.name} plugin not subclass of {pg_base}!"
+            raise TypeError(msg)
+
+    def _check(self, ep_name: str, ep: Type[T]):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -99,7 +108,7 @@ class PluginGroup:
         self._check_plugin_common(ep_name, ep)
         self.check_plugin(ep_name, ep)
 
-    def check_plugin(self, ep_name: str, ep: Any):
+    def check_plugin(self, ep_name: str, ep: Type[T]):
         """Perform pluggable-specific checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -108,7 +117,4 @@ class PluginGroup:
         """
         if type(self) != PluginGroup:
             raise NotImplementedError
-
-        if not issubclass(ep, PluginGroup):
-            msg = f"{ep_name}: {ep} must be subclass of {PluginGroup}"
-            raise TypeError(msg)
+        self.check_is_subclass(ep_name, ep, PluginGroup)

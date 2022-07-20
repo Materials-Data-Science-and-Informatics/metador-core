@@ -35,9 +35,7 @@ class PGSchema(PluginGroup):
 
     def check_plugin(self, schema_name: str, ep):
         """Check schema for validity."""
-        if not issubclass(ep, MetadataSchema):
-            msg = f"{schema_name}: Schema not subclass of MetadataSchema!"
-            raise TypeError(msg)
+        self.check_is_subclass(schema_name, ep, MetadataSchema)
 
         parent_ref = ep.parent_schema()
         if parent_ref is None:
@@ -69,8 +67,7 @@ class PGSchema(PluginGroup):
                 msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
                 raise TypeError(msg)
 
-    @classmethod
-    def parent_path(cls, schema_name: str) -> List[str]:
+    def parent_path(self, schema_name: str) -> List[str]:
         """Get sequence of registered parent schema names leading to the given schema.
 
         This sequence can be a subset of the parent sequences in the actual class
@@ -78,11 +75,11 @@ class PGSchema(PluginGroup):
         """
         ret = [schema_name]
 
-        curr = cls[schema_name]  # type: ignore
+        curr = self[schema_name]  # type: ignore
         parent = curr.parent_schema()
         while parent is not None:
             ret.append(parent.name)
-            curr = cls[parent.name]  # type: ignore
+            curr = self[parent.name]  # type: ignore
             parent = curr.parent_schema()
 
         ret.reverse()

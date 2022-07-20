@@ -24,6 +24,9 @@ METADOR_VERSION_PATH: Final[str] = f"/{METADOR_PREF}version"
 METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}toc"
 """Path of group with the Metador metadata index structure of the container."""
 
+METADOR_DEPS_PATH: Final[str] = f"/{METADOR_PREF}container_deps"
+"""Path of group with package info of packages providing used schemas in the container."""
+
 
 def is_internal_path(path: str, pref: str = METADOR_PREF) -> bool:
     """Return whether the path of this node is Metador-internal (metador_*).

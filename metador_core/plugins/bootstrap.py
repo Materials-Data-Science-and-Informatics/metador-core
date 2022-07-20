@@ -75,7 +75,7 @@ def _create_pgb_group(pgb_name, pgb_cls):
 # load actual registered pluggables
 for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
     # check the pluggable itself
-    PluginGroup._check_plugin_common(pgb_name, pgb)
+    PluginGroup._check_plugin_common(pgb_name, pgb.ep)
     if pgb_name in _loaded_pluggables:
         msg = f"{pgb_name}: PluginGroup name already registered"
         raise TypeError(msg)

@@ -87,20 +87,30 @@ from typing import (
     Iterator,
     KeysView,
     List,
+    Mapping,
     Optional,
     Set,
     Type,
     Union,
     ValuesView,
+    cast,
 )
 from uuid import uuid1
 
 import h5py
 import wrapt
 
+from metador_core.ih5.protocols import (
+    H5DatasetLike,
+    H5FileLike,
+    H5GroupLike,
+    H5NodeLike,
+)
+
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
 from ..plugins import installed
+from ..schema.core import FullPluginRef, PluginPkgMeta
 from ..schema.interface import MetadataSchema
 from . import utils as M
 
@@ -115,24 +125,26 @@ class ROAttributeManager(wrapt.ObjectProxy):
     Returned from nodes that are marked as read_only.
     """
 
+    __wrapped__: Mapping
+
     # read-only methods listed in h5py AttributeManager API:
-    _self_ALLOWED = {"keys", "values", "items", "get", "get_id"}
+    _self_ALLOWED = {"keys", "values", "items", "get"}
     _self_MSG = "This attribute set belongs to a node marked as read_only!"
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str):
         if hasattr(self.__wrapped__, key) and key not in self._self_ALLOWED:  # RAW
             raise RuntimeError(self._self_MSG)
         return getattr(self.__wrapped__, key)  # RAW
 
-    # this does not go through getattr
-    def __setitem__(self, key, value):
+    # this is not intercepted by getattr
+    def __setitem__(self, key: str, value):
         raise RuntimeError(self._self_MSG)
 
-    # this does not go through getattr
-    def __delitem__(self, key, value):
+    # this is not intercepted by getattr
+    def __delitem__(self, key: str, value):
         raise RuntimeError(self._self_MSG)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.__wrapped__)  # RAW
 
 
@@ -145,7 +157,9 @@ class MetadorNode(wrapt.ObjectProxy):
     local_only (restricting access to data and metadata that is not below this node).
     """
 
-    def __init__(self, mc: MetadorContainer, node, **kwargs):
+    __wrapped__: H5NodeLike
+
+    def __init__(self, mc: MetadorContainer, node: H5NodeLike, **kwargs):
         super().__init__(node)
         self._self_container: MetadorContainer = mc
 
@@ -321,6 +335,8 @@ _H5_REF_TYPES = [h5py.HardLink, h5py.SoftLink, h5py.ExternalLink, h5py.h5r.Refer
 
 class MetadorGroup(MetadorNode):
     """Wrapper for a HDF5 Group."""
+
+    __wrapped__: H5GroupLike
 
     def _destroy_meta(self, unlink_in_toc: bool = True):
         """Destroy all attached metadata at and below this node (recursively)."""
@@ -518,6 +534,8 @@ class MetadorGroup(MetadorNode):
 class MetadorDataset(MetadorNode):
     """Metador wrapper for a HDF5 Dataset."""
 
+    __wrapped__: H5DatasetLike
+
     # manually assembled from public methods h5py.Dataset provides
     _self_FORBIDDEN = {"resize", "make_scale", "write_direct", "flush"}
 
@@ -546,7 +564,9 @@ class MetadorContainer(wrapt.ObjectProxy):
     There are no guarantees about behaviour with h5py methods not supported by IH5Records.
     """
 
-    def __init__(self, obj):
+    __wrapped__: H5FileLike
+
+    def __init__(self, obj: H5FileLike):
         if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
             raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
         super().__init__(obj)
@@ -564,7 +584,7 @@ class MetadorContainer(wrapt.ObjectProxy):
             self.__wrapped__[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION  # RAW
 
         # if we are here, we should have an existing metador container, or a fresh one
-        self._self_toc = MetadorTOC(self)
+        self._self_toc = MetadorContainerTOC(self)
 
     # not clear if we want these in the public interface. keep this private for now.
 
@@ -607,15 +627,9 @@ class MetadorContainer(wrapt.ObjectProxy):
         return None
 
     @property
-    def toc(self) -> MetadorTOC:
+    def toc(self) -> MetadorContainerTOC:
         """Access interface to Metador metadata object index."""
         return self._self_toc
-
-    @property
-    def deps(self):
-        """Return dict from embedded schema names to the providing package information."""
-        # TODO: based on env info in the TOC
-        raise NotImplementedError
 
     # ---- pass through HDF5 group methods to a wrapped root group instance ----
 
@@ -628,7 +642,7 @@ class MetadorContainer(wrapt.ObjectProxy):
     def _root_group(self) -> MetadorGroup:
         return MetadorGroup(self, self.__wrapped__["/"])  # RAW
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str):
         # takes care of forwarding all non-special methods
         try:
             return getattr(self._root_group(), key)  # try passing to wrapped group
@@ -640,7 +654,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 
     # we want these also to be forwarded to the wrapped group, not the raw object:
 
-    def __getitem__(self, key) -> MetadorGroup:
+    def __getitem__(self, key: str) -> MetadorGroup:
         return self._root_group()[key]
 
     def __setitem__(self, key: str, value):
@@ -652,7 +666,7 @@ class MetadorContainer(wrapt.ObjectProxy):
     def __iter__(self):
         return iter(self._root_group())
 
-    def __contains__(self, key) -> bool:
+    def __contains__(self, key: str) -> bool:
         return key in self._root_group()
 
     def __len__(self) -> int:
@@ -665,7 +679,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 
     # make wrapper transparent
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.__wrapped__)  # RAW
 
 
@@ -752,9 +766,10 @@ class MetadorMeta:
             raise ValueError(f"Unknown keyword arguments: {kwargs}")
 
         basepath = self._meta_schema_dir(schema_name)
-        if basepath not in self._mc.__wrapped__:  # RAW
+        if not basepath or basepath not in self._mc.__wrapped__:  # RAW
             # no metadata subdirectory -> no objects (important case!)
             return set()
+        grp = self._mc.__wrapped__.require_group(basepath)  # RAW
 
         entries: Set[str] = set()
 
@@ -771,7 +786,7 @@ class MetadorMeta:
                     if schema_name:
                         entries.add(schema_name)
 
-        self._mc.__wrapped__[basepath].visit(collect)  # RAW
+        grp.visit(collect)  # RAW
         return entries
 
     def _delitem(self, schema_name: str, unlink_in_toc: bool = True):
@@ -841,6 +856,12 @@ class MetadorMeta:
         obj_path = self._mc.toc._register_link(self._base_dir, schema_name)
         self._mc.__wrapped__[obj_path] = bytes(value)  # RAW
 
+        # notify dep manager to register possibly new dependency.
+        # we do it here instead of in toc._register_link, because _register_link
+        # is also used in cases where we might not have the schema installed,
+        # e.g. when fixing the TOC.
+        self._mc.toc._notify_used_schema(schema_name)
+
     # following have transitive semantics (i.e. logic also works with parent schemas)
 
     def get(self, schema_name: str) -> Optional[MetadataSchema]:
@@ -874,7 +895,7 @@ class MetadorMeta:
         return bool(self.find(schema_name, include_parents=True))
 
 
-class MetadorTOC:
+class MetadorContainerTOC:
     """Interface to the Metador metadata index of a container."""
 
     def _find_broken_links(self, repair: bool = False) -> List[str]:
@@ -898,6 +919,8 @@ class MetadorTOC:
         self, path: str, repair: bool = False, update: bool = False
     ) -> List[str]:
         """Return list of paths to metadata objects not listed in TOC.
+
+        Path must point to a group.
 
         If repair is set, will create missing entries in TOC.
 
@@ -923,7 +946,10 @@ class MetadorTOC:
             if not known or collision:
                 missing.append(node.name)  # absolute paths!
 
-        self._container.__wrapped__[path].visititems(collect_missing)  # RAW
+        rawcont = self._container.__wrapped__
+        rawcont[path]  # raises exception if not existing  # RAW
+        grp = rawcont.require_group(path)  # ensure its a group # RAW
+        grp.visititems(collect_missing)  # RAW
 
         if not repair:
             return missing
@@ -945,10 +971,13 @@ class MetadorTOC:
 
         return missing
 
-    # --------
+    # ---- link management ----
 
     def _parent_path(self, schema_name: str) -> Optional[str]:
-        """Like Schemas.parent_path, but works also with unknown schemas in container."""
+        """Like PGSchema.parent_path, but works also with unknown schemas in container.
+
+        Only used for internal plumbing.
+        """
         pp: Optional[str] = self._parent_paths.get(schema_name)
         if pp is None and schema_name in _SCHEMAS.keys():
             pp = "/".join(_SCHEMAS.parent_path(schema_name))
@@ -997,10 +1026,13 @@ class MetadorTOC:
                 break  # non-empty
             empty_group = parent_node.name
             parent_node = parent_node.parent
-            # NOTE: here we could plug in removing useless dependencies in stored env
-            # If the schema is empty, its package is not a dependency anymore
-            # if the package does not provide any used schemas
             del self._container.__wrapped__[empty_group]  # RAW
+
+            # notify dep manager to prune deps if no schema they provide is used
+            # do it here because the TOC tracks globally all object metadata
+            # so it sees here when its not used anymore.
+            schema_name = empty_group.split("/")[-1]
+            self._notify_unused_schema(schema_name)
 
         # remove the TOC dir itself, if empty
         if parent_node.name == M.METADOR_TOC_PATH and not len(parent_node):
@@ -1011,7 +1043,8 @@ class MetadorTOC:
     def _resolve_link(self, uuid: str) -> str:
         """Get the path a uuid in the TOC points to."""
         toc_link_path = self._toc_path_from_uuid[uuid]
-        return self._container.__wrapped__[toc_link_path][()].decode("utf-8")  # RAW
+        dataset = cast(H5DatasetLike, self._container.__wrapped__[toc_link_path])
+        return dataset[()].decode("utf-8")  # RAW
 
     def _update_link(self, uuid: str, new_target: str):
         """Update target of an existing link to point to a new location."""
@@ -1019,13 +1052,84 @@ class MetadorTOC:
         del self._container.__wrapped__[toc_link_path]  # RAW
         self._container.__wrapped__[toc_link_path] = new_target  # RAW
 
+    # ---- schema provider package dependency management ----
+
+    @classmethod
+    def _dep_node_path(cls, pkg_name: str) -> str:
+        return f"{M.METADOR_DEPS_PATH}/{pkg_name}"
+
+    def _notify_used_schema(self, schema_name: str):
+        """Notify that a schema is used in the container (metadata object is created/updated).
+
+        If no dependency is tracked yet, will add it. If it is, will update to the one
+        from the environment.
+
+        This assumes that the already existing schemas and the new one are compatible!
+        """
+        env_pkg_info = _SCHEMAS.provider(schema_name)
+        pkg_name = env_pkg_info.name
+
+        # update/create metadata entry in container
+        curr_info = self._pkginfos.get(pkg_name)
+
+        if curr_info != env_pkg_info:
+            pkg_node_path = self._dep_node_path(pkg_name)
+            if curr_info is not None:
+                # remove old dep metadata first
+                del self._container.__wrapped__[pkg_node_path]
+            # add new dep metadata to container
+            self._container.__wrapped__[pkg_node_path] = bytes(env_pkg_info)
+
+        # update/create dependency in cache
+        self._pkginfos[pkg_name] = env_pkg_info
+        self._provider[schema_name] = pkg_name
+
+        # make sure schema is tracked as "used"
+        if curr_info is None:
+            self._used[pkg_name] = set()
+        self._used[pkg_name].add(schema_name)
+
+    def _notify_unused_schema(self, schema_name: str):
+        """Notify that a schema is not used at any container node anymore.
+
+        If after that no schema of a listed dep package is used,
+        this dependency will be removed from the container.
+        """
+        pkg_name = self._provider.get(schema_name)
+        if pkg_name is None:
+            # apparently container has no package info for that schema
+            # this is not allowed, but we can just ignore it to handle
+            # slightly broken containers
+            return
+
+        del self._provider[schema_name]
+        self._used[pkg_name].remove(schema_name)
+
+        if not self._used[pkg_name]:
+            # no schemas of its providing package are used anymore.
+            # -> kill this dep in cache and in container
+            del self._used[pkg_name]
+            del self._pkginfos[pkg_name]
+            del self._container.__wrapped__[self._dep_node_path(pkg_name)]
+
+        rawcont = self._container.__wrapped__
+        deps_grp = cast(H5GroupLike, rawcont[M.METADOR_DEPS_PATH])
+        if not len(deps_grp):  # RAW
+            # no package metadata -> can kill dir
+            del rawcont[M.METADOR_DEPS_PATH]  # RAW
+
+    # ---- public API ----
+
     def __init__(self, container: MetadorContainer):
         self._container = container
 
         # 1. compute parent paths based on present TOC structure
         # (we need it to efficiently traverse possibly unknown schemas/objects)
         # 2. collect metadata object uuids
+
+        # schema name -> full/registered/parent/sequence
         self._parent_paths: Dict[str, str] = {}
+        # uuid -> path in dataset
         self._toc_path_from_uuid: Dict[str, str] = {}
 
         def collect_schemas(path):
@@ -1037,10 +1141,38 @@ class MetadorTOC:
             else:
                 self._parent_paths[schema_name] = path
 
-        if M.METADOR_TOC_PATH in self._container.__wrapped__:  # RAW
-            self._container.__wrapped__[M.METADOR_TOC_PATH].visit(
-                collect_schemas
-            )  # RAW
+        rawcont = self._container.__wrapped__
+        if M.METADOR_TOC_PATH in rawcont:  # RAW
+            toc_grp = rawcont.require_group(M.METADOR_TOC_PATH)  # RAW
+            toc_grp.visit(collect_schemas)  # RAW
+
+        # 3. init structure tracking schema dependencies
+
+        # package name -> package info:
+        self._pkginfos: Dict[str, PluginPkgMeta] = {}
+        # schema name -> package name:
+        self._provider: Dict[str, str] = {}
+        # package name -> schemas used in container
+        self._used: Dict[str, Set[str]] = {}
+
+        # parse package infos if they exist
+        rawcont = self._container.__wrapped__
+        if M.METADOR_DEPS_PATH in rawcont:  # RAW
+            deps_grp = rawcont.require_group(M.METADOR_DEPS_PATH)  # RAW
+            for name, node in deps_grp.items():  # RAW
+                info = PluginPkgMeta.parse_raw(cast(H5DatasetLike, node)[()])  # RAW
+                self._pkginfos[name] = info
+                self._used[name] = set()
+                # lookup for schema -> used package
+                for schema in info.plugins[_SCHEMAS.name]:
+                    self._provider[schema] = name
+
+        # initialize tracking of used schemas
+        for schema_name in self.schemas:
+            # we assume that each schema has a provider dep!
+            pkg_name = self._provider[schema_name]
+            # add schema to list of actually used schemas provided by this dep
+            self._used[pkg_name].add(schema_name)
 
         # 3. collect the schemas that we don't know already
         self._unknown_schemas = set(self._parent_paths.keys()) - set(_SCHEMAS.keys())
@@ -1049,6 +1181,16 @@ class MetadorTOC:
         # should check package info and correct deps!
         # for that, the container env entry must be implemented and enforced!
         # also must be careful with parsing - need to mark colliding but wrong as unknown
+
+    @property
+    def schemas(self) -> Set[str]:
+        """Return names of all schemas used in the container."""
+        return set(self._provider.keys())
+
+    @property
+    def deps(self) -> Set[str]:
+        """Return names of all packages used to provide schemas in the container."""
+        return set(self._pkginfos.keys())
 
     @property
     def unknown_schemas(self) -> Set[str]:
@@ -1060,4 +1202,31 @@ class MetadorTOC:
         """
         return set(self._unknown_schemas)
 
-    # TODO: query API like with node meta find(), but now for whole container
+    def provider(self, schema_name: str) -> PluginPkgMeta:
+        """Like PluginGroup.provider, but with respect to container deps."""
+        pkg_name = self._provider.get(schema_name)
+        if pkg_name is None:
+            msg = f"Did not find metadata of package providing schema: {schema_name}"
+            raise KeyError(msg)
+        return self._pkginfos[pkg_name]
+
+    def fullname(self, schema_name: str) -> FullPluginRef:
+        """Like PluginGroup.fullname, but with respect to container deps."""
+        pkginfo = self.provider(schema_name)
+        return FullPluginRef(
+            pkg=pkginfo.name,
+            pkg_version=pkginfo.version,
+            group=_SCHEMAS.name,
+            name=schema_name,
+        )
+
+    def query(self, schema_name: str) -> Dict[MetadorNode, MetadataSchema]:
+        """Return nodes that contain a metadata object valid for the given schema."""
+        ret = {}
+
+        def collect_nodes(_, node):
+            if (obj := node.meta.get(schema_name)) is not None:
+                ret[node] = obj
+
+        self._container.visititems(collect_nodes)
+        return ret

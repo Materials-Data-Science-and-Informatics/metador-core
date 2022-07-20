@@ -20,8 +20,6 @@ from typing import (
 
 from typing_extensions import Literal
 
-# NOTE: might also checkout zope.interfaces and see if it makes more sense
-
 
 @runtime_checkable
 class H5NodeLike(Protocol):
@@ -59,12 +57,6 @@ class H5DatasetLike(H5NodeLike, Protocol):
     def __setitem__(self, key, value):
         ...
 
-    # check for this attribute to distinguish from other things matching this protocol
-
-    @property
-    def ndim(self) -> int:
-        ...
-
 
 VisititemsCallback = Callable[[str, H5NodeLike], Optional[Any]]
 VisitCallback = Callable[[str], Optional[Any]]
@@ -75,7 +67,7 @@ class H5GroupLike(H5NodeLike, Protocol):
 
     # MutableMapping-like
 
-    def __getitem__(self, name: str):
+    def __getitem__(self, name: str) -> H5NodeLike:
         ...
 
     def __setitem__(self, name: str, obj):
@@ -119,12 +111,24 @@ class H5GroupLike(H5NodeLike, Protocol):
         # returns value returned from callback
         ...
 
-    def create_dataset(self, path, *args, **kwargs) -> Any:
+    def create_dataset(self, path, *args, **kwargs) -> H5DatasetLike:
         # returns original passed-in data
+        ...
+
+    def require_dataset(self, path, *args, **kwargs) -> H5DatasetLike:
         ...
 
     def create_group(self, path: str) -> H5GroupLike:
         # returns new group
+        ...
+
+    def require_group(self, path: str) -> H5GroupLike:
+        ...
+
+    def move(self, source: str, dest: str):
+        ...
+
+    def copy(self, source, dest, **kwargs):
         ...
 
 
