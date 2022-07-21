@@ -353,8 +353,7 @@ def test_create_patch_then_merge(tmp_ds_path_factory):
 
     # now create another patch for the original record
     # and then try to open it with the merged container
-    with IH5Record(dsname) as ds:
-        ds.create_patch()
+    with IH5Record(dsname, "r+") as ds:
         ds["qux/new_entry"] = "amazing data"
         assert "qux/new_entry" in ds
         del ds.attrs["bool_attr"]
@@ -402,9 +401,9 @@ def test_delete_record(tmp_ds_path):
             ds.commit_patch()
             ds.create_patch()
         files = ds.ih5_files
+    assert ds._closed
 
     IH5Record.delete_files(tmp_ds_path)
-    assert ds._files is None
     for file in files:
         assert not file.is_file()
 

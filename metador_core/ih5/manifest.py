@@ -174,9 +174,13 @@ class IH5MFRecord(IH5Record):
 
     # Override to also check user block extension
     def _check_ublock(
-        self, filename, ub: IH5UserBlock, prev: Optional[IH5UserBlock] = None
+        self,
+        filename: Union[str, Path],
+        ub: IH5UserBlock,
+        prev: Optional[IH5UserBlock] = None,
+        check_hashsum: bool = True,
     ):
-        super()._check_ublock(filename, ub, prev)
+        super()._check_ublock(filename, ub, prev, check_hashsum)
         # Try getting manifest info in the userblock.
         # If it is missing, probably we're opening a "raw" IH5Record or a messed up mix
         ubext = IH5UBExtManifest.get(ub)

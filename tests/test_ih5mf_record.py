@@ -74,14 +74,12 @@ def test_commit_no_patch_fail(tmp_ds_path):
 def test_missing_ub_ext_fail(tmp_ds_path):
     # opening ih5mf with latest container lacking correct ub ext should fail
     with IH5MFRecord(tmp_ds_path, "w") as ds:
-        ds.commit_patch()
-    with IH5Record(tmp_ds_path) as ds:
-        ds.create_patch()
-        ds.commit_patch()  # patch without manifest!
-    with IH5MFRecord(tmp_ds_path) as ds:
+        pass
+    with IH5Record(tmp_ds_path, "r+") as ds:
+        pass  # commits patch without manifest!
+    with IH5MFRecord(tmp_ds_path, "r+") as ds:
         with pytest.raises(ValueError):  # no manifest
             ds.manifest
-        ds.create_patch()  # create a patch just to add the manifest on commit
         ds.commit_patch()
         ds.manifest  # now exists
 
@@ -181,7 +179,6 @@ def test_merge_correct(tmp_ds_path_factory):
     ext1 = "test_mfext"
     ext2 = "fresh_mfext"
     with IH5MFRecord(ds1_path, "w") as ds:
-
         ds["foo/bar"] = "hello"
         ds.commit_patch(manifest_exts={ext1: "hello"})
         mf_v1 = ds.manifest
@@ -202,10 +199,8 @@ def test_merge_correct(tmp_ds_path_factory):
 
         ds.merge_files(ds2_path)
 
-    with IH5MFRecord(ds2_path) as ds:
-        # we should open this successfully...
-
-        # now check that the manifest agrees
+    with IH5MFRecord(ds2_path, "r") as ds:
+        # we should open this successfully... now check that the manifest agrees
         mf2_path = latest_manifest_filepath(ds)
         mf1 = IH5Manifest.parse_file(mf1_path)
         mf2 = IH5Manifest.parse_file(mf2_path)
@@ -213,10 +208,9 @@ def test_merge_correct(tmp_ds_path_factory):
         assert ext1 in mf2.manifest_exts  # also has the extensions
         assert ext2 in mf2.manifest_exts
 
+    with IH5MFRecord(ds2_path, "r+") as ds:
         # create a new patch on top of merged container
-        ds.create_patch()
         ds["qux"] = 123
-        ds.commit_patch()
         files.append(ds.ih5_files[-1])
 
     # open patch done on top of merged container, now with the original containers.

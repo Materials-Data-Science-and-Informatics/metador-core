@@ -566,7 +566,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 
     __wrapped__: H5FileLike
 
-    def __init__(self, obj: H5FileLike):
+    def __init__(self, obj):
         if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
             raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
         super().__init__(obj)
