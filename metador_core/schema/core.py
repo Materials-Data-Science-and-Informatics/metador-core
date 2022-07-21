@@ -88,17 +88,3 @@ class PluginPkgMeta(MetadataSchema):
         if ret is None:  # won't be there if its not registering plugins (yet)...
             ret = pkgmeta_from_dist(distribution(package_name))
         return ret
-
-
-class EnvMeta(MetadataSchema):
-    """Metadata about the Metador environment at a point in time.
-
-    The environment during container creation is embedded into the container
-    in order to be able to recover missing dependencies, given an unknown container.
-
-    Only absolutely generic info should go here. Could be extended to contain more
-    infos, like Python version, OS, hardware, etc., if desired.
-    """
-
-    packages: Dict[str, PluginPkgMeta]
-    """Metadata of all Python packages that register metador plugins."""

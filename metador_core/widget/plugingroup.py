@@ -14,11 +14,11 @@ class PGWidget(PluginGroup):
         self.check_is_subclass(widget_name, widget, Widget)
 
     def supported_schemas(self) -> Set[FullPluginRef]:
-        """Returns union of all schemas supported by all widgets."""
+        """Return union of all schemas supported by all widgets."""
         return set.union({w.supports() for w in self.values()})
 
     def widgets_for(self, schema_ref: FullPluginRef) -> List[Type[Widget]]:
-        """Returns widgets that support the given schema."""
-        ret = []
+        """Return widgets that support the given schema."""
+        ret: List[Type[Widget]] = []
         # TODO
         return ret

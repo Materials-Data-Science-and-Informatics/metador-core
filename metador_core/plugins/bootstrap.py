@@ -7,7 +7,7 @@ from importlib_metadata import entry_points
 from typing_extensions import Final
 
 from ..schema.core import PluginPkgMeta
-from . import installed
+from .installed import _installed
 from .interface import PGB_GROUP_PREFIX, PluginGroup
 from .utils import pkgmeta_from_dist
 
@@ -65,7 +65,7 @@ def _project_eps(pgb_name, func):
 
 
 def _create_pgb_group(pgb_name, pgb_cls):
-    installed[pgb_name] = pgb_cls(
+    _installed[pgb_name] = pgb_cls(
         pgb_name,
         _project_eps(pgb_name, lambda v: v.pkg_name),
         _project_eps(pgb_name, lambda v: v.ep),
@@ -98,15 +98,15 @@ _pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
 # take care of setting up the PluginGroup group object, as its not fully initialized yet:
 _create_pgb_group(PGB_PLUGGABLE, PluginGroup)
 # Manually append the pluggable meta-interface as a proper pluggable itself
-installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
+_installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
 # register this package as provider of pluggables (this package actually registers schema)
-installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
+_installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
 
 # now can use the class structures safely:
 
 # check the plugins according to pluggable rules
 # (at this point all installed plugins of same kind can be cross-referenced)
 for pgb_name in _loaded_pluggables.keys():
-    pgroup: PluginGroup = installed[pgb_name]
+    pgroup: PluginGroup = _installed[pgb_name]
     for ep_name, ep in pgroup.items():
         pgroup._check(ep_name, ep)

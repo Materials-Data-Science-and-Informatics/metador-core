@@ -27,7 +27,7 @@ class Widget(ABC):
 
     @classmethod
     def supports(cls, schema_ref: FullPluginRef) -> bool:
-        """Returns whether a certain schema is supported by the widget."""
+        """Return whether a certain schema is supported by the widget."""
         return any(map(lambda sref: sref.supports(schema_ref), cls.supported()))
 
     @classmethod

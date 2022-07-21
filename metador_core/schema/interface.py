@@ -10,14 +10,15 @@ from pydantic_yaml import YamlModelMixin
 
 from ..ih5.protocols import H5DatasetLike, H5FileLike
 from ..packer.util import MetadorValidationErrors
+from ..plugins.installed import mpg
 from .types import PintUnit
+
+_SCHEMAS = mpg["schema"]
 
 
 def schema_ref(schema_name: str):
     """Return a FullPluginRef for a schema based on its registered name."""
-    from ..plugins import installed
-
-    return installed["schema"].fullname(schema_name)
+    return _SCHEMAS.fullname(schema_name)
 
 
 class MetadataSchema(YamlModelMixin, BaseModel):
