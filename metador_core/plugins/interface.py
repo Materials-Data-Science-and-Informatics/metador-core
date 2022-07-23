@@ -15,6 +15,8 @@ T = TypeVar("T")
 class PluginGroup(Generic[T]):
     """All pluggable entities in metador are subclasses of this class.
 
+    The type parameter is the (parent) class of all loaded plugins.
+
     They must implement the check method and be listed as plugin group.
     The name of their entrypoint defines the name of the plugin group.
     """
@@ -62,7 +64,7 @@ class PluginGroup(Generic[T]):
     def __getitem__(self, key: str) -> Type[T]:
         return self._LOADED_PLUGINS[key]
 
-    def get(self, key: str, default=None):
+    def get(self, key: str, default=None) -> Type[T]:
         return self._LOADED_PLUGINS.get(key, default)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:

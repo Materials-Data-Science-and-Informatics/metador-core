@@ -6,78 +6,98 @@ ignoring the actual data content (attribute values and datasets).
 This can be used to implement manifest file and support "patching in thin air",
 i.e. without having the actual container.
 """
-from typing import Any, Dict, Tuple
+from typing import Dict, Union
 
 import h5py
+from pydantic import BaseModel
+from typing_extensions import Literal
 
-from .overlay import H5Type, IH5Dataset
+from .overlay import H5Type, IH5Dataset, IH5Group
 from .record import IH5Record, IH5UserBlock
 
-IH5TypeSkeleton = Dict[str, Tuple[H5Type, Any]]
 
-# NOTE: If we choose a non-flat skeleton, we could get rid of the restriction
-# of not using @ for group/dataset names.
-# On the other hand the @-addressing could be useful, so it might be a good
-# restriction anyway.
+class SkeletonNodeInfo(BaseModel):
+    node_type: Literal[H5Type.group, H5Type.dataset]
+    patch_index: int  # if its a dataset -> patch where to get data, group: creation patch
+    attrs: Dict[str, int]  # names and patch indices of attributes
 
+    def with_patch_index(self, idx: int):
+        ret = self.copy()
+        ret.attrs = dict(self.attrs)
+        ret.patch_index = idx
+        for k in ret.attrs.keys():
+            ret.attrs[k] = idx
+        return ret
 
-def ih5_type_skeleton(ds: IH5Record) -> IH5TypeSkeleton:
-    """Return mapping from all paths in a IH5 record to their type.
-
-    The attributes are represented as special paths with the shape `a/b/.../n@attr`,
-    pointing to the attribute named `attr` at the path `a/b/.../n`.
-
-    First component is a H5Type enum value,
-    Second component is more detailed type for attribute values and `IH5Dataset`s.
-    """
-    ret: IH5TypeSkeleton = {}
-    for k, v in ds.attrs.items():
-        ret[f"@{k}"] = (H5Type.attribute, type(v))
-
-    def add_paths(name, node):
+    @classmethod
+    def for_node(cls, node: Union[IH5Group, IH5Dataset]):
         if isinstance(node, IH5Dataset):
-            typ = (H5Type.dataset, type(node[()]))
+            dt = H5Type.dataset
         else:
-            typ = (H5Type.group, None)
-        ret[name] = typ
-        for k, v in node.attrs.items():
-            ret[f"{name}@{k}"] = (H5Type.attribute, type(v))
+            dt = H5Type.group
 
-    ds.visititems(add_paths)
-    return ret
+        def cidx_to_patch_idx(cidx):
+            return node._record._ublock(cidx).patch_index
+
+        pidx = cidx_to_patch_idx(node._cidx)
+        ats = {
+            key: cidx_to_patch_idx(node.attrs._find(key)) for key in node.attrs.keys()
+        }
+
+        return cls(node_type=dt, patch_index=pidx, attrs=ats)
 
 
-def ih5_skeleton(ds: IH5Record) -> Dict[str, str]:
-    """Create a skeleton capturing the raw structure of a IH5 record."""
-    return {k: v[0].value for k, v in ih5_type_skeleton(ds).items()}
+class IH5Skeleton(BaseModel):
+    __root__: Dict[str, SkeletonNodeInfo]
+
+    def with_patch_index(self, idx: int):
+        """Copy of skeletonwith  patch index of all nodes and attributes modified."""
+        ret = self.copy()
+        ret.__root__ = dict(self.__root__)
+        for k, v in ret.__root__.items():
+            ret.__root__[k] = v.with_patch_index(idx)
+        return ret
+
+    @classmethod
+    def for_record(cls, rec: IH5Record):
+        """Return mapping from all paths in a IH5 record to their type.
+
+        The attributes are represented as special paths with the shape `a/b/.../n@attr`,
+        pointing to the attribute named `attr` at the path `a/b/.../n`.
+
+        First component is a H5Type enum value,
+        Second component is more detailed type for attribute values and `IH5Dataset`s.
+        """
+        skel = {"/": SkeletonNodeInfo.for_node(rec["/"])}
+
+        def add_paths(_, node):
+            skel[node.name] = SkeletonNodeInfo.for_node(node)
+
+        rec.visititems(add_paths)
+        return cls(__root__=skel)
 
 
 # NOTE: we pass in the empty container as first argument in the following
 # in order to make this generic over subtypes (IH5Record, IH5MFRecord)!
 
 
-def init_stub_skeleton(ds: IH5Record, skel: Dict[str, str]):
+def init_stub_skeleton(ds: IH5Record, skel: IH5Skeleton):
     """Fill a passed fresh container with stub structure based on a skeleton."""
     if len(ds) or len(ds.attrs):
         raise ValueError("Container not empty, cannot initialize stub structure here!")
 
-    for k, v in skel.items():
-        if v == H5Type.group:
+    for k, v in skel.__root__.items():
+        if v.node_type == H5Type.group:
             if k not in ds:
                 ds.create_group(k)
-        elif v == H5Type.dataset:
+        elif v.node_type == H5Type.dataset:
             ds[k] = h5py.Empty(None)
-        elif v == H5Type.attribute:
-            k, atr = k.split("@")  # split off attribute name
-            k = k or "/"  # special case - root attributes
-            if k not in ds:
-                ds[k] = h5py.Empty(None)
-            ds[k].attrs[atr] = h5py.Empty(None)
-        else:
-            raise ValueError(f"Invalid skeleton entry: {k} -> {v}")
+
+        for a in v.attrs.keys():
+            ds[k].attrs[a] = h5py.Empty(None)
 
 
-def init_stub_base(target: IH5Record, src_ub: IH5UserBlock, src_skel: Dict[str, str]):
+def init_stub_base(target: IH5Record, src_ub: IH5UserBlock, src_skel: IH5Skeleton):
     """Prepare a stub base container, given empty target, source user block and skeleton.
 
     Patches on top of this container will work with the original container.

@@ -10,7 +10,7 @@ from .interface import Widget
 class PGWidget(PluginGroup):
     """Interface to access installed widget plugins."""
 
-    def check_plugin(self, widget_name: str, widget):
+    def check_plugin(self, widget_name: str, widget: Type[Widget]):
         self.check_is_subclass(widget_name, widget, Widget)
 
     def supported_schemas(self) -> Set[FullPluginRef]:

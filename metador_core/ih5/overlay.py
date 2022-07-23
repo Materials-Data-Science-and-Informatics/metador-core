@@ -232,7 +232,7 @@ class IH5InnerNode(IH5Node):
     def _children(self) -> Dict[str, int]:
         """Return dict mapping from a child name to the most recent overriding patch idx.
 
-        For records, dereferencing the child path in that container will give the data.
+        For datasets, dereferencing the child path in that container will give the data.
         For groups, the returned number is to be treated as the lower bound, i.e.
         the child creation_idx to recursively get the descendents.
         """
@@ -655,6 +655,9 @@ class H5Type(str, Enum):
     dataset = "dataset"  # = wrapped, indexable data
     attribute_set = "attribute-set"  # = not further nested, dict-like
     attribute = "attribute"  # = unwrapped data
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}.{self.value}"
 
 
 _h5types = {

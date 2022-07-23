@@ -11,7 +11,7 @@ from metador_core.ih5.container import (
     IH5Record,
 )
 from metador_core.ih5.overlay import DEL_VALUE, SUBST_KEY, H5Type, IH5Node
-from metador_core.ih5.skeleton import ih5_type_skeleton
+from metador_core.ih5.skeleton import IH5Skeleton, SkeletonNodeInfo
 
 
 def create_entries(node: Union[IH5Group, IH5AttributeManager]):
@@ -183,14 +183,25 @@ def test_visit(tmp_ds_path):
         lst.clear()
         ds.visit(lst.append)
         assert lst == ["grp", "grp/foo", "grp/foo/bar", "grp/qux"]
-        assert ih5_type_skeleton(ds) == {
-            "@rootattr": (H5Type.attribute, str),
-            "grp": (H5Type.group, None),
-            "grp/foo": (H5Type.group, None),
-            "grp/foo/bar": (H5Type.dataset, np.int64),
-            "grp/foo/bar@someattr": (H5Type.attribute, str),
-            "grp/qux": (H5Type.group, None),
-        }
+        assert IH5Skeleton.for_record(ds) == IH5Skeleton(
+            __root__={
+                "/": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={"rootattr": 0}
+                ),
+                "/grp": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+                "/grp/foo": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+                "/grp/foo/bar": SkeletonNodeInfo(
+                    node_type=H5Type.dataset, patch_index=0, attrs={"someattr": 0}
+                ),
+                "/grp/qux": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+            }
+        )
 
 
 def test_set_inside_value(tmp_ds_path):
@@ -369,14 +380,26 @@ def test_create_access_relative_absolute(tmp_ds_path):
         nested["/moredata"] = 456
         ds.commit_patch()
 
-        assert ih5_type_skeleton(ds) == {
-            "moredata": (H5Type.dataset, np.int64),
-            "nested": (H5Type.group, None),
-            "nested/data": (H5Type.dataset, np.int64),
-            "nested/data@key": (H5Type.attribute, str),
-            "nested/deep": (H5Type.group, None),
-            "toplevel": (H5Type.group, None),
-        }
+        assert IH5Skeleton.for_record(ds) == IH5Skeleton(
+            __root__={
+                "/": SkeletonNodeInfo(node_type=H5Type.group, patch_index=0, attrs={}),
+                "/moredata": SkeletonNodeInfo(
+                    node_type=H5Type.dataset, patch_index=0, attrs={}
+                ),
+                "/nested": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+                "/nested/data": SkeletonNodeInfo(
+                    node_type=H5Type.dataset, patch_index=0, attrs={"key": 0}
+                ),
+                "/nested/deep": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+                "/toplevel": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=0, attrs={}
+                ),
+            }
+        )
         # access from inside using absolute or relative path
         assert ds["nested"]["data"]._gpath == "/nested/data"
         assert ds["nested"]["/moredata"]._gpath == "/moredata"
@@ -455,32 +478,42 @@ def test_clear_all_override(dummy_ds_factory):
         assert list(ds.attrs.keys()) == []
         assert list(ds.keys()) == []
 
-    def create_and_verify():
+    def create_and_verify(pidx):
         ds.create_group("a")
         ds["b/a"] = 123
         ds["/b"]["a"].attrs["atr"] = "string"  # type: ignore
         ds.create_group("b/b")
 
         # only the new stuff should be there
-        assert ih5_type_skeleton(ds) == {
-            "a": (H5Type.group, None),
-            "b": (H5Type.group, None),
-            "b/a": (H5Type.dataset, np.int64),
-            "b/a@atr": (H5Type.attribute, str),
-            "b/b": (H5Type.group, None),
-        }
+        assert IH5Skeleton.for_record(ds) == IH5Skeleton(
+            __root__={
+                "/": SkeletonNodeInfo(node_type=H5Type.group, patch_index=0, attrs={}),
+                "/a": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=pidx, attrs={}
+                ),
+                "/b": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=pidx, attrs={}
+                ),
+                "/b/a": SkeletonNodeInfo(
+                    node_type=H5Type.dataset, patch_index=pidx, attrs={"atr": pidx}
+                ),
+                "/b/b": SkeletonNodeInfo(
+                    node_type=H5Type.group, patch_index=pidx, attrs={}
+                ),
+            }
+        )
 
     # fully clear and refill within the same patch
     ds.create_patch()
     clear_and_verify()
-    create_and_verify()
+    create_and_verify(ds._ublock(-1).patch_index)
     ds.commit_patch()
     # clear in one patch, overwrite in another
     ds.create_patch()
     clear_and_verify()
     ds.commit_patch()
     ds.create_patch()
-    create_and_verify()
+    create_and_verify(ds._ublock(-1).patch_index)
 
 
 def test_create_value_patch_delete_value_delete_parent_group(tmp_ds_path):

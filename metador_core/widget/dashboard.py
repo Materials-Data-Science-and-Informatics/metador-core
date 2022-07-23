@@ -61,8 +61,8 @@ class Dashboard:
     ) -> Tuple[str, Type[Widget]]:
         """Try to instantiate a widget for a node based on its dashboard metadata."""
         assert dbmeta.show
-        if dbmeta.schema:
-            schema_name = dbmeta.schema
+        if dbmeta.metador_schema is not None:
+            schema_name: str = dbmeta.metador_schema
             if _SCHEMAS.get(schema_name) is None:
                 msg = f"Dashboard metadata contains unknown schema: {schema_name}"
                 raise ValueError(msg)
@@ -85,14 +85,15 @@ class Dashboard:
             raise ValueError(msg)
 
         container_schema_ref = self._container.toc.fullname(schema_name)
-        if dbmeta.widget:
-            widget_class = _WIDGETS.get(dbmeta.widget)
+        if dbmeta.metador_widget is not None:
+            widget_class = _WIDGETS.get(dbmeta.metador_widget)
             if not widget_class.supports(container_schema_ref):
-                msg = f"Desired widget {dbmeta.widget} does not "
+                msg = f"Desired widget {dbmeta.metador_widget} does not "
                 msg += f"support {container_schema_ref}"
                 raise ValueError(msg)
         else:
-            widget_class = next(iter(_WIDGETS.widgets_for(schema_name)), None)
+            widgets = _WIDGETS.widgets_for(container_schema_ref)
+            widget_class = next(iter(widgets), None)  # type: ignore
             if widget_class is None:
                 raise ValueError("Could not find suitable widget for {schema_name}")
 

@@ -10,6 +10,7 @@ import wrapt
 # and type checking dynamic plugins is not so nice anyway
 _installed: Dict[str, Any] = {}
 
+
 # some magic so we don't run into circular import problems so much
 class InstalledPlugins(wrapt.ObjectProxy):
     def __getitem__(self, key: str):

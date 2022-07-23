@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ..hashutils import qualified_hashsum
 from ..schema.types import hashsum_str
 from .record import IH5Record, IH5UserBlock, hashsum_file
-from .skeleton import ih5_skeleton, init_stub_base
+from .skeleton import IH5Skeleton, init_stub_base
 
 
 class IH5Manifest(BaseModel):
@@ -25,7 +25,7 @@ class IH5Manifest(BaseModel):
 
     user_block: IH5UserBlock  # copy of user block (without the manifest extension part)
 
-    skeleton: Dict[str, str]  # computed with ih5_skeleton, used to create a stub
+    skeleton: IH5Skeleton  # computed with IH5Skeleton, used to create a stub
 
     manifest_exts: Dict[str, Any]  # Arbitrary extensions, similar to IH5UserBlock
 
@@ -133,7 +133,7 @@ class IH5MFRecord(IH5Record):
     def _fresh_manifest(self) -> IH5Manifest:
         """Return new manifest based on current state of the record."""
         ub = self._ublock(-1)
-        skel = ih5_skeleton(self)
+        skel = IH5Skeleton.for_record(self)
         return IH5Manifest.from_userblock(ub, skeleton=skel, exts={})
 
     @classmethod
@@ -257,7 +257,7 @@ class IH5MFRecord(IH5Record):
         """Create a stub base container for patching an existing but unavailable record.
 
         The stub is based on the user block of a real IH5 record container line
-        and the skeleton of the overlay structure (as returned by `ih5_skeleton`),
+        and the skeleton of the overlay structure (as returned by `IH5Skeleton`),
         which are taken from a provided manifest file.
 
         Patches created on top of the stub are compatible with the original record
@@ -267,7 +267,7 @@ class IH5MFRecord(IH5Record):
         """
         manifest = IH5Manifest.parse_file(manifest_file)
 
-        skeleton: Dict[str, str] = manifest.skeleton
+        skeleton: IH5Skeleton = manifest.skeleton
         user_block: IH5UserBlock = manifest.user_block.copy()
 
         # the manifest-stored user block has no manifest extension itself - create new
