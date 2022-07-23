@@ -91,6 +91,7 @@ from typing import (
     Optional,
     Set,
     Type,
+    TypeVar,
     Union,
     ValuesView,
     cast,
@@ -414,7 +415,15 @@ class MetadorGroup(MetadorNode):
         return len(list(self.keys()))
 
     def __contains__(self, name: str):
-        return name in self.keys()
+        self._guard_path(name)
+        if name[0] == "/" and self.name != "/":
+            return name in self["/"]
+        segs = name.lstrip("/").split("/")
+        has_first_seg = segs[0] in self.keys()
+        if len(segs) == 1:
+            return has_first_seg
+        else:
+            return "/".join(segs[1:]) in self[segs[0]]
 
     # these we can take care of but are a bit more tricky to think through
 
@@ -690,6 +699,8 @@ class MetadorContainer(wrapt.ObjectProxy):
 
 _SCHEMAS = installed.group("schema", PGSchema)
 
+S = TypeVar("S", bound=MetadataSchema)
+
 
 class MetadorMeta:
     """Interface to Metador metadata objects stored at a single HDF5 node."""
@@ -864,7 +875,9 @@ class MetadorMeta:
 
     # following have transitive semantics (i.e. logic also works with parent schemas)
 
-    def get(self, schema_name: str) -> Optional[MetadataSchema]:
+    def get(
+        self, schema_name: str, schema_class: Type[S] = MetadataSchema
+    ) -> Optional[S]:
         """Get a parsed metadata object (if it exists) matching the given known schema.
 
         Will also accept a child schema object and parse it as the parent schema.
@@ -880,7 +893,7 @@ class MetadorMeta:
         dat: Optional[bytes] = self.get_bytes(next(iter(sorted(candidates))))
         assert dat is not None  # getting bytes of a found candidate!
         # parse with the correct schema and return the instance object
-        return _SCHEMAS[schema_name].parse_raw(dat)  # type: ignore
+        return cast(S, _SCHEMAS[schema_name].parse_raw(dat))
 
     def __getitem__(self, schema_name: str) -> MetadataSchema:
         """Like get, but will raise KeyError on failure."""
