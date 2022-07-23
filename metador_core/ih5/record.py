@@ -358,7 +358,7 @@ class IH5Record:
                 f = ret._files[-1]
                 path = ret._files[-1].filename
                 f.close()
-                ret._files[-1] = h5py.File(path, "r+")
+                ret._files[-1] = h5py.File(Path(path), "r+")
                 ret._has_writable = True
 
         # additional sanity check: container uuids must be all distinct
@@ -387,25 +387,48 @@ class IH5Record:
 
     @classmethod
     def find_files(cls, record: Path) -> List[Path]:
-        """Return container names that look like they belong to the same record.
+        """Return file names that look like they belong to the same record.
 
-        This operation is based on purely syntactic pattern matching on file names.
-        Given a path `/foo/bar`, it will find all containers in directory
+        This operation is based on purely syntactic pattern matching on file names
+        that follow the default naming convention.
+
+        Given a path `/foo/bar`, will find all containers in directory
         `/foo` whose name starts with `bar` followed by the correct file extension(s),
-        such as `/foo/bar.rdm.h5` and `/foo/bar.p01.rdm.h5`.
+        such as `/foo/bar.ih5` and `/foo/bar.p1.ih5`.
         """
         record = Path(record)  # in case it was a str
         if not cls._is_valid_record_name(record.name):
             raise ValueError(f"Invalid record name: '{record.name}'")
 
-        record = Path(record)  # in case it was a str
         globstr = f"{record.name}*{cls._FILE_EXT}"  # rough wildcard pattern
         # filter out possible false positives (i.e. foobar* matching foo* as well)
-        paths = []
-        for p in record.parent.glob(globstr):
-            if re.match(f"^{record.name}[^{cls._ALLOWED_NAME_CHARS}]", p.name):
-                paths.append(p)
-        return paths
+        return [
+            p
+            for p in record.parent.glob(globstr)
+            if re.match(f"^{record.name}[^{cls._ALLOWED_NAME_CHARS}]", p.name)
+        ]
+
+    @classmethod
+    def list_records(cls, dir: Path) -> List[Path]:
+        """Return paths of records found in the given directory.
+
+        Will NOT recurse into subdirectories.
+
+        This operation is based on purely syntactic pattern matching on file names
+        that follow the default naming convention (i.e. just as `find_files`).
+
+        Returned paths can be used as-is for opening the (supposed) record.
+        """
+        dir = Path(dir)  # in case it was a str
+        if not dir.is_dir():
+            raise ValueError(f"'{dir}' is not a directory")
+
+        ret = []
+        namepat = f"[{cls._ALLOWED_NAME_CHARS}]+(?=[^{cls._ALLOWED_NAME_CHARS}])"
+        for p in dir.glob(f"*{cls._FILE_EXT}"):
+            if m := re.match(namepat, p.name):
+                ret.append(m.group(0))
+        return list(map(lambda name: dir / name, set(ret)))
 
     # for consistency with h5py.File:
 
