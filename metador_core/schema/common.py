@@ -9,7 +9,7 @@ import magic
 from PIL import Image
 
 from ..hashutils import file_hashsum
-from .interface import MetadataSchema, schema_ref
+from . import MetadataSchema, schema_ref
 from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 

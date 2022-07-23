@@ -1,15 +1,19 @@
 """Base functionality for declaring validated plugin types for Metador."""
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from importlib_metadata import entry_points
 from typing_extensions import Final
 
-from ..schema.core import PluginPkgMeta
-from .installed import _installed
+from . import InstalledPlugins
 from .interface import PGB_GROUP_PREFIX, PluginGroup
 from .utils import pkgmeta_from_dist
+
+if TYPE_CHECKING:
+    from ..schema.core import PluginPkgMeta
+
+installed = InstalledPlugins._installed  # just for convenience
 
 # get all entrypoints
 _eps = entry_points()
@@ -53,7 +57,6 @@ class LoadedPlugin:
 # initialize plugin discovery by getting pluggable groups (which are a pluggable).
 PGB_PLUGGABLE: Final[str] = "plugin_group"
 _loaded_pluggables: Dict[str, Dict[str, LoadedPlugin]]
-_loaded_pluggables = {PGB_PLUGGABLE: LoadedPlugin.get_plugins(PGB_PLUGGABLE)}
 """
 Dict of PluginGroup name -> Plugin entrypoint name -> Entrypoint info object.
 """
@@ -65,48 +68,51 @@ def _project_eps(pgb_name, func):
 
 
 def _create_pgb_group(pgb_name, pgb_cls):
-    _installed[pgb_name] = pgb_cls(
+    installed[pgb_name] = pgb_cls(
         pgb_name,
         _project_eps(pgb_name, lambda v: v.pkg_name),
         _project_eps(pgb_name, lambda v: v.ep),
     )
 
 
-# load actual registered pluggables
-for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
-    # check the pluggable itself
-    PluginGroup._check_plugin_common(pgb_name, pgb.ep)
-    if pgb_name in _loaded_pluggables:
-        msg = f"{pgb_name}: PluginGroup name already registered"
-        raise TypeError(msg)
+def load_plugins():
+    global _loaded_pluggables
+    _loaded_pluggables = {PGB_PLUGGABLE: LoadedPlugin.get_plugins(PGB_PLUGGABLE)}
 
-    # load plugins for that pluggable
-    _loaded_pluggables[pgb_name] = LoadedPlugin.get_plugins(pgb_name)
+    # load actual registered pluggables
+    for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
+        # check the pluggable itself
+        PluginGroup._check_plugin_common(pgb_name, pgb.ep)
+        if pgb_name in _loaded_pluggables:
+            msg = f"{pgb_name}: PluginGroup name already registered"
+            raise TypeError(msg)
 
-    # attach the loaded group to the module where they will be imported from
-    _create_pgb_group(pgb_name, pgb.ep)
+        # load plugins for that pluggable
+        _loaded_pluggables[pgb_name] = LoadedPlugin.get_plugins(pgb_name)
 
-# set up shared lookup for package metadata, shared by all plugin groups
-PluginGroup._PKG_META = _pgb_package_meta
-# add plugin group group itself
+        # attach the loaded group to the module where they will be imported from
+        _create_pgb_group(pgb_name, pgb.ep)
 
-# the core package is the one registering the "schema" plugin group.
-# Use that knowledge to hack in that this package also provides "pluggable":
-_this_pkg_name = _loaded_pluggables[PGB_PLUGGABLE]["schema"].pkg_name
-_pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
+    # set up shared lookup for package metadata, shared by all plugin groups
+    PluginGroup._PKG_META = _pgb_package_meta
 
-# take care of setting up the PluginGroup group object, as its not fully initialized yet:
-_create_pgb_group(PGB_PLUGGABLE, PluginGroup)
-# Manually append the pluggable meta-interface as a proper pluggable itself
-_installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
-# register this package as provider of pluggables (this package actually registers schema)
-_installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
+    # the core package is the one registering the "schema" plugin group.
+    # Use that knowledge to hack in that this package also provides "pluggable":
+    _this_pkg_name = _loaded_pluggables[PGB_PLUGGABLE]["schema"].pkg_name
+    _pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
 
-# now can use the class structures safely:
+    # set up the PluginGroup group object, as its not fully initialized yet:
+    _create_pgb_group(PGB_PLUGGABLE, PluginGroup)
+    # Manually append the pluggable meta-interface as a proper pluggable itself
+    installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
+    # register this pkg as provider of pluggables (this package actually registers schema)
+    installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
 
-# check the plugins according to pluggable rules
-# (at this point all installed plugins of same kind can be cross-referenced)
-for pgb_name in _loaded_pluggables.keys():
-    pgroup: PluginGroup = _installed[pgb_name]
-    for ep_name, ep in pgroup.items():
-        pgroup._check(ep_name, ep)
+    # now can use the class structures safely:
+
+    # check the plugins according to pluggable rules
+    # (at this point all installed plugins of same kind can be cross-referenced)
+    for pgb_name in _loaded_pluggables.keys():
+        pgroup: PluginGroup = installed[pgb_name]
+        for ep_name, ep in pgroup.items():
+            pgroup._check(ep_name, ep)

@@ -2,7 +2,18 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Generic, ItemsView, KeysView, Type, TypeVar, ValuesView
+from typing import (
+    Dict,
+    Generic,
+    ItemsView,
+    KeysView,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    ValuesView,
+    overload,
+)
 
 from ..schema.core import FullPluginRef, PluginPkgMeta
 
@@ -10,6 +21,7 @@ from ..schema.core import FullPluginRef, PluginPkgMeta
 PGB_GROUP_PREFIX: str = "metador_"
 
 T = TypeVar("T")
+DEF = TypeVar("DEF")
 
 
 class PluginGroup(Generic[T]):
@@ -64,7 +76,15 @@ class PluginGroup(Generic[T]):
     def __getitem__(self, key: str) -> Type[T]:
         return self._LOADED_PLUGINS[key]
 
-    def get(self, key: str, default=None) -> Type[T]:
+    @overload
+    def get(self, key: str) -> Optional[Type[T]]:
+        ...
+
+    @overload
+    def get(self, key: str, default: DEF) -> Union[Type[T], DEF]:
+        ...
+
+    def get(self, key, default: Union[None, DEF] = None) -> Union[Type[T], DEF, None]:
         return self._LOADED_PLUGINS.get(key, default)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:

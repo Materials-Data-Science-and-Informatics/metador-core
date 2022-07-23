@@ -4,7 +4,7 @@ import pytest
 
 from metador_core.container import MetadorContainer
 from metador_core.packer.util import MetadorValidationErrors
-from metador_core.plugins.installed import mpg
+from metador_core.plugins import installed
 
 
 @pytest.mark.skip(reason="FIXME")
@@ -13,7 +13,7 @@ def test_example_packer_create(tmp_path_factory, tmp_ds_path, testutils):
     tmp2 = tmp_path_factory.mktemp("tmp2")
 
     # get the packer from registered entry-point
-    epacker = mpg["packer"]["example"]
+    epacker = installed["packer"]["example"]
 
     # prepare directory and check that it is packer-compatible (just to make sure)
     testutils.prepare_dir(tmp1, testutils.data_dir["tmp1"])

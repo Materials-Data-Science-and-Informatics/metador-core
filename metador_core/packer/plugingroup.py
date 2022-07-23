@@ -4,7 +4,7 @@ from ..plugins.interface import PluginGroup
 from .interface import Packer, PackerInfo
 
 
-class PGPacker(PluginGroup):
+class PGPacker(PluginGroup[Packer]):
     def packer_info(self, packer_name):
         """Return a PackerInfo object for given packer name."""
         pkg = self.provider(packer_name)

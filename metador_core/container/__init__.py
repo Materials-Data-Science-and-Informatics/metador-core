@@ -109,10 +109,9 @@ from metador_core.ih5.protocols import (
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
-from ..plugins.installed import mpg
+from ..plugins import installed
+from ..schema import MetadataSchema, PGSchema
 from ..schema.core import FullPluginRef, PluginPkgMeta
-from ..schema.interface import MetadataSchema
-from ..schema.plugingroup import PGSchema
 from . import utils as M
 
 
@@ -689,7 +688,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 # --------
 
 
-_SCHEMAS = cast(PGSchema, mpg["schema"])
+_SCHEMAS = installed.group("schema", PGSchema)
 
 
 class MetadorMeta:

@@ -1,12 +1,10 @@
-"""Defines schema as pluggable entity."""
-
 from typing import List, get_type_hints
 
 from ..plugins.interface import PluginGroup
-from .interface import MetadataSchema
+from . import MetadataSchema
 
 
-class PGSchema(PluginGroup):
+class PGSchema(PluginGroup[MetadataSchema]):
     """Interface to access installed schema plugins.
 
     A valid schema must be subclass of `MetadataSchema` and also subclass of

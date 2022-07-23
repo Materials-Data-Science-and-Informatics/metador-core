@@ -450,7 +450,7 @@ class IH5Record:
 
             if want_rw and self.mode == "r":
                 # latest patch was completed correctly -> make writable by creating new patch
-                self.create_patch()  # type: ignore
+                self.create_patch()
 
     @property
     def mode(self) -> Literal["r", "r+"]:

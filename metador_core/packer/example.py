@@ -16,8 +16,8 @@ import h5py
 import numpy as np
 import pandas
 
+from ..schema import MetadataSchema
 from ..schema.common import FileMeta, ImageMeta, TableMeta
-from ..schema.interface import MetadataSchema
 from .interface import DiffNode, DirDiff, IH5Record, Packer
 from .util import MetadorValidationErrors
 

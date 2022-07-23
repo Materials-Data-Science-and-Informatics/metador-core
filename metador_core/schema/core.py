@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from pydantic import AnyHttpUrl
 
-from .interface import MetadataSchema
+from . import MetadataSchema
 from .types import SemVerTuple, nonempty_str
 
 

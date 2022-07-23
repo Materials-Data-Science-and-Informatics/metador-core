@@ -6,14 +6,12 @@ import panel as pn
 from panel.viewable import Viewable
 
 from ..container import MetadorContainer, MetadorNode
-from ..plugins.installed import mpg
-from ..schema.core import MetadataSchema
-from ..schema.plugingroup import PGSchema
-from .interface import Widget
-from .plugingroup import PGWidget
+from ..plugins import installed
+from ..schema import MetadataSchema, PGSchema
+from . import PGWidget, Widget
 
-_SCHEMAS = cast(PGSchema, mpg["schema"])
-_WIDGETS = cast(PGWidget, mpg["widget"])
+_SCHEMAS = installed.group("schema", PGSchema)
+_WIDGETS = installed.group("widget", PGWidget)
 
 
 class DashboardMeta(MetadataSchema):
@@ -85,18 +83,22 @@ class Dashboard:
             raise ValueError(msg)
 
         container_schema_ref = self._container.toc.fullname(schema_name)
+        widget_class: Optional[Type[Widget]]
         if dbmeta.metador_widget is not None:
             widget_class = _WIDGETS.get(dbmeta.metador_widget)
+            if widget_class is None:
+                raise ValueError(f"Could not find widget: {dbmeta.metador_widget}")
             if not widget_class.supports(container_schema_ref):
                 msg = f"Desired widget {dbmeta.metador_widget} does not "
                 msg += f"support {container_schema_ref}"
                 raise ValueError(msg)
         else:
             widgets = _WIDGETS.widgets_for(container_schema_ref)
-            widget_class = next(iter(widgets), None)  # type: ignore
+            widget_class = next(iter(widgets), None)
             if widget_class is None:
                 raise ValueError("Could not find suitable widget for {schema_name}")
 
+        assert schema_name and widget_class
         return (schema_name, widget_class)
 
     def show(self) -> Viewable:
