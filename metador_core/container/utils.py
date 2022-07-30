@@ -21,7 +21,10 @@ METADOR_META_PREF: Final[str] = METADOR_PREF + "meta_"
 METADOR_VERSION_PATH: Final[str] = f"/{METADOR_PREF}version"
 """Path of dataset with the Metador container version of the container."""
 
-METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}toc"
+METADOR_UUID_PATH: Final[str] = f"/{METADOR_PREF}container_uuid"
+"""Path of dataset with the Metador container version of the container."""
+
+METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}container_toc"
 """Path of group with the Metador metadata index structure of the container."""
 
 METADOR_DEPS_PATH: Final[str] = f"/{METADOR_PREF}container_deps"

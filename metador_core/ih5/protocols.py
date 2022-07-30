@@ -50,7 +50,7 @@ class H5DatasetLike(H5NodeLike, Protocol):
     # we'll mostly use it for getting bytes out using [()] to access it
 
     # numpy-style access
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Any:
         ...
 
     # numpy-style access

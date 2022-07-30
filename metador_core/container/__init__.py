@@ -96,7 +96,7 @@ from typing import (
     ValuesView,
     cast,
 )
-from uuid import uuid1
+from uuid import UUID, uuid1
 
 import h5py
 import wrapt
@@ -580,7 +580,7 @@ class MetadorContainer(wrapt.ObjectProxy):
             raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
         super().__init__(obj)
 
-        ver = self.spec_version
+        ver = self.spec_version if M.METADOR_VERSION_PATH in self.__wrapped__ else None
         if ver is None and self.mode == "r":
             msg = "Container is read-only and does not look like a Metador container! "
             msg += "Please open in writable mode to initialize Metador structures!"
@@ -591,6 +591,10 @@ class MetadorContainer(wrapt.ObjectProxy):
 
         if ver is None:  # writable + fresh -> mark as a metador container
             self.__wrapped__[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION  # RAW
+
+        # add UUID if container does not have one yet
+        if M.METADOR_UUID_PATH not in self.__wrapped__:
+            self.__wrapped__[M.METADOR_UUID_PATH] = str(uuid1())  # RAW
 
         # if we are here, we should have an existing metador container, or a fresh one
         self._self_toc = MetadorContainerTOC(self)
@@ -628,12 +632,15 @@ class MetadorContainer(wrapt.ObjectProxy):
     # ---- new container-level interface ----
 
     @property
-    def spec_version(self) -> Optional[List[int]]:
+    def spec_version(self) -> List[int]:
         """Return Metador container specification version for this container."""
-        ver = self.__wrapped__.get(M.METADOR_VERSION_PATH, None)  # RAW
-        if ver is not None:
-            return list(map(int, ver[()].decode("utf-8").split(".")))
-        return None
+        ver = cast(H5DatasetLike, self.__wrapped__[M.METADOR_VERSION_PATH])  # RAW
+        return list(map(int, ver[()].decode("utf-8").split(".")))
+
+    @property
+    def uuid(self) -> UUID:
+        uuid = cast(H5DatasetLike, self.__wrapped__[M.METADOR_UUID_PATH])  # RAW
+        return UUID(uuid[()].decode("utf-8"))
 
     @property
     def toc(self) -> MetadorContainerTOC:
