@@ -306,6 +306,12 @@ class MetadorNode(wrapt.ObjectProxy):
             return None  # type: ignore
         return self._self_container
 
+    @property
+    def container_uuid(self) -> UUID:
+        uuid = self._self_container.__wrapped__[M.METADOR_UUID_PATH]
+        uuid_ds = cast(H5DatasetLike, uuid)  # RAW
+        return UUID(uuid_ds[()].decode("utf-8"))
+
 
 # TODO: can this be done somehow with wrapt.decorator but still without boilerplate?
 # problem is it wants a function, but we need to look it up by name first
@@ -636,11 +642,6 @@ class MetadorContainer(wrapt.ObjectProxy):
         """Return Metador container specification version for this container."""
         ver = cast(H5DatasetLike, self.__wrapped__[M.METADOR_VERSION_PATH])  # RAW
         return list(map(int, ver[()].decode("utf-8").split(".")))
-
-    @property
-    def uuid(self) -> UUID:
-        uuid = cast(H5DatasetLike, self.__wrapped__[M.METADOR_UUID_PATH])  # RAW
-        return UUID(uuid[()].decode("utf-8"))
 
     @property
     def toc(self) -> MetadorContainerTOC:

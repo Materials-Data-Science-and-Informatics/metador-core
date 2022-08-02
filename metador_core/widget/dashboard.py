@@ -40,8 +40,9 @@ class Dashboard:
     object that has show=True and contains possibly additional directives.
     """
 
-    def __init__(self, container: MetadorContainer):
+    def __init__(self, container: MetadorContainer, server=None):
         self._container: MetadorContainer = container
+        self._server = server
 
         # get nodes that are marked to be shown in dashboard
         self._to_show: Dict[MetadorNode, DashboardMeta] = {
@@ -72,7 +73,7 @@ class Dashboard:
                 raise ValueError(msg)
         else:
             schema_name = ""
-            for attached_obj_schema in node.find():
+            for attached_obj_schema in node.meta.find():
                 container_schema = self._container.toc.fullname(attached_obj_schema)
                 if container_schema in _WIDGETS.supported_schemas():
                     schema_name = attached_obj_schema
@@ -96,7 +97,7 @@ class Dashboard:
             widgets = _WIDGETS.widgets_for(container_schema_ref)
             widget_class = next(iter(widgets), None)
             if widget_class is None:
-                raise ValueError("Could not find suitable widget for {schema_name}")
+                raise ValueError(f"Could not find suitable widget for {schema_name}")
 
         assert schema_name and widget_class
         return (schema_name, widget_class)
@@ -108,5 +109,5 @@ class Dashboard:
         )
         for node, tup in self._resolved.items():
             schema_name, widget_class = tup
-            db.append(widget_class(node, schema_name))
+            db.append(widget_class(node, schema_name, self._server).show())
         return db

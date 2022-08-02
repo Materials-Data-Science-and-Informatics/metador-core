@@ -32,6 +32,9 @@ class PluginRef(MetadataSchema):
     name: nonempty_str
     """Registered entry point name inside an entry point group."""
 
+    def __hash__(self):
+        return hash((self.pkg, self.pkg_version, self.group, self.name))
+
 
 class FullPluginRef(PluginRef):
     """Fully qualified plugin reference."""

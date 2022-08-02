@@ -196,25 +196,25 @@ class IH5Record:
         """Given a record path, return path to canonical base container name."""
         return Path(f"{record_path}{cls._FILE_EXT}")
 
-    def _infer_name(self) -> str:
-        """Inferred name of record (i.e. common filename prefix of the containers)."""
-        path = Path(self._files[0].filename)
-        return path.name.split(self._FILE_EXT)[0].split(self._PATCH_INFIX)[0]
+    @classmethod
+    def _infer_name(cls, record_path: Path) -> str:
+        return record_path.name.split(cls._FILE_EXT)[0].split(cls._PATCH_INFIX)[0]
 
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
-        path = Path(self._files[0].filename).parent
+        path = Path(self._files[0].filename)
+        parent = path.parent
         patch_index = self._ublock(-1).patch_index + 1
-        res = f"{path}/{self._infer_name()}{self._PATCH_INFIX}{patch_index}{self._FILE_EXT}"
+        res = f"{parent}/{self._infer_name(path)}{self._PATCH_INFIX}{patch_index}{self._FILE_EXT}"
         return Path(res)
 
     def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
         """Return the parsed user block of a container file."""
-        f = obj if isinstance(obj, h5py.File) else self._files[obj]
+        f: h5py.File = obj if isinstance(obj, h5py.File) else self._files[obj]
         return self._ublocks[Path(f.filename)]
 
     def _set_ublock(self, obj: Union[h5py.File, int], ub: IH5UserBlock):
-        f = obj if isinstance(obj, h5py.File) else self._files[obj]
+        f: h5py.File = obj if isinstance(obj, h5py.File) else self._files[obj]
         self._ublocks[Path(f.filename)] = ub
 
     @classmethod

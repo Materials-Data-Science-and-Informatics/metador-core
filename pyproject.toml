@@ -52,6 +52,9 @@ common_file  = "metador_core.schema.common:FileMeta"
 common_image = "metador_core.schema.common:ImageMeta"
 common_table = "metador_core.schema.common:TableMeta"
 
+[tool.poetry.plugins.metador_widget]
+common_image = "metador_core.widget.common:ImageWidget"
+
 [tool.poetry.plugins.metador_packer]
 # You can use the example packer plugin as a template for
 # creating your own packer plugins for different use-cases.
