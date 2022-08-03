@@ -112,7 +112,7 @@ from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
 from ..plugins import installed
 from ..schema import MetadataSchema, PGSchema
-from ..schema.core import FullPluginRef, PluginPkgMeta
+from ..schema.core import PluginPkgMeta, PluginRef
 from . import utils as M
 
 
@@ -1231,10 +1231,10 @@ class MetadorContainerTOC:
             raise KeyError(msg)
         return self._pkginfos[pkg_name]
 
-    def fullname(self, schema_name: str) -> FullPluginRef:
+    def fullname(self, schema_name: str) -> PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
         pkginfo = self.provider(schema_name)
-        return FullPluginRef(
+        return PluginRef(
             pkg=pkginfo.name,
             pkg_version=pkginfo.version,
             group=_SCHEMAS.name,

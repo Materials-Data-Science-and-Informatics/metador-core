@@ -7,8 +7,8 @@ import pytest
 from metador_core.container import MetadorContainer
 from metador_core.hashutils import DEF_HASH_ALG, dir_hashsums
 from metador_core.ih5.container import IH5Record
-from metador_core.packer.interface import DirDiff, Packer
-from metador_core.packer.util import MetadorValidationErrors
+from metador_core.packer import DirDiff, Packer
+from metador_core.packer.util import DirValidationError
 
 pytest.skip(reason="FIXME when API complete", allow_module_level=True)
 
@@ -25,24 +25,24 @@ class DummyPacker(Packer):
     ex_pack_directory = False
 
     @classmethod
-    def check_directory(cls, data_dir: Path) -> MetadorValidationErrors:
+    def check_directory(cls, data_dir: Path) -> DirValidationError:
         if cls.ex_check_directory:
             raise Exception("check_directory failed.")
 
         if cls.fail_check_directory:
-            return MetadorValidationErrors({"error": ["check_directory"]})
-        return MetadorValidationErrors()
+            return DirValidationError({"error": ["check_directory"]})
+        return DirValidationError()
 
     @classmethod
-    def check_record(cls, record: IH5Record) -> MetadorValidationErrors:
+    def check_record(cls, record: IH5Record) -> DirValidationError:
         if cls.ex_check_record:
             raise Exception("check_record failed.")
 
         if cls.fail_check_record:
-            return MetadorValidationErrors({"error": ["check_record"]})
+            return DirValidationError({"error": ["check_record"]})
         if cls.fail_check_record_after_pack and "fail" in record:
-            return MetadorValidationErrors({"error": ["check_record_after_pack"]})
-        return MetadorValidationErrors()
+            return DirValidationError({"error": ["check_record_after_pack"]})
+        return DirValidationError()
 
     @classmethod
     def pack_directory(
@@ -230,7 +230,7 @@ def test_packer_fail_check_directory(tmp_ds_path, tmp_path):
     (data_dir / "dummy_file").touch()
 
     DummyPacker.fail_check_directory = True
-    with pytest.raises(MetadorValidationErrors) as e:
+    with pytest.raises(DirValidationError) as e:
         MetadorContainer.create(ds_path, data_dir, DummyPacker)
     DummyPacker.fail_check_directory = False
 
@@ -254,7 +254,7 @@ def test_update_fail_check_record(tmp_ds_path, tmp_path):
 
     DummyPacker.fail_check_record = True
     with MetadorContainer.open(ds_path) as ds:
-        with pytest.raises(MetadorValidationErrors):
+        with pytest.raises(DirValidationError):
             ds.update(data_dir, DummyPacker)
     DummyPacker.fail_check_record = False
 
@@ -278,7 +278,7 @@ def test_update_fail_check_record_after_pack(tmp_ds_path, tmp_path):
 
     DummyPacker.fail_check_record_after_pack = True
     with MetadorContainer.open(ds_path) as ds:
-        with pytest.raises(MetadorValidationErrors):
+        with pytest.raises(DirValidationError):
             ds.update(data_dir, DummyPacker)
     DummyPacker.fail_check_record_after_pack = False
 
@@ -289,7 +289,7 @@ def test_update_fail_check_record_after_pack(tmp_ds_path, tmp_path):
 
 
 def test_errors_add_append():
-    errs = MetadorValidationErrors()
+    errs = DirValidationError()
     assert not errs
 
     errs.add("a", "entry1")
@@ -297,14 +297,14 @@ def test_errors_add_append():
     assert errs
     assert errs.errors["a"] == ["entry1", "entry2"]
 
-    errs2 = MetadorValidationErrors()
+    errs2 = DirValidationError()
     errs2.add("a", "entry3")
     errs2.add("a", "entry4")
     errs2.add("b", "entry5")
     assert errs2.errors["a"] == ["entry3", "entry4"]
     assert errs2.errors["b"] == ["entry5"]
 
-    errs3 = MetadorValidationErrors()
+    errs3 = DirValidationError()
     errs3.add("b", "entry6")
 
     errs.append(errs2, errs3)

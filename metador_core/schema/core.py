@@ -18,33 +18,21 @@ class PluginRef(MetadataSchema):
     It is not registered as a schema plugin, because it is too general on its own.
     """
 
-    pkg: Optional[nonempty_str]
+    pkg: nonempty_str
     """Name of the Python package containing the plugin."""
     # NOTE: must be part of full name, because package provides versioning
     # still, plugin names must be globally unique (NOTE: or we must load EPs differently)
 
-    pkg_version: Optional[SemVerTuple]
+    pkg_version: SemVerTuple
     """Version of the Python package."""
 
-    group: Optional[nonempty_str]
+    group: nonempty_str
     """Metador pluggable group name, i.e. name of the entry point group."""
 
     name: nonempty_str
     """Registered entry point name inside an entry point group."""
 
-    def __hash__(self):
-        return hash((self.pkg, self.pkg_version, self.group, self.name))
-
-
-class FullPluginRef(PluginRef):
-    """Fully qualified plugin reference."""
-
-    # make entries non-optional
-    pkg: nonempty_str
-    pkg_version: SemVerTuple
-    group: nonempty_str
-
-    def supports(self, other: FullPluginRef) -> bool:
+    def supports(self, other: PluginRef) -> bool:
         """Return whether this plugin supports objects marked by given reference.
 
         True iff the package name, plugin group and plugin name agree,
@@ -61,6 +49,9 @@ class FullPluginRef(PluginRef):
         if self.pkg_version[1] < other.pkg_version[1]:  # minor
             return False
         return True
+
+    def __hash__(self):
+        return hash((self.pkg, self.pkg_version, self.group, self.name))
 
 
 class PluginPkgMeta(MetadataSchema):

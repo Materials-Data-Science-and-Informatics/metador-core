@@ -7,7 +7,7 @@ from panel.viewable import Viewable
 
 from ..container import MetadorNode
 from ..plugins.interface import PluginGroup
-from ..schema.core import FullPluginRef, MetadataSchema
+from ..schema.core import MetadataSchema, PluginRef
 from .server import WidgetServer
 from .server.standalone import widget_server
 
@@ -48,12 +48,12 @@ class Widget(ABC):
         return self._server.file_url_for(node)
 
     @classmethod
-    def supports(cls, schema_ref: FullPluginRef) -> bool:
+    def supports(cls, schema_ref: PluginRef) -> bool:
         """Return whether a certain schema is supported by the widget."""
         return any(map(lambda sref: sref.supports(schema_ref), cls.supported()))
 
     @classmethod
-    def supported(cls) -> List[FullPluginRef]:
+    def supported(cls) -> List[PluginRef]:
         """Return list of schemas supported by this widget."""
         raise NotImplementedError
 
@@ -75,17 +75,17 @@ class Widget(ABC):
 
 
 class PGWidget(PluginGroup[Widget]):
-    """Interface to access installed widget plugins."""
+    """Widget plugin group interface."""
 
     def check_plugin(self, widget_name: str, widget: Type[Widget]):
         self.check_is_subclass(widget_name, widget, Widget)
         if not widget.supported():
             raise TypeError("Widget must support at least one schema!")
 
-    def supported_schemas(self) -> Set[FullPluginRef]:
-        """Return union of all schemas supported by all widgets."""
+    def supported_schemas(self) -> Set[PluginRef]:
+        """Return union of all schemas supported by all installed widgets."""
         return set.union(*(set(w.supported()) for w in self.values()))
 
-    def widgets_for(self, schema_ref: FullPluginRef) -> List[Type[Widget]]:
+    def widgets_for(self, schema_ref: PluginRef) -> List[Type[Widget]]:
         """Return widgets that support the given schema."""
         return [wclass for wclass in self.values() if wclass.supports(schema_ref)]

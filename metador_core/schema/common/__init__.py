@@ -8,9 +8,9 @@ from typing import List, Optional
 import magic
 from PIL import Image
 
-from ..hashutils import file_hashsum
-from . import MetadataSchema, schema_ref
-from .types import PintUnit, hashsum_str, mimetype_str, nonempty_str
+from ...hashutils import file_hashsum
+from .. import MetadataSchema, schema_ref
+from ..types import PintUnit, hashsum_str, mimetype_str, nonempty_str
 
 
 class FileMeta(MetadataSchema):

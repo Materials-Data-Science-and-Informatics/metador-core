@@ -15,7 +15,7 @@ from typing import (
     overload,
 )
 
-from ..schema.core import FullPluginRef, PluginPkgMeta
+from ..schema.core import PluginPkgMeta, PluginRef
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
@@ -85,7 +85,10 @@ class PluginGroup(Generic[T]):
         ...
 
     def get(self, key, default: Union[None, DEF] = None) -> Union[Type[T], DEF, None]:
-        return self._LOADED_PLUGINS.get(key, default)
+        ret = self._LOADED_PLUGINS.get(key)
+        if ret is None:
+            return default
+        return ret
 
     def provider(self, ep_name: str) -> PluginPkgMeta:
         """Return package metadata of Python package providing this plugin."""
@@ -95,9 +98,9 @@ class PluginGroup(Generic[T]):
             raise KeyError(msg)
         return self._PKG_META[pkg]
 
-    def fullname(self, ep_name: str) -> FullPluginRef:
+    def fullname(self, ep_name: str) -> PluginRef:
         pkginfo = self.provider(ep_name)
-        return FullPluginRef(
+        return PluginRef(
             pkg=pkginfo.name,
             pkg_version=pkginfo.version,
             group=self.name,

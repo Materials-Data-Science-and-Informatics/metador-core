@@ -101,7 +101,7 @@ def test_create_open(tmp_ds_path):
     assert len(ds.ih5_files) == 1
     assert len(IH5Record.find_files(tmp_ds_path)) == 1
     assert str(ds.ih5_files[0]).find(str(tmp_ds_path)) == 0
-    assert ds._infer_name() == tmp_ds_path.name
+    assert ds._infer_name(tmp_ds_path) == tmp_ds_path.name
     assert ds.ih5_uuid == ds.ih5_meta[0].record_uuid
 
     # add some data

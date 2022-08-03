@@ -38,27 +38,26 @@ pdoc = "^10.0.3"
 # Here we define the default entities used in Metador.
 # For each declared group, plugins can be defined via entrypoints.
 schema = "metador_core.schema.plugingroup:PGSchema"
-packer = "metador_core.packer.plugingroup:PGPacker"
+packer = "metador_core.packer:PGPacker"
 widget = "metador_core.widget:PGWidget"
 
 [tool.poetry.plugins.metador_schema]
 # Metador is build around pluggable metadata schemas.
-# This one needed for configuring the dashboard for a container:
-dashboard_meta = "metador_core.widget.dashboard:DashboardMeta"
 # This one is mandatory for containers packed by a packer plugin:
-packer_info = "metador_core.packer.interface:PackerInfo"
+packer_info = "metador_core.packer:PackerInfo"
 # These are optional and can be used freely, e.g. by some packer:
+common_biblio = "metador_core.schema.common.biblio:BibDummyMeta"
 common_file  = "metador_core.schema.common:FileMeta"
 common_image = "metador_core.schema.common:ImageMeta"
 common_table = "metador_core.schema.common:TableMeta"
+# This one needed for configuring the dashboard for a container:
+dashboard_meta = "metador_core.widget.dashboard:DashboardMeta"
 
 [tool.poetry.plugins.metador_widget]
 common_image = "metador_core.widget.common:ImageWidget"
 
 [tool.poetry.plugins.metador_packer]
-# You can use the example packer plugin as a template for
-# creating your own packer plugins for different use-cases.
-example = "metador_core.packer.example:ExamplePacker"
+generic = "metador_core.packer.example:GenericPacker"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

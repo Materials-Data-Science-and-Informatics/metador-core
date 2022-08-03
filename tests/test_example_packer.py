@@ -3,7 +3,7 @@
 import pytest
 
 from metador_core.container import MetadorContainer
-from metador_core.packer.util import MetadorValidationErrors
+from metador_core.packer.util import DirValidationError
 from metador_core.plugins import installed
 
 
@@ -25,7 +25,7 @@ def test_example_packer_create(tmp_path_factory, tmp_ds_path, testutils):
     assert errs
     print(errs)
 
-    with pytest.raises(MetadorValidationErrors):
+    with pytest.raises(DirValidationError):
         MetadorContainer.create(tmp_ds_path, tmp1, epacker)
 
     # fix error with directory
