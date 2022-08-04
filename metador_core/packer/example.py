@@ -1,11 +1,11 @@
 """
-This is an example packer plugin.
+This is an example packer plugin for simple general data types.
 
 A packer plugin implements use-case specific container-related
 functionality for Metador containers.
 
 To develop your own packer plugin, implement a class deriving from
-`MetadorPacker` and register the class as an entrypoint of your package
+`Packer` and register the class as an entrypoint of your package
 (see the `pyproject.toml` of this package, where `GenericPacker`
 is registered as a packer plugin called `example`.)
 """
@@ -15,12 +15,13 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas
+from overrides import overrides
 
 from ..schema.common import FileMeta, ImageMeta, TableMeta
 from ..schema.common.biblio import BibDummyMeta
 from . import MetadorContainer, Packer
 from .diff import DiffNode, DirDiff
-from .util import DirValidationError
+from .util import DirValidationErrors
 
 
 class GenericPacker(Packer):
@@ -41,16 +42,17 @@ class GenericPacker(Packer):
     """
 
     @classmethod
-    def check_dir(cls, data_dir: Path):
+    @overrides
+    def check_dir(cls, data_dir: Path) -> DirValidationErrors:
         print("--------")
         print("called check_directory")
-        errs = DirValidationError()
+        errs = DirValidationErrors()
         errs.append(BibDummyMeta.check_path(data_dir / "biblio.yaml"))
-        if errs:
-            raise errs
+        return errs
 
     @classmethod
-    def update(cls, container: MetadorContainer, data_dir: Path, diff: DirDiff):
+    @overrides
+    def update(cls, mc: MetadorContainer, data_dir: Path, diff: DirDiff):
         print("--------")
         print("called update")
 
@@ -86,37 +88,37 @@ class GenericPacker(Packer):
                 # also remove in container, if it was not a symlink (which we ignored)
                 if dnode.prev_type != DiffNode.ObjType.symlink:
                     print("DELETE:", key)
-                    del container[key]
+                    del mc[key]
                 continue
 
             if status == DiffNode.Status.modified:  # changed
                 if dnode.prev_type == dnode.curr_type and path.is_dir():
-                    continue  # a changed dir should already exist + remain in container
+                    continue  # a changed dir should already exist + remain in mc
 
                 # remove entity, proceeding with loop body to add new entity version
                 print("DELETE:", key)
-                del container[key]
+                del mc[key]
 
             # now we (re-)add new or modified entities:
             if path.is_dir():
                 print("CREATE:", path, "->", key, "(dir)")
 
-                container.create_group(key)
+                mc.create_group(key)
 
             elif path.is_file():
                 if key == "/body/custom":
                     # update custom ExampleMeta stuff
                     print("CREATE:", path, "->", key, "(custom ExampleMeta)")
-                    container[key] = BibDummyMeta.from_path(path).json()
+                    mc[key] = BibDummyMeta.from_path(path).json()
 
                 elif path.name.lower().endswith(".csv"):
                     # embed CSV as numpy array with table metadata
                     print("CREATE:", path, "->", key, "(table)")
 
-                    container[key] = pandas.read_csv(path).to_numpy()  # type: ignore
+                    mc[key] = pandas.read_csv(path).to_numpy()  # type: ignore
                     metafile = Path(f"{path}_meta.yaml")
                     metadata = TableMeta.parse_file(metafile).json()
-                    container[key].attrs["node_meta"] = metadata
+                    mc[key].attrs["node_meta"] = metadata
 
                 elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
                     # embed image file with image-specific metadata
@@ -125,8 +127,8 @@ class GenericPacker(Packer):
                     data = path.read_bytes()
                     val = np.void(data) if len(data) else h5py.Empty("b")
                     meta = ImageMeta.for_file(path).json()
-                    container[key] = val
-                    container[key].attrs["node_meta"] = meta
+                    mc[key] = val
+                    mc[key].attrs["node_meta"] = meta
 
                 else:
                     # treat as opaque blob and add file metadata
@@ -135,5 +137,5 @@ class GenericPacker(Packer):
                     data = path.read_bytes()
                     val = np.void(data) if len(data) else h5py.Empty("b")
                     meta = FileMeta.for_file(path).json()
-                    container[key] = val
-                    container[key].attrs["node_meta"] = meta
+                    mc[key] = val
+                    mc[key].attrs["node_meta"] = meta

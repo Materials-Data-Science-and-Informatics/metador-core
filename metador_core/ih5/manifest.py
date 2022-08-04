@@ -29,17 +29,14 @@ class IH5Manifest(BaseModel):
 
     manifest_exts: Dict[str, Any]  # Arbitrary extensions, similar to IH5UserBlock
 
-    # todo: put this into an extension model defined in the packer context
-    # relevant for packers:
-    # srcdir_hashsums: DirHashsums = {}  # if set, computed with dir_hashsums
-    # srcdir_packer: Optional[PackerInfo] = None  # if set, metadata of the used packer
-
     @classmethod
     def from_userblock(cls, ub: IH5UserBlock, skeleton={}, exts={}) -> IH5Manifest:
         """Create a manifest file based on a user block."""
         ub_copy = ub.copy()
         # only keep other extensions (otherwise its circular)
-        ub_copy.ub_exts = {k: v for k, v in ub.ub_exts.items() if k != UBEXT_MF_NAME}
+        ub_copy.ub_exts = {
+            k: v for k, v in ub.ub_exts.items() if k != IH5UBExtManifest.ext_name()
+        }
         return cls(
             manifest_uuid=uuid1(),
             user_block=ub_copy,
@@ -61,10 +58,6 @@ class IH5Manifest(BaseModel):
             f.flush()
 
 
-UBEXT_MF_NAME: str = "ih5mf_v01"
-"""Name of user block extension section for stub and manifest info."""
-
-
 class IH5UBExtManifest(BaseModel):
     """IH5 user block extension for stub and manifest support."""
 
@@ -78,15 +71,20 @@ class IH5UBExtManifest(BaseModel):
     """Hashsum of the manifest file that belongs to this IH5 file."""
 
     @classmethod
+    def ext_name(cls) -> str:
+        """Name of user block extension section for stub and manifest info."""
+        return "ih5mf_v01"
+
+    @classmethod
     def get(cls, ub: IH5UserBlock) -> Optional[IH5UBExtManifest]:
         """Parse extension metadata from userblock, if it is available."""
-        if UBEXT_MF_NAME not in ub.ub_exts:
+        if cls.ext_name() not in ub.ub_exts:
             return None
-        return cls.parse_obj(ub.ub_exts[UBEXT_MF_NAME])
+        return cls.parse_obj(ub.ub_exts[cls.ext_name()])
 
     def update(self, ub: IH5UserBlock):
         """Create or overwrite extension metadata in given userblock."""
-        ub.ub_exts[UBEXT_MF_NAME] = self.dict()
+        ub.ub_exts[self.ext_name()] = self.dict()
 
 
 class IH5MFRecord(IH5Record):

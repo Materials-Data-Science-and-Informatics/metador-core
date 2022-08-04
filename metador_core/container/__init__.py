@@ -87,7 +87,7 @@ from typing import (
     Iterator,
     KeysView,
     List,
-    Mapping,
+    MutableMapping,
     Optional,
     Set,
     Type,
@@ -120,33 +120,61 @@ class UnsupportedOperationError(AttributeError):
     """Subclass to distinguish between actually missing attribute and unsupported one."""
 
 
-class ROAttributeManager(wrapt.ObjectProxy):
-    """Wrapper for AttributeManager-like objects to protect from accidental mutation.
+class WrappedAttributeManager(wrapt.ObjectProxy):
+    """Wrapper for AttributeManager-like objects to prevent mutation (read-only) or inspection (skel-only)."""
 
-    Returned from nodes that are marked as read_only.
-    """
+    __wrapped__: MutableMapping
+    _self_allowed: Set[str]
 
-    __wrapped__: Mapping
+    _self_RO_FLAG = "read_only"
+    _self_SO_FLAG = "skel_only"
 
-    # read-only methods listed in h5py AttributeManager API:
-    _self_ALLOWED = {"keys", "values", "items", "get"}
-    _self_MSG = "This attribute set belongs to a node marked as read_only!"
+    def __init__(self, obj, **kwargs):
+        self.__wrapped__ = obj
+
+        self._self_ro = kwargs.get(self._self_RO_FLAG, False)
+        self._self_so = kwargs.get(self._self_SO_FLAG, False)
+        if self._self_so:
+            self._self_allowed = {"keys"}
+        elif self._self_ro:
+            self._self_allowed = {"keys", "values", "items", "get"}
+        else:
+            self._self_allowed = {}  # this means everything is allowed
+
+    def _raise_illegal_op(self, flag: str):
+        raise RuntimeError(f"This attribute set belongs to a node marked as {flag}!")
 
     def __getattr__(self, key: str):
-        if hasattr(self.__wrapped__, key) and key not in self._self_ALLOWED:  # RAW
-            raise RuntimeError(self._self_MSG)
-        return getattr(self.__wrapped__, key)  # RAW
+        # NOTE: this will not restrict __contains__ because its a special method, which is desired behavior.
+        if (
+            hasattr(self.__wrapped__, key)
+            and self._self_allowed
+            and key not in self._self_allowed
+        ):
+            msg = f"{self._self_RO_FLAG}={self._self_ro} and {self._self_SO_FLAG}={self._self_so}"
+            self._raise_illegal_op(msg)
+        return getattr(self.__wrapped__, key)
+
+    # this is not intercepted by getattr
+    def __getitem__(self, key: str):
+        if self._self_so:
+            self._raise_illegal_op(self._self_SO_FLAG)
+        return self.__wrapped__.__getitem__(key)
 
     # this is not intercepted by getattr
     def __setitem__(self, key: str, value):
-        raise RuntimeError(self._self_MSG)
+        if self._self_ro:
+            self._raise_illegal_op(self._self_RO_FLAG)
+        return self.__wrapped__.__setitem__(key, value)
 
     # this is not intercepted by getattr
-    def __delitem__(self, key: str, value):
-        raise RuntimeError(self._self_MSG)
+    def __delitem__(self, key: str):
+        if self._self_ro:
+            self._raise_illegal_op(self._self_RO_FLAG)
+        return self.__wrapped__.__delitem__(key)
 
     def __repr__(self) -> str:
-        return repr(self.__wrapped__)  # RAW
+        return repr(self.__wrapped__)
 
 
 class MetadorNode(wrapt.ObjectProxy):
@@ -167,9 +195,11 @@ class MetadorNode(wrapt.ObjectProxy):
         lp = kwargs.pop("local_parent", None)
         lo = bool(kwargs.pop("local_only", False))
         ro = bool(kwargs.pop("read_only", False))
+        so = bool(kwargs.pop("skel_only", False))
         self._self_local_parent: Optional[MetadorGroup] = lp
         self._self_local_only: bool = lo
         self._self_read_only: bool = ro
+        self._self_skel_only: bool = so
 
         if kwargs:
             raise ValueError(f"Unknown keyword arguments: {kwargs}")
@@ -184,7 +214,10 @@ class MetadorNode(wrapt.ObjectProxy):
 
     @property
     def local_only(self) -> bool:
-        """Return whether this node is local-only."""
+        """Return whether this node is local-only.
+
+        If True, it is not possible to access parents beyond the initial local node.
+        """
         return self._self_local_only
 
     @property
@@ -196,18 +229,32 @@ class MetadorNode(wrapt.ObjectProxy):
         """
         return self._self_read_only
 
+    @property
+    def skel_only(self) -> bool:
+        """Return whether this node is skel-only.
+
+        If True, then attributes, datasets and metadata cannot be retrieved, only listed.
+        """
+        return self._self_skel_only
+
     def _guard_mut_method(self, method: str = "this method"):
         if self.read_only:
             msg = f"Cannot use method '{method}', the node is marked as read_only!"
             raise RuntimeError(msg)
 
+    def _guard_nskel_method(self, method: str = "this method"):
+        if self.skel_only:
+            msg = f"Cannot use method '{method}', the node is marked as skel_only!"
+            raise RuntimeError(msg)
+
     def _child_node_kwargs(self):
         """Return kwargs to be passed to a child node.
 
-        Ensures that read_only and local_only status is passed down correctly.
+        Ensures that {read,skel,local}_only status is passed down correctly.
         """
         return {
             "read_only": self.read_only,
+            "skel_only": self.skel_only,
             "local_only": self.local_only,
             "local_parent": self if self.local_only else None,
         }
@@ -256,8 +303,10 @@ class MetadorNode(wrapt.ObjectProxy):
         # can only set, but not unset! (unless doing it on purpose with the attributes)
         ro = bool(kwargs.pop("read_only", None))
         lo = bool(kwargs.pop("local_only", None))
+        so = bool(kwargs.pop("skel_only", None))
         self._self_read_only = self._self_read_only or ro
         self._self_local_only = self._self_local_only or lo
+        self._self_skel_only = self._self_skel_only or so
         if lo:  # a child was set explicitly as local, not by inheritance
             # so we remove its ability to go to the (also localized) parent
             self._self_local_parent = None
@@ -279,8 +328,12 @@ class MetadorNode(wrapt.ObjectProxy):
 
     @property
     def attrs(self):
-        if self.read_only:
-            return ROAttributeManager(self.__wrapped__.attrs)  # RAW
+        if self._self_read_only or self._self_skel_only:
+            return WrappedAttributeManager(
+                self.__wrapped__.attrs,
+                read_only=self._self_read_only,
+                skel_only=self._self_skel_only,
+            )
         return self.__wrapped__.attrs  # RAW
 
     @property
@@ -552,18 +605,25 @@ class MetadorDataset(MetadorNode):
     __wrapped__: H5DatasetLike
 
     # manually assembled from public methods h5py.Dataset provides
-    _self_FORBIDDEN = {"resize", "make_scale", "write_direct", "flush"}
+    _self_RO_FORBIDDEN = {"resize", "make_scale", "write_direct", "flush"}
+
+    def __getattr__(self, key):
+        if self.read_only and key in self._self_RO_FORBIDDEN:
+            self._guard_mut_method(key)
+        if self.skel_only and key == "get":
+            self._guard_nskel_method(key)
+        return getattr(self.__wrapped__, key)  # RAW
+
+    # prevent getter of node if marked as skel_only
+    def __getitem__(self, *args, **kwargs):
+        self._guard_nskel_method("__getitem__")
+        return self.__wrapped__.__getitem__(*args, **kwargs)  # RAW
 
     # prevent mutating method calls of node is marked as read_only
 
     def __setitem__(self, *args, **kwargs):
-        self._guard_mutable_method("__setitem__")
+        self._guard_mut_method("__setitem__")
         return self.__wrapped__.__setitem__(*args, **kwargs)  # RAW
-
-    def __getattr__(self, key):
-        if self.read_only and key in self._self_FORBIDDEN:
-            self._guard_mutable_method(key)
-        return getattr(self.__wrapped__, key)  # RAW
 
 
 # NOTE: one could try writing a ZIP wrapper providing the minimal HDF5 like API and
@@ -580,11 +640,13 @@ class MetadorContainer(wrapt.ObjectProxy):
     """
 
     __wrapped__: H5FileLike
+    _self_skel_only: bool
 
-    def __init__(self, obj):
+    def __init__(self, obj, **kwargs):
         if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
             raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
         super().__init__(obj)
+        self._self_skel_only = kwargs.pop("skel_only", False)
 
         ver = self.spec_version if M.METADOR_VERSION_PATH in self.__wrapped__ else None
         if ver is None and self.mode == "r":
@@ -657,7 +719,10 @@ class MetadorContainer(wrapt.ObjectProxy):
     # overriding method of IH5Record, but a new method for h5py.File
     # used for forwarding group methods
     def _root_group(self) -> MetadorGroup:
-        return MetadorGroup(self, self.__wrapped__["/"])  # RAW
+        ret = MetadorGroup(self, self.__wrapped__["/"])  # RAW
+        if self._self_skel_only:
+            ret.restrict(skel_only=True)
+        return ret
 
     def __getattr__(self, key: str):
         # takes care of forwarding all non-special methods
@@ -716,6 +781,7 @@ class MetadorMeta:
     def __init__(self, node: MetadorNode):
         self._mc = node._self_container  # needed for read/write access
         self._read_only = node.read_only  # inherited from node marker
+        self._skel_only = node.skel_only  # inherited from node marker
         # used all over the place, so precompute once:
         self._base_dir = M.to_meta_base_path(
             node.name, is_dataset=isinstance(node, MetadorDataset)
@@ -761,6 +827,10 @@ class MetadorMeta:
         if self._read_only:
             raise ValueError("This node is marked as read_only!")
 
+    def _guard_skel_only(self):
+        if self._skel_only:
+            raise ValueError("This node is marked as skel_only!")
+
     # public interface:
 
     def get_bytes(self, schema_name: str) -> Optional[bytes]:
@@ -768,6 +838,7 @@ class MetadorMeta:
 
         This also works for unknown schemas (we can retrieve, but cannot parse those).
         """
+        self._guard_skel_only()
         if (ret := self._get_raw(schema_name)) is not None:
             return ret[()]
         return None
@@ -852,9 +923,11 @@ class MetadorMeta:
         return self.find()  # type: ignore
 
     def values(self) -> ValuesView[MetadataSchema]:
+        self._guard_skel_only()
         return set(map(lambda x: x[1], self.items()))  # type: ignore
 
     def items(self) -> ItemsView[str, MetadataSchema]:
+        self._guard_skel_only()
         return {name: self.get[name] for name in self.find()}  # type: ignore
 
     def __delitem__(self, schema_name: str):
@@ -891,6 +964,7 @@ class MetadorMeta:
         Will also accept a child schema object and parse it as the parent schema.
         If multiple suitable objects are found, picks the alphabetically first to parse it.
         """
+        self._guard_skel_only()
         self._guard_unknown_schema(schema_name)
         # don't include parents, because we need to parse some physical instance
         candidates = self.find(schema_name)

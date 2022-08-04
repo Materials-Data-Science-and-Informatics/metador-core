@@ -18,7 +18,7 @@ def test_dir_hashsums_invalid_symlink_fail(tmp_path, testutils):
 def test_dir_hashsums(tmp_path, testutils):
     testutils.prepare_dir(tmp_path, testutils.data_dir["tmp1"])
     assert dir_hashsums(tmp_path, "sha256") == {
-        "example_meta.yaml": "sha256:460bc0d9c1c5b1a090d10660b36cacdee627629f58de6abb662c697d3da6a8f4",
+        "_meta.yaml": "sha256:460bc0d9c1c5b1a090d10660b36cacdee627629f58de6abb662c697d3da6a8f4",
         "a": {
             "b": {
                 "d": "symlink:a/b",
@@ -84,14 +84,14 @@ def test_dirdiff_nontrivial(tmp_path, testutils):
     assert f.prev_type == DiffNode.ObjType.file
     assert f.curr_type == DiffNode.ObjType.file
 
-    assert diff.get(Path("example_meta.yaml")) is None
+    assert diff.get(Path("_meta.yaml")) is None
     assert diff.status(diff.get(Path("_meta.yaml"))) == DiffNode.Status.unchanged
 
     # test annotate()
 
     # changed - check correct order rec(removed, modified, self, added) + unchanged
     lst = ["d", "a/b/c.csv", "a/b/c.csv_meta.yaml", "a/b/d", "a/b", "a"]
-    lst += ["e", "e/g", "f", ".", "example_meta.yaml", "z"]
+    lst += ["e", "e/g", "f", ".", "_meta.yaml", "z"]
     exp_paths = [p_tmp2 / x for x in lst]
 
     ordered_paths = list(diff.annotate(p_tmp2).keys())

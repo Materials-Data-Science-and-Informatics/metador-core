@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from io import UnsupportedOperation
 from pathlib import Path
 from typing import Tuple, Type
 
-from overrides import overrides
+import wrapt
+from overrides import EnforceOverrides, overrides
+
+from metador_core.ih5.manifest import IH5MFRecord
 
 from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
@@ -13,10 +17,10 @@ from ..plugins import installed
 from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
 from .diff import DirDiff
-from .util import DirValidationError
+from .util import DirValidationErrors
 
 
-class Packer(ABC):
+class Packer(ABC, EnforceOverrides):
     """Interface to be implemented by Metador IH5 packer plugins.
 
     These plugins is how support for wildly different domain-specific
@@ -32,19 +36,19 @@ class Packer(ABC):
 
     Requirements for well-behaved packers:
 
-    1. Source directory is read-only:
-    Files or directories inside of `data_dir` MUST NOT be created, deleted or
-    modified by this method.
-
-    2. No closing of the container:
+    1. No closing of the container:
     The packer gets a writable record and is only responsible for performing
     the neccessary additions, deletions and modifications. It is not allowed
     to `close()` the container.
 
-    3. Data-independence of updates:
-    Pre-existing data in the container MUST NOT be read or be relied on for generating
-    a patch, as they could be dummy stubs. One MAY rely on existence or absence of
-    `IH5Group`s, `IH5Records`s and attributes in the container.
+    2. No access to data in the container:
+    Data in the container MUST NOT be read or be relied on for doing an update,
+    as the nodes could be dummy stubs. One MAY rely on existence or absence of
+    Groups, Datasets, Attributes and Metadata in the container (e.g. `in` or `keys`).
+
+    3. Source directory is read-only:
+    Files or directories inside of `data_dir` MUST NOT be created, deleted or
+    modified by this method.
 
     4. Exceptional termination:
     In case that packing must be aborted, and exception MUST be raised.
@@ -95,7 +99,7 @@ class Packer(ABC):
 
     @classmethod
     @abstractmethod
-    def check_dir(cls, data_dir: Path) -> DirValidationError:
+    def check_dir(cls, data_dir: Path) -> DirValidationErrors:
         """Check whether the given directory is suitable for packing with this plugin.
 
         This method will be called before `pack` or `update` and MUST detect
@@ -113,7 +117,7 @@ class Packer(ABC):
         Args:
             data_dir: Directory containing all the data to be packed.
 
-        Raises:
+        Returns:
             DirValidationError initialized with a dict mapping file paths
             (relative to `dir`) to lists of detected errors.
 
@@ -186,6 +190,52 @@ class PackerInfo(MetadataSchema):
         )
 
 
+class Unclosable(wrapt.ObjectProxy):
+    """Wrapper to prevent packers from closing/completing a container file."""
+
+    _self_MSG = "Packers must not finalize the container!"
+
+    def close(self):
+        raise UnsupportedOperation(self._self_MSG)
+
+    # specific for IH5Record subtypes:
+
+    def discard_patch(self):
+        raise UnsupportedOperation(self._self_MSG)
+
+    def commit_patch(self):
+        raise UnsupportedOperation(self._self_MSG)
+
+
+def _pack(
+    packer: Type[Packer],
+    container: MetadorContainer,
+    data_dir: Path,
+    hsums: DirHashsums,  # hashsums from data_dir, to compute a diff if needed
+):
+    """Call `pack` of packer or if it is missing, use its `update`."""
+    try:
+        packer.pack(container, data_dir)
+    except NotImplementedError:
+        # pack using update that adds everything
+        diff = DirDiff.compare({}, hsums)
+        packer.update(container, data_dir, diff)
+
+
+def _update(
+    packer: Type[Packer], container: MetadorContainer, data_dir: Path, diff: DirDiff
+):
+    """Call `update` of packer or if it is missing, use its `pack`."""
+    try:
+        packer.update(container, data_dir, diff)
+    except NotImplementedError:
+        # update by packing from scratch
+        for obj in [container, container.attrs, container.meta]:
+            for key in obj.keys():
+                del obj[key]
+        packer.pack(container, data_dir)
+
+
 class PGPacker(pg.PluginGroup[Packer]):
     """Packer plugin group interface."""
 
@@ -204,39 +254,18 @@ class PGPacker(pg.PluginGroup[Packer]):
 
     # ----
 
-    @classmethod
-    def _pack(cls, packer, container, data_dir, hashsums):
-        """Call `pack` of packer or if it is missing, use its `update`."""
-        try:
-            packer.pack(container, data_dir)
-        except NotImplementedError:
-            # pack using update that adds everything
-            diff = DirDiff.compare({}, hashsums)
-            packer.update(container, data_dir, diff)
-
-    @classmethod
-    def _update(cls, packer, cont, data_dir, diff):
-        """Call `update` of packer or if it is missing, use its `pack`."""
-        try:
-            packer.update(cont, data_dir, diff)
-        except NotImplementedError:
-            # update by packing from scratch
-            for obj in [cont, cont.attrs, cont.meta]:
-                for key in obj.keys():
-                    del obj[key]
-            packer.pack(cont, data_dir)
-
     def _prepare(self, pname: str, srcdir: Path) -> Tuple[Type[Packer], DirHashsums]:
         """Return packer class and hashsums of given directory.
 
         Raises an exception if packer is not found or `packer.check_dir` fails.
         """
         packer = self[pname]
-        packer.check_dir(srcdir)
+        if errs := packer.check_dir(srcdir):
+            raise errs
         return (packer, dir_hashsums(srcdir))
 
     def pack(self, packer_name: str, data_dir: Path, target: Path, h5like_cls):
-        """Pack a directory into a container using a packer plugin.
+        """Pack a directory into a container using an installed packer.
 
         `packer_name` must be an installed packer plugin.
 
@@ -246,6 +275,10 @@ class PGPacker(pg.PluginGroup[Packer]):
 
         `h5like_cls` must be a class compatible with MetadorContainer.
 
+        In case an exception happens during packing, notice that no cleanup is done.
+
+        The user is responsible for removing inconsistent files that were created.
+
         Args:
             packer_name: installed packer plugin name
             data_dir: data source directory
@@ -253,13 +286,9 @@ class PGPacker(pg.PluginGroup[Packer]):
             h5like_cls: class to use for creating the container
         """
         packer, hashsums = self._prepare(packer_name, data_dir)
-        container = MetadorContainer(h5like_cls(target, "x"))
-
-        try:
-            self._pack(packer, container, data_dir, hashsums)
-        except Exception as e:
-            raise e
-
+        # use skel_only to enforce stub-compatibility of packer
+        container = MetadorContainer(h5like_cls(target, "x"), skel_only=True)
+        _pack(packer, Unclosable(container), data_dir, hashsums)
         self._finalize(packer_name, hashsums, container)
 
     def update(self, packer_name: str, data_dir: Path, target: Path, h5like_cls):
@@ -267,9 +296,16 @@ class PGPacker(pg.PluginGroup[Packer]):
 
         Like `pack`, but the `target` must be a container which can be opened
         with the `h5like_cls` and was packed by a compatible packer.
+
+        In case an exception happens during packing, notice that no cleanup is done
+        and if the container has been written to, the changes persist.
+
+        The user is responsible for removing inconsistent files that were created
+        and ensuring that the previous state can be restored, e.g. from a backup.
         """
         packer, hashsums = self._prepare(packer_name, data_dir)
-        container = MetadorContainer(h5like_cls(target, "r+"))
+        # use skel_only to enforce stub-compatibility of packer
+        container = MetadorContainer(h5like_cls(target, "r+"), skel_only=True)
 
         # check compatibility
         pinfo = container.meta.get(self._PACKER_INFO_NAME, PackerInfo)
@@ -281,11 +317,7 @@ class PGPacker(pg.PluginGroup[Packer]):
             raise ValueError(msg)
 
         diff = DirDiff.compare(pinfo.source_dir, hashsums)
-        try:
-            self._update(packer, container, data_dir, diff)
-        except Exception as e:
-            raise e
-
+        _update(packer, Unclosable(container), data_dir, diff)
         self._finalize(packer_name, hashsums, container)
 
     def _finalize(self, pname: str, hsums: DirHashsums, cont: MetadorContainer):
@@ -295,6 +327,13 @@ class PGPacker(pg.PluginGroup[Packer]):
 
         pinfo = PackerInfo.for_packer(pname)
         pinfo.source_dir = hsums
-
         cont.meta[self._PACKER_INFO_NAME] = pinfo
+
+        if isinstance(cont, IH5MFRecord):
+            # when using IH5MFRecord,
+            # we want the packerinfo in the manifest, so tooling can decide
+            # if a container can be updated without having it available.
+            # (default manifest already has enough info for creating stubs)
+            cont.manifest.manifest_exts[self.name] = pinfo.dict()
+
         cont.close()

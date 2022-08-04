@@ -81,14 +81,14 @@ columns:
             "d": SymLink("a/b"),
             "e": "will be replaced",
             "f": "will be modified",
-            "example_meta.yaml": "author: unchanged",
+            "_meta.yaml": "author: unchanged",
             "z": "",
         },
         "tmp2": {
             "a": {"b": "hello, world!"},
             "e": {"g": "is added"},
             "f": "is modified",
-            "example_meta.yaml": "author: unchanged",
+            "_meta.yaml": "author: unchanged",
             "z": "",
         },
     }

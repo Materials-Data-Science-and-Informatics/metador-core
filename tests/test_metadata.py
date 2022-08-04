@@ -3,10 +3,6 @@ from pydantic import BaseModel, ValidationError, parse_obj_as
 
 import metador_core.schema.types as t
 
-# from metador_core.ih5.record import IH5Record
-# from metador_core.packer.util import MetadorValidationErrors
-# from metador_core.schema.common import FileMeta
-
 
 def test_str_types():
     # nonempty_str
@@ -60,6 +56,10 @@ def test_str_types():
     SomeModel(u="meters * second").schema_json().lower().find("pint") >= 0  # type: ignore
 
 
+# from metador_core.ih5.record import IH5Record
+# from metador_core.packer.util import MetadorValidationErrors
+# from metador_core.schema.common import FileMeta
+#
 # @pytest.mark.skip(reason="FIXME port to equivalent tests in new (packer) API")
 # def test_filemeta(tmp_path, tmp_ds_path):
 #     # get metadata for a file, save to yaml, load from yaml, check it
