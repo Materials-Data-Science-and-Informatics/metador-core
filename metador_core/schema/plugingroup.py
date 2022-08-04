@@ -1,10 +1,12 @@
-from typing import List, get_type_hints
+from typing import List, Type, get_type_hints
 
-from ..plugins.interface import PluginGroup
+from overrides import overrides
+
+from ..plugins import interface as pg
 from . import MetadataSchema
 
 
-class PGSchema(PluginGroup[MetadataSchema]):
+class PGSchema(pg.PluginGroup[MetadataSchema]):
     """Interface to access installed schema plugins.
 
     A valid schema must be subclass of `MetadataSchema` and also subclass of
@@ -31,37 +33,38 @@ class PGSchema(PluginGroup[MetadataSchema]):
     but only describe a part of a meaningful metadata object.
     """
 
-    def check_plugin(self, schema_name: str, ep):
-        """Check schema for validity."""
-        self.check_is_subclass(schema_name, ep, MetadataSchema)
+    @overrides
+    def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
+        pg.check_is_subclass(name, plugin, MetadataSchema)
 
-        parent_ref = ep.parent_schema()
+        parent_ref = plugin.parent_schema()
         if parent_ref is None:
-            return
+            return  # no parent method -> nothing to do
 
+        # check whether parent is known, compatible and really is a superclass
         parent = self.get(parent_ref.name)
         if not parent:
-            msg = f"{schema_name}: Parent schema {parent_ref} not found!"
+            msg = f"{name}: Parent schema {parent_ref} not found!"
             raise TypeError(msg)
 
         inst_parent_ref = self.fullname(parent_ref.name)
         if not inst_parent_ref.supports(parent_ref):
-            msg = f"{schema_name}: Installed parent schema version ({inst_parent_ref}) "
+            msg = f"{name}: Installed parent schema version ({inst_parent_ref}) "
             msg += "incompatible with required version ({parent_ref})!"
             raise TypeError(msg)
 
-        if not issubclass(ep, parent):
-            msg = f"{schema_name}: {ep} is not subclass of "
+        if not issubclass(plugin, parent):
+            msg = f"{name}: {plugin} is not subclass of "
             msg += f"claimed parent schema {parent} ({parent_ref})!"
             raise TypeError(msg)
 
         # make sure that subclasses don't shadow parent attributes
         parent_fields = get_type_hints(parent)
-        child_fields = get_type_hints(ep)
+        child_fields = get_type_hints(plugin)
         overrides = set(parent_fields.keys()).intersection(set(child_fields.keys()))
         for attr_name in overrides:
             if child_fields[attr_name] != parent_fields[attr_name]:
-                msg = f"{schema_name}: '{attr_name}' ({child_fields[attr_name]}) is "
+                msg = f"{name}: '{attr_name}' ({child_fields[attr_name]}) is "
                 msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
                 raise TypeError(msg)
 

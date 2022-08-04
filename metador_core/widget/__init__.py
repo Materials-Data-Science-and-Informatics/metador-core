@@ -1,18 +1,19 @@
 """Pluggable widgets for Metador."""
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import List, Set, Type
 
+from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
 
 from ..container import MetadorNode
-from ..plugins.interface import PluginGroup
+from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginRef
 from .server import WidgetServer
 from .server.standalone import widget_server
 
 
-class Widget(ABC):
+class Widget(ABC, EnforceOverrides):
     """Base class for metador widgets."""
 
     _node: MetadorNode
@@ -53,6 +54,7 @@ class Widget(ABC):
         return any(map(lambda sref: sref.supports(schema_ref), cls.supported()))
 
     @classmethod
+    @abstractmethod
     def supported(cls) -> List[PluginRef]:
         """Return list of schemas supported by this widget."""
         raise NotImplementedError
@@ -66,6 +68,7 @@ class Widget(ABC):
         Otherwise, it will prepare everything that can be done once here.
         """
 
+    @abstractmethod
     def show(self) -> Viewable:
         """Return a fresh Panel widget representing the node data and metadata.
 
@@ -74,12 +77,15 @@ class Widget(ABC):
         raise NotImplementedError
 
 
-class PGWidget(PluginGroup[Widget]):
+class PGWidget(pg.PluginGroup[Widget]):
     """Widget plugin group interface."""
 
-    def check_plugin(self, widget_name: str, widget: Type[Widget]):
-        self.check_is_subclass(widget_name, widget, Widget)
-        if not widget.supported():
+    @overrides
+    def check_plugin(self, name: str, plugin: Type[Widget]):
+        pg.check_is_subclass(name, plugin, Widget)
+        pg.check_implements_method(name, plugin, Widget.supported)
+        pg.check_implements_method(name, plugin, Widget.show)
+        if not plugin.supported():
             raise TypeError("Widget must support at least one schema!")
 
     def supported_schemas(self) -> Set[PluginRef]:

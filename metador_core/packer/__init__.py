@@ -5,10 +5,12 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Tuple, Type
 
+from overrides import overrides
+
 from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
 from ..plugins import installed
-from ..plugins.interface import PluginGroup
+from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
 from .diff import DirDiff
 from .util import DirValidationError
@@ -184,21 +186,23 @@ class PackerInfo(MetadataSchema):
         )
 
 
-class PGPacker(PluginGroup[Packer]):
+class PGPacker(pg.PluginGroup[Packer]):
     """Packer plugin group interface."""
 
     _PACKER_INFO_NAME = "packer_info"  # = entry point name of PackerInfo class
 
-    def check_plugin(self, packer_name: str, ep):
-        self.check_is_subclass(packer_name, ep, Packer)
-        missing_check_dir = ep.check_dir == Packer.check_dir
-        if missing_check_dir:
-            raise TypeError(f"{packer_name}: check_dir is not implemented!")
+    @overrides
+    def check_plugin(self, name: str, plugin: Type[Packer]):
+        pg.check_is_subclass(name, plugin, Packer)
 
-        missing_pack = ep.pack == Packer.pack
-        missing_update = ep.update == Packer.update
+        pg.check_implements_method(name, plugin, Packer.check_dir)
+
+        missing_pack = pg.test_implements_method(plugin, Packer.pack)
+        missing_update = pg.test_implements_method(plugin, Packer.update)
         if missing_pack and missing_update:
-            raise TypeError(f"{packer_name}: Neither pack nor update are implemented!")
+            raise TypeError(f"{name}: Neither pack nor update are implemented!")
+
+    # ----
 
     @classmethod
     def _pack(cls, packer, container, data_dir, hashsums):

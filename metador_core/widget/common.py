@@ -1,11 +1,15 @@
 """Common widgets."""
 
+from typing import List
+
 import panel as pn
 from bokeh.plotting import figure
+from overrides import overrides
 from panel.viewable import Viewable
 
 from ..schema import schema_ref
 from ..schema.common import ImageMeta
+from ..schema.core import PluginRef
 from . import Widget
 
 
@@ -14,10 +18,12 @@ class ImageWidget(Widget):
     _meta: ImageMeta
 
     @classmethod
-    def supported(cls):
+    @overrides
+    def supported(cls) -> List[PluginRef]:
         # this will add the currently installed common_image schema as supported
         return [schema_ref("common_image")]
 
+    @overrides
     def setup(self):
         # If multiple supported schemas are listed,
         # case splitting based on the schema type must be done here.
@@ -25,6 +31,7 @@ class ImageWidget(Widget):
         self._aspect_ratio = self._meta.width / self._meta.height
         self._image_url = self.file_url_for(self._node)
 
+    @overrides
     def show(self) -> Viewable:
         # Construct the actual widget instance. Every call returns a fresh one.
         self.plot = figure(

@@ -7,7 +7,7 @@ from importlib_metadata import entry_points
 from typing_extensions import Final
 
 from . import InstalledPlugins
-from .interface import PGB_GROUP_PREFIX, PluginGroup
+from . import interface as pg
 from .utils import pkgmeta_from_dist
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class LoadedPlugin:
     @classmethod
     def get_plugins(cls, pgb_name: str) -> Dict[str, LoadedPlugin]:
         """Get dict of all entrypoints of the subgroup metador_ARG."""
-        grp = f"{PGB_GROUP_PREFIX}{pgb_name}"
+        grp = f"{pg.PGB_GROUP_PREFIX}{pgb_name}"
         return {ep.name: LoadedPlugin(pgb_name, ep) for ep in _eps.select(group=grp)}
 
 
@@ -82,7 +82,7 @@ def load_plugins():
     # load actual registered pluggables
     for pgb_name, pgb in _loaded_pluggables[PGB_PLUGGABLE].items():
         # check the pluggable itself
-        PluginGroup._check_plugin_common(pgb_name, pgb.ep)
+        pg.check_plugin_name(pgb_name)
         if pgb_name in _loaded_pluggables:
             msg = f"{pgb_name}: PluginGroup name already registered"
             raise TypeError(msg)
@@ -94,7 +94,7 @@ def load_plugins():
         _create_pgb_group(pgb_name, pgb.ep)
 
     # set up shared lookup for package metadata, shared by all plugin groups
-    PluginGroup._PKG_META = _pgb_package_meta
+    pg.PluginGroup._PKG_META = _pgb_package_meta
 
     # the core package is the one registering the "schema" plugin group.
     # Use that knowledge to hack in that this package also provides "pluggable":
@@ -102,9 +102,9 @@ def load_plugins():
     _pgb_package_meta[_this_pkg_name].plugins[PGB_PLUGGABLE].append(PGB_PLUGGABLE)
 
     # set up the PluginGroup group object, as its not fully initialized yet:
-    _create_pgb_group(PGB_PLUGGABLE, PluginGroup)
+    _create_pgb_group(PGB_PLUGGABLE, pg.PluginGroup)
     # Manually append the pluggable meta-interface as a proper pluggable itself
-    installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = PluginGroup
+    installed[PGB_PLUGGABLE]._LOADED_PLUGINS[PGB_PLUGGABLE] = pg.PluginGroup
     # register this pkg as provider of pluggables (this package actually registers schema)
     installed[PGB_PLUGGABLE]._PLUGIN_PKG[PGB_PLUGGABLE] = _this_pkg_name
 
@@ -113,6 +113,6 @@ def load_plugins():
     # check the plugins according to pluggable rules
     # (at this point all installed plugins of same kind can be cross-referenced)
     for pgb_name in _loaded_pluggables.keys():
-        pgroup: PluginGroup = installed[pgb_name]
+        pgroup = installed[pgb_name]
         for ep_name, ep in pgroup.items():
             pgroup._check(ep_name, ep)

@@ -15,16 +15,53 @@ from typing import (
     overload,
 )
 
+from overrides import EnforceOverrides, final
+
 from ..schema.core import PluginPkgMeta, PluginRef
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
 
+# helpers for checking plugins (also to be used in PluginGroup subclasses):
+
+
+def check_plugin_name(name: str):
+    """Perform common checks on a registered plugin (applies to any plugin group).
+
+    Raises a TypeError with message in case of failure.
+    """
+    if not re.fullmatch("[A-Za-z0-9_-]+", name):
+        msg = f"{name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
+        raise TypeError(msg)
+
+
+def check_is_subclass(name: str, plugin, base):
+    """Check whether plugin has expected parent class (helper method)."""
+    if not issubclass(plugin, base):
+        msg = f"{name}: {plugin} is not subclass of {base}!"
+        raise TypeError(msg)
+
+
+def test_implements_method(plugin, base_method):
+    ep_method = plugin.__dict__.get(base_method.__name__)
+    return ep_method is not None and base_method != ep_method
+
+
+def check_implements_method(name: str, plugin, base_method):
+    """Check whether plugin overrides a method of its superclass."""
+    if not test_implements_method(plugin, base_method):
+        msg = f"{name}: {plugin} does not implement {base_method.__name__}!"
+        raise TypeError(msg)
+
+
+# ----
+
+
 T = TypeVar("T")
 DEF = TypeVar("DEF")
 
 
-class PluginGroup(Generic[T]):
+class PluginGroup(EnforceOverrides, Generic[T]):
     """All pluggable entities in metador are subclasses of this class.
 
     The type parameter is the (parent) class of all loaded plugins.
@@ -48,6 +85,7 @@ class PluginGroup(Generic[T]):
     _PLUGIN_PKG: Dict[str, str]
     """Dict from entry points to package name in environment providing them."""
 
+    # @final # <- not working
     def __init__(
         self, name: str, plugin_pkg: Dict[str, str], loaded_plugins: Dict[str, Type[T]]
     ):
@@ -56,23 +94,29 @@ class PluginGroup(Generic[T]):
         self._LOADED_PLUGINS = loaded_plugins
 
     @property
+    # @final # <- not working
     def name(self) -> str:
         return self._NAME
 
     @property
+    # @final # <- not working
     def packages(self) -> Dict[str, PluginPkgMeta]:
         """Return metadata of all packages providing metador plugins."""
         return dict(self._PKG_META)
 
+    @final
     def keys(self) -> KeysView[str]:
         return self._LOADED_PLUGINS.keys()
 
+    @final
     def values(self) -> ValuesView[Type[T]]:
         return self._LOADED_PLUGINS.values()
 
+    @final
     def items(self) -> ItemsView[str, Type[T]]:
         return self._LOADED_PLUGINS.items()
 
+    @final
     def __getitem__(self, key: str) -> Type[T]:
         return self._LOADED_PLUGINS[key]
 
@@ -84,12 +128,14 @@ class PluginGroup(Generic[T]):
     def get(self, key: str, default: DEF) -> Union[Type[T], DEF]:
         ...
 
+    @final
     def get(self, key, default: Union[None, DEF] = None) -> Union[Type[T], DEF, None]:
         ret = self._LOADED_PLUGINS.get(key)
         if ret is None:
             return default
         return ret
 
+    @final
     def provider(self, ep_name: str) -> PluginPkgMeta:
         """Return package metadata of Python package providing this plugin."""
         pkg = self._PLUGIN_PKG.get(ep_name)
@@ -98,6 +144,7 @@ class PluginGroup(Generic[T]):
             raise KeyError(msg)
         return self._PKG_META[pkg]
 
+    @final
     def fullname(self, ep_name: str) -> PluginRef:
         pkginfo = self.provider(ep_name)
         return PluginRef(
@@ -109,37 +156,29 @@ class PluginGroup(Generic[T]):
 
     # ----
 
-    @classmethod
-    def _check_plugin_common(cls, ep_name: str, ep: Type[T]):
-        """Perform common checks on a registered plugin.
-
-        Raises a TypeError with message in case of failure.
-        """
-        if not re.fullmatch("[A-Za-z0-9_-]+", ep_name):
-            msg = f"{ep_name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
-            raise TypeError(msg)
-
-    def check_is_subclass(self, ep_name: str, ep: Type[T], pg_base: Type):
-        """Check whether plugin has expected parent class (helper method)."""
-        if not issubclass(ep, pg_base):
-            msg = f"{ep_name}: {self.name} plugin not subclass of {pg_base}!"
-            raise TypeError(msg)
-
-    def _check(self, ep_name: str, ep: Type[T]):
+    @final
+    def _check(self, name: str, plugin: Type[T]):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
         """
-        self._check_plugin_common(ep_name, ep)
-        self.check_plugin(ep_name, ep)
+        check_plugin_name(name)
+        self.check_plugin(name, plugin)
 
-    def check_plugin(self, ep_name: str, ep: Type[T]):
-        """Perform pluggable-specific checks on a registered plugin.
+    def check_plugin(self, name: str, plugin: Type[T]):
+        """Perform plugin group specific checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
 
         To be overridden in subclasses for plugin group specific checks.
+
+        Args:
+            name: Declared entrypoint name.
+            plugin: Object the entrypoint is pointing to.
         """
-        if type(self) != PluginGroup:
-            raise NotImplementedError
-        self.check_is_subclass(ep_name, ep, PluginGroup)
+        # the default implementation is the one for the plugin group plugin group
+        # and must make sure that all child plugin groups override it
+        if id(type(self)) == id(PluginGroup):
+            check_is_subclass(name, plugin, PluginGroup)
+            if plugin != PluginGroup:
+                check_implements_method(name, plugin, PluginGroup.check_plugin)
