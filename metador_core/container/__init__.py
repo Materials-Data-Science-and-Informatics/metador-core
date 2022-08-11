@@ -1320,9 +1320,17 @@ class MetadorContainerTOC:
         pkginfo = self.provider(schema_name)
         return pkginfo.plugins[_SCHEMAS.Plugin.name][schema_name]
 
+    @overload
+    def query(self, schema: str) -> Dict[MetadorNode, MetadataSchema]:
+        ...
+
+    @overload
+    def query(self, schema: Type[S]) -> Dict[MetadorNode, S]:
+        ...
+
     def query(
-        self, schema: Union[str, Type[MetadataSchema]]
-    ) -> Dict[MetadorNode, MetadataSchema]:
+        self, schema: Union[str, Type[S]]
+    ) -> Dict[MetadorNode, Union[MetadataSchema, S]]:
         """Return nodes that contain a metadata object valid for the given schema."""
         schema_name = schema if isinstance(schema, str) else schema.Plugin.name
         ret = {}

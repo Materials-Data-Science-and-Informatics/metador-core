@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, Type, cast
+from typing import Dict, Optional, Tuple, Type
 
 import panel as pn
 from panel.viewable import Viewable
@@ -51,14 +51,13 @@ class Dashboard:
 
         # get nodes that are marked to be shown in dashboard
         self._to_show: Dict[MetadorNode, DashboardMeta] = {
-            k: cast(DashboardMeta, v)
-            for k, v in self._container.toc.query(DashboardMeta).items()
-            if cast(DashboardMeta, v).show
+            k: v for k, v in self._container.toc.query(DashboardMeta).items() if v.show
         }
         # figure out what schemas to show and what widgets to use
         self._resolved: Dict[MetadorNode, Tuple[str, Type[Widget]]] = {}
         for node, dbmeta in self._to_show.items():
-            self._resolved[node] = self._resolve_node(node, dbmeta)
+            localized_node = node.restrict(local_only=True)
+            self._resolved[localized_node] = self._resolve_node(node, dbmeta)
 
     def _resolve_node(
         self, node: MetadorNode, dbmeta: DashboardMeta
