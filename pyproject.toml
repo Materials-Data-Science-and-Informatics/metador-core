@@ -17,6 +17,7 @@ pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
 importlib-metadata = "^4.11.4"
 wrapt = "^1.14.1"
 # for common schemas/types:
+isodate = "^0.6.1"
 Pint = "^0.18"
 # for example packer:
 Pillow = "^9.1.1"
@@ -34,7 +35,7 @@ pytest = "^7.0.1"
 pytest-cov = "^3.0.0"
 pdoc = "^10.0.3"
 
-[tool.poetry.plugins.metador_plugin_group]
+[tool.poetry.plugins.metador_plugingroup]
 # Metador supports defining custom validated plugin groups.
 # Here we define the default entities used in Metador.
 # For each declared group, plugins can be defined via entrypoints.
@@ -45,20 +46,21 @@ widget = "metador_core.widget:PGWidget"
 [tool.poetry.plugins.metador_schema]
 # Metador is build around pluggable metadata schemas.
 # This one is mandatory for containers packed by a packer plugin:
-packer_info = "metador_core.packer:PackerInfo"
+'core.packerinfo' = "metador_core.packer:PackerInfo"
 # These are optional and can be used freely, e.g. by some packer:
-common_biblio = "metador_core.schema.common.biblio:BibDummyMeta"
-common_file  = "metador_core.schema.common:FileMeta"
-common_image = "metador_core.schema.common:ImageMeta"
-common_table = "metador_core.schema.common:TableMeta"
+'core.file' = "metador_core.schema.common.rocrate:FileMeta"
+'core.dir' = "metador_core.schema.common.rocrate:DirMeta"
+'core.bib' = "metador_core.schema.common:BibMeta"
+'core.imagefile' = "metador_core.schema.common:ImageFileMeta"
+'core.table' = "metador_core.schema.common:TableMeta"
 # This one needed for configuring the dashboard for a container:
-dashboard_meta = "metador_core.widget.dashboard:DashboardMeta"
+'core.dashboard' = "metador_core.widget.dashboard:DashboardMeta"
 
 [tool.poetry.plugins.metador_widget]
-common_image = "metador_core.widget.common:ImageWidget"
+'core.imagefile' = "metador_core.widget.common:ImageWidget"
 
 [tool.poetry.plugins.metador_packer]
-generic = "metador_core.packer.example:GenericPacker"
+'core.generic' = "metador_core.packer.example:GenericPacker"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

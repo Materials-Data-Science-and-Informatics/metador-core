@@ -1,14 +1,18 @@
 """Pluggable widgets for Metador."""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Set, Type
 
 from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
+from pydantic import Field
+from typing_extensions import Annotated
 
 from ..container import MetadorNode
 from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginRef
+from ..schema.plugingroup import SCHEMA_GROUP_NAME
 from .server import WidgetServer
 from .server.standalone import widget_server
 
@@ -19,6 +23,8 @@ class Widget(ABC, EnforceOverrides):
     _node: MetadorNode
     _meta: MetadataSchema
     _server: WidgetServer
+
+    Plugin: WidgetPlugin
 
     def __init__(
         self, node: MetadorNode, schema_name: str = "", server: WidgetServer = None
@@ -31,7 +37,7 @@ class Widget(ABC, EnforceOverrides):
         self._server = srv
 
         if not schema_name:
-            for schemaref in self.supported():
+            for schemaref in self.Plugin.supports:
                 if node.meta.get(schemaref.name):
                     schema_name = schemaref.name
                     break
@@ -49,15 +55,9 @@ class Widget(ABC, EnforceOverrides):
         return self._server.file_url_for(node)
 
     @classmethod
-    def supports(cls, schema_ref: PluginRef) -> bool:
+    def supports(cls, schema: PluginRef) -> bool:
         """Return whether a certain schema is supported by the widget."""
-        return any(map(lambda sref: sref.supports(schema_ref), cls.supported()))
-
-    @classmethod
-    @abstractmethod
-    def supported(cls) -> List[PluginRef]:
-        """Return list of schemas supported by this widget."""
-        raise NotImplementedError
+        return any(map(lambda sref: sref.supports(schema), cls.Plugin.supports))
 
     def setup(self):
         """Check that passed node and parsed metadata is valid and do preparations.
@@ -77,21 +77,37 @@ class Widget(ABC, EnforceOverrides):
         raise NotImplementedError
 
 
+WIDGET_GROUP_NAME = "widget"
+
+
+class WidgetPlugin(pg.PluginBase):
+    group: str = WIDGET_GROUP_NAME
+
+    supports: List[pg.PluginRef]
+
+    class Fields(pg.PluginBase.Fields):
+        supports: Annotated[List[pg.PluginRef], Field(min_items=1)]
+        """Return list of schemas supported by this widget."""
+
+
 class PGWidget(pg.PluginGroup[Widget]):
     """Widget plugin group interface."""
+
+    class Plugin(pg.PGPlugin):
+        name = WIDGET_GROUP_NAME
+        version = (0, 1, 0)
+        required_plugin_groups = [SCHEMA_GROUP_NAME]
+        plugin_subclass = WidgetPlugin
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Widget]):
         pg.check_is_subclass(name, plugin, Widget)
-        pg.check_implements_method(name, plugin, Widget.supported)
         pg.check_implements_method(name, plugin, Widget.show)
-        if not plugin.supported():
-            raise TypeError("Widget must support at least one schema!")
 
     def supported_schemas(self) -> Set[PluginRef]:
         """Return union of all schemas supported by all installed widgets."""
-        return set.union(*(set(w.supported()) for w in self.values()))
+        return set.union(*(set(w.Plugin.supports) for w in self.values()))
 
-    def widgets_for(self, schema_ref: PluginRef) -> List[Type[Widget]]:
+    def widgets_for(self, schema: PluginRef) -> List[Type[Widget]]:
         """Return widgets that support the given schema."""
-        return [wclass for wclass in self.values() if wclass.supports(schema_ref)]
+        return [wclass for wclass in self.values() if wclass.supports(schema)]

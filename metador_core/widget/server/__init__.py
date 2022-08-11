@@ -190,10 +190,10 @@ class WidgetServer:
 
             dl = bool(request.args.get("download", False))  # as explicit file download?
             # if object has attached file metadata, use it to serve:
-            filemeta = container[record_path].meta.get("common_file", FileMeta)
+            filemeta = container[record_path].meta.get(FileMeta)
             def_name = f"{record_uuid}_{record_path.replace('/', '__')}"
-            name = filemeta.filename if filemeta else def_name
-            mime = filemeta.mimetype if filemeta else None
+            name = filemeta.id_ if filemeta else def_name
+            mime = filemeta.encodingFormat[0] if filemeta else None
             return send_file(
                 io.BytesIO(bs), download_name=name, mimetype=mime, as_attachment=dl
             )

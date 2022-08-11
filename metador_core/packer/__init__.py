@@ -1,4 +1,4 @@
-"""Definition of IH5 packer plugin interface."""
+"""Definition of HDF5 packer plugin interface."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -16,12 +16,13 @@ from ..hashutils import DirHashsums, dir_hashsums
 from ..plugins import installed
 from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
+from ..schema.plugingroup import SCHEMA_GROUP_NAME, SchemaPlugin
 from .diff import DirDiff
 from .util import DirValidationErrors
 
 
 class Packer(ABC, EnforceOverrides):
-    """Interface to be implemented by Metador IH5 packer plugins.
+    """Interface to be implemented by Metador HDF5 packer plugins.
 
     These plugins is how support for wildly different domain-specific
     use-cases can be added to Metador in a opt-in and loosely-coupled way.
@@ -97,6 +98,8 @@ class Packer(ABC, EnforceOverrides):
     You SHOULD provide tooling to migrate datasets between major versions.
     """
 
+    Plugin: PackerPlugin
+
     @classmethod
     @abstractmethod
     def check_dir(cls, data_dir: Path) -> DirValidationErrors:
@@ -148,7 +151,11 @@ class Packer(ABC, EnforceOverrides):
             data_dir: Directory containing all the data to be packed
             diff: Diff tree of dirs and files in data_dir compared to a previous state
         """
-        raise NotImplementedError
+        # default fallback implementation using pack
+        for obj in [mc, mc.attrs, mc.meta]:
+            for key in obj.keys():
+                del obj[key]
+        return cls.pack(mc, data_dir)
 
     @classmethod
     @abstractmethod
@@ -166,11 +173,16 @@ class Packer(ABC, EnforceOverrides):
             container: Metador IH5 record to pack the data into or update
             data_dir: Directory containing all the data to be packed
         """
-        raise NotImplementedError
+        # default fallback implementation using update
+        return cls.update(mc, data_dir, DirDiff.compare({}, dir_hashsums(data_dir)))
 
 
 class PackerInfo(MetadataSchema):
     """Schema for info about the packer that was used to create a container."""
+
+    class Plugin(SchemaPlugin):
+        name = "core.packerinfo"
+        version = (0, 1, 0)
 
     packer: PluginRef
     """Packer plugin used to pack the container."""
@@ -207,44 +219,27 @@ class Unclosable(wrapt.ObjectProxy):
         raise UnsupportedOperation(self._self_MSG)
 
 
-def _pack(
-    packer: Type[Packer],
-    container: MetadorContainer,
-    data_dir: Path,
-    hsums: DirHashsums,  # hashsums from data_dir, to compute a diff if needed
-):
-    """Call `pack` of packer or if it is missing, use its `update`."""
-    try:
-        packer.pack(container, data_dir)
-    except NotImplementedError:
-        # pack using update that adds everything
-        diff = DirDiff.compare({}, hsums)
-        packer.update(container, data_dir, diff)
+PACKER_GROUP_NAME = "packer"
 
 
-def _update(
-    packer: Type[Packer], container: MetadorContainer, data_dir: Path, diff: DirDiff
-):
-    """Call `update` of packer or if it is missing, use its `pack`."""
-    try:
-        packer.update(container, data_dir, diff)
-    except NotImplementedError:
-        # update by packing from scratch
-        for obj in [container, container.attrs, container.meta]:
-            for key in obj.keys():
-                del obj[key]
-        packer.pack(container, data_dir)
+class PackerPlugin(pg.PluginBase):
+    group: str = PACKER_GROUP_NAME
 
 
 class PGPacker(pg.PluginGroup[Packer]):
     """Packer plugin group interface."""
 
-    _PACKER_INFO_NAME = "packer_info"  # = entry point name of PackerInfo class
+    class Plugin(pg.PGPlugin):
+        name = PACKER_GROUP_NAME
+        version = (0, 1, 0)
+        required_plugin_groups = [SCHEMA_GROUP_NAME]
+        plugin_subclass = PackerPlugin
+
+    _PACKER_INFO_NAME = True  # PackerInfo.__metador_plugin__.name
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Packer]):
         pg.check_is_subclass(name, plugin, Packer)
-
         pg.check_implements_method(name, plugin, Packer.check_dir)
 
         missing_pack = pg.test_implements_method(plugin, Packer.pack)
@@ -288,7 +283,7 @@ class PGPacker(pg.PluginGroup[Packer]):
         packer, hashsums = self._prepare(packer_name, data_dir)
         # use skel_only to enforce stub-compatibility of packer
         container = MetadorContainer(h5like_cls(target, "x"), skel_only=True)
-        _pack(packer, Unclosable(container), data_dir, hashsums)
+        packer.pack(Unclosable(container), data_dir)
         self._finalize(packer_name, hashsums, container)
 
     def update(self, packer_name: str, data_dir: Path, target: Path, h5like_cls):
@@ -317,7 +312,7 @@ class PGPacker(pg.PluginGroup[Packer]):
             raise ValueError(msg)
 
         diff = DirDiff.compare(pinfo.source_dir, hashsums)
-        _update(packer, Unclosable(container), data_dir, diff)
+        packer.update(Unclosable(container), data_dir, diff)
         self._finalize(packer_name, hashsums, container)
 
     def _finalize(self, pname: str, hsums: DirHashsums, cont: MetadorContainer):

@@ -95,6 +95,7 @@ from typing import (
     Union,
     ValuesView,
     cast,
+    overload,
 )
 from uuid import UUID, uuid1
 
@@ -930,13 +931,15 @@ class MetadorMeta:
         self._guard_skel_only()
         return {name: self.get[name] for name in self.find()}  # type: ignore
 
-    def __delitem__(self, schema_name: str):
+    def __delitem__(self, schema: Union[str, MetadataSchema]):
+        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         return self._delitem(schema_name, unlink_in_toc=True)
 
     # all following only work with known (i.e. registered/correct) schema:
 
-    def __setitem__(self, schema_name: str, value: MetadataSchema):
+    def __setitem__(self, schema: Union[str, Type[S]], value: MetadataSchema):
         self._guard_read_only()
+        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_unknown_schema(schema_name)
         if self._get_raw(schema_name):
             raise ValueError(f"Metadata object for schema {schema_name} exists!")
@@ -956,14 +959,13 @@ class MetadorMeta:
 
     # following have transitive semantics (i.e. logic also works with parent schemas)
 
-    def get(
-        self, schema_name: str, schema_class: Type[S] = MetadataSchema
-    ) -> Optional[S]:
+    def get(self, schema: Union[str, Type[S]]) -> Optional[S]:
         """Get a parsed metadata object (if it exists) matching the given known schema.
 
         Will also accept a child schema object and parse it as the parent schema.
         If multiple suitable objects are found, picks the alphabetically first to parse it.
         """
+        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_skel_only()
         self._guard_unknown_schema(schema_name)
         # don't include parents, because we need to parse some physical instance
@@ -977,11 +979,19 @@ class MetadorMeta:
         # parse with the correct schema and return the instance object
         return cast(S, _SCHEMAS[schema_name].parse_raw(dat))
 
-    def __getitem__(self, schema_name: str) -> MetadataSchema:
+    @overload
+    def __getitem__(self, schema: str) -> MetadataSchema:
+        ...
+
+    @overload
+    def __getitem__(self, schema: Type[S]) -> S:
+        ...
+
+    def __getitem__(self, schema: Union[str, Type[S]]) -> Union[S, MetadataSchema]:
         """Like get, but will raise KeyError on failure."""
-        ret = self.get(schema_name)
+        ret = self.get(schema)
         if ret is None:
-            raise KeyError(schema_name)
+            raise KeyError(schema)
         return ret
 
     def __contains__(self, schema_name: str) -> bool:
@@ -1308,15 +1318,13 @@ class MetadorContainerTOC:
     def fullname(self, schema_name: str) -> PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
         pkginfo = self.provider(schema_name)
-        return PluginRef(
-            pkg=pkginfo.name,
-            pkg_version=pkginfo.version,
-            group=_SCHEMAS.name,
-            name=schema_name,
-        )
+        return pkginfo.plugins[_SCHEMAS.Plugin.name][schema_name]
 
-    def query(self, schema_name: str) -> Dict[MetadorNode, MetadataSchema]:
+    def query(
+        self, schema: Union[str, Type[MetadataSchema]]
+    ) -> Dict[MetadorNode, MetadataSchema]:
         """Return nodes that contain a metadata object valid for the given schema."""
+        schema_name = schema if isinstance(schema, str) else schema.Plugin.name
         ret = {}
 
         def collect_nodes(_, node):

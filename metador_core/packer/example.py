@@ -11,17 +11,37 @@ is registered as a packer plugin called `example`.)
 """
 
 from pathlib import Path
+from typing import Union
 
-import h5py
-import numpy as np
+import magic
 import pandas
 from overrides import overrides
+from PIL import Image
 
-from ..schema.common import FileMeta, ImageMeta, TableMeta
-from ..schema.common.biblio import BibDummyMeta
-from . import MetadorContainer, Packer
+from metador_core.schema.common import BibMeta, FileMeta, ImageFileMeta, TableMeta
+
+from ..hashutils import hashsum
+from . import MetadorContainer, Packer, PackerPlugin
 from .diff import DiffNode, DirDiff
-from .util import DirValidationErrors
+from .util import DirValidationErrors, check_file, wrap_bytes_h5
+
+# TODO: should we define "harvester" plugins for helpers like that? what should the interface be like?
+
+
+def file_meta_for(path: Path):
+    """Return FileMeta object for a file using magic and computing a hashsum."""
+    sz = path.stat().st_size
+    hs = hashsum(open(path, "rb"), "sha256")
+    mt = magic.from_file(path, mime=True)
+    return FileMeta(id_=path.name, contentSize=sz, sha256=hs, encodingFormat=[mt])
+
+
+def image_meta_for(path: Path):
+    ret = ImageFileMeta.partial_from(file_meta_for(path))
+    with Image.open(path) as img:
+        width, height = img.size
+    ret.update({"width": width, "height": height})
+    return ret
 
 
 class GenericPacker(Packer):
@@ -41,13 +61,26 @@ class GenericPacker(Packer):
     Other packers may log their actions as they deem appropriate.
     """
 
+    class Plugin(PackerPlugin):
+        name = "core.generic"
+        version = (0, 1, 0)
+
+    META_SUFFIX: str = "_meta.yaml"
+
+    @classmethod
+    def sidecar_for(cls, path: Union[Path, str]) -> str:
+        """Sidecar file name for given path."""
+        return f"{path}{cls.META_SUFFIX}"
+
     @classmethod
     @overrides
     def check_dir(cls, data_dir: Path) -> DirValidationErrors:
         print("--------")
-        print("called check_directory")
+        print("called check_dir")
         errs = DirValidationErrors()
-        errs.append(BibDummyMeta.check_path(data_dir / "biblio.yaml"))
+        errs.update(
+            check_file(data_dir / cls.META_SUFFIX, required=True, schema=BibMeta)
+        )
         return errs
 
     @classmethod
@@ -74,15 +107,8 @@ class GenericPacker(Packer):
                 print("IGNORE:", path, "(sidecar file)")
                 continue
 
-            # for this packer, each file maps 1-to-1 to a container path
-            key = f"/body/{dnode.path}"  # the path inside the container
-
-            if path.name.lower().endswith(".csv"):  # for CSV files:
-                key = key[:-4]  # drop file extension for array inside container
-
-            # special case - some custom metadata with nontrivial mapping
-            if path.relative_to(data_dir) == Path("example_meta.yaml"):
-                key = "/body/custom"
+            # for this simple packer, each file maps 1-to-1 to a container path
+            key = f"{dnode.path}"  # path inside the container
 
             if status == DiffNode.Status.removed:  # entity was removed ->
                 # also remove in container, if it was not a symlink (which we ignored)
@@ -93,8 +119,9 @@ class GenericPacker(Packer):
 
             if status == DiffNode.Status.modified:  # changed
                 if dnode.prev_type == dnode.curr_type and path.is_dir():
-                    continue  # a changed dir should already exist + remain in mc
+                    continue  # a changed dir should already exist + remain in container
 
+                # otherwise it was replaced either file -> dir or dir -> file, so
                 # remove entity, proceeding with loop body to add new entity version
                 print("DELETE:", key)
                 del mc[key]
@@ -106,36 +133,31 @@ class GenericPacker(Packer):
                 mc.create_group(key)
 
             elif path.is_file():
-                if key == "/body/custom":
-                    # update custom ExampleMeta stuff
-                    print("CREATE:", path, "->", key, "(custom ExampleMeta)")
-                    mc[key] = BibDummyMeta.from_path(path).json()
-
-                elif path.name.lower().endswith(".csv"):
-                    # embed CSV as numpy array with table metadata
-                    print("CREATE:", path, "->", key, "(table)")
-
-                    mc[key] = pandas.read_csv(path).to_numpy()  # type: ignore
-                    metafile = Path(f"{path}_meta.yaml")
-                    metadata = TableMeta.parse_file(metafile).json()
-                    mc[key].attrs["node_meta"] = metadata
-
-                elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
-                    # embed image file with image-specific metadata
-                    print("CREATE:", path, "->", key, "(image)")
-
-                    data = path.read_bytes()
-                    val = np.void(data) if len(data) else h5py.Empty("b")
-                    meta = ImageMeta.for_file(path).json()
-                    mc[key] = val
-                    mc[key].attrs["node_meta"] = meta
-
+                if path.name.endswith(cls.META_SUFFIX):
+                    if key == cls.META_SUFFIX:
+                        # update root meta
+                        print("CREATE:", path, "->", key, "(biblio metadata)")
+                        mc.meta["common_biblio"] = BibMeta.parse_file(path)
                 else:
-                    # treat as opaque blob and add file metadata
-                    print("CREATE:", path, "->", key, "(file)")
 
-                    data = path.read_bytes()
-                    val = np.void(data) if len(data) else h5py.Empty("b")
-                    meta = FileMeta.for_file(path).json()
-                    mc[key] = val
-                    mc[key].attrs["node_meta"] = meta
+                    if path.name.lower().endswith(".csv"):
+                        # embed CSV as numpy array with table metadata
+                        print("CREATE:", path, "->", key, "(table)")
+
+                        mc[key] = pandas.read_csv(path).to_numpy()  # type: ignore
+                        mc[key].meta["common_table"] = TableMeta.for_file(
+                            cls.sidecar_for(path)
+                        )
+
+                    elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
+                        # embed image file with image-specific metadata
+                        print("CREATE:", path, "->", key, "(image)")
+                        mc[key] = wrap_bytes_h5(path.read_bytes())
+                        mc[key].meta["common_image"] = image_meta_for(path)
+
+                    else:
+                        # treat as opaque blob and add file metadata
+                        print("CREATE:", path, "->", key, "(file)")
+                        mc[key] = wrap_bytes_h5(path.read_bytes())
+
+                    mc[key].meta["common_file"] = file_meta_for(path)

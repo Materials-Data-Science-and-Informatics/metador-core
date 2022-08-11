@@ -1,34 +1,32 @@
 """Common widgets."""
 
-from typing import List
 
 import panel as pn
 from bokeh.plotting import figure
 from overrides import overrides
 from panel.viewable import Viewable
 
-from ..schema import schema_ref
-from ..schema.common import ImageMeta
-from ..schema.core import PluginRef
-from . import Widget
+from ..schema.common import ImageFileMeta
+from . import Widget, WidgetPlugin
 
 
 class ImageWidget(Widget):
-    # Declared type should be Union of schema classes that are listed as `supported`
-    _meta: ImageMeta
+    class Plugin(WidgetPlugin):
+        name = "core.imagefile"
+        version = (0, 1, 0)
+        supports = [ImageFileMeta.Plugin.ref(version=(0, 1, 0))]
 
-    @classmethod
-    @overrides
-    def supported(cls) -> List[PluginRef]:
-        # this will add the currently installed common_image schema as supported
-        return [schema_ref("common_image")]
+    # Declared type should be Union of schema classes that are listed as `supports`
+    _meta: ImageFileMeta
 
     @overrides
     def setup(self):
         # If multiple supported schemas are listed,
         # case splitting based on the schema type must be done here.
         # Everything that instances can reuse should also be done here.
-        self._aspect_ratio = self._meta.width / self._meta.height
+        self._w = self._meta.width.value  # type: ignore
+        self._h = self._meta.height.value  # type: ignore
+        self._aspect_ratio = self._w / self._h
         self._image_url = self.file_url_for(self._node)
 
     @overrides
@@ -44,8 +42,8 @@ class ImageWidget(Widget):
             url=[self._image_url],
             x=0,
             y=0,
-            w=self._meta.width,
-            h=self._meta.height,
+            w=self._w,
+            h=self._h,
             anchor="top_left",
         )
         self.plot.grid.grid_line_color = None

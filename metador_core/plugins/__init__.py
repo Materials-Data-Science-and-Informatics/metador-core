@@ -21,16 +21,26 @@ class InstalledPlugins:
     _installed: Dict[str, _PluginGroup] = {}
     # will be filled by plugins.bootstrap module
 
+    def keys(self):
+        return self._installed.keys()
+
     def __getitem__(self, key: str) -> _PluginGroup:
         return self.group(key)
 
     # the get method takes the type of the returned PluginGroup as opt. second argument
     # see this nice trick: https://stackoverflow.com/a/60362860
 
+    # get by plugin class
+    @overload
+    def group(self, key: Type[S]) -> S:
+        ...
+
+    # get by plugin name (with pg_class indicating type)
     @overload
     def group(self, key: str, pg_class: Type[S]) -> S:
         ...
 
+    # get by plugin name (without pg_class -> more general type)
     @overload
     def group(
         self, key: str, pg_class: Type[_PluginGroup] = _PluginGroup
@@ -38,7 +48,9 @@ class InstalledPlugins:
         ...
 
     def group(
-        self, key: str, pg_class: Union[Type[S], Type[_PluginGroup]] = _PluginGroup
+        self,
+        key: Union[str, Type[S]],
+        pg_class: Union[Type[S], Type[_PluginGroup]] = _PluginGroup,
     ) -> Union[S, _PluginGroup]:
         """Get plugin group interface of a registered plugin group by name.
 
@@ -47,6 +59,7 @@ class InstalledPlugins:
         then the object can be properly type checked by static analyzers.
         """
         # wrap in lazy_object_proxy because at initialization time might not exist yet
+        key = key if isinstance(key, str) else key.Plugin.name
         return cast(S, lazy_object_proxy.Proxy(lambda: self._installed[key]))
 
 

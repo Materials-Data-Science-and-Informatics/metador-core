@@ -1,7 +1,8 @@
 import re
-from typing import Optional
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
-from ..schema.core import AnyHttpUrl, PluginPkgMeta, SemVerTuple
+from ..schema.core import SemVerTuple
 from .interface import PGB_GROUP_PREFIX
 
 # from importlib_metadata import distribution
@@ -14,7 +15,15 @@ from .interface import PGB_GROUP_PREFIX
 #     return get_package_name
 
 
-def pkgmeta_from_dist(dist) -> PluginPkgMeta:
+@dataclass
+class DistMeta:
+    name: str
+    version: Tuple[int, int, int]
+    plugins: Dict[str, List[str]]
+    repository_url: Optional[str]
+
+
+def distmeta_for(dist) -> DistMeta:
     """Extract required metadata from importlib_metadata distribution object."""
     ver = dist.version
     if not re.fullmatch("[0-9]+\\.[0-9]+\\.[0-9]+", ver):
@@ -37,13 +46,13 @@ def pkgmeta_from_dist(dist) -> PluginPkgMeta:
     def is_repo_url(kv):
         return kv[0] == "Project-URL" and kv[1].startswith("Repository,")
 
-    repo_url: Optional[AnyHttpUrl] = None
+    repo_url: Optional[str] = None
     try:
         url = next(filter(is_repo_url, dist.metadata.items()))
         url = url[1].split()[1]  # from "Repository, http://..."
-        repo_url = url  # type: ignore
+        repo_url = url
     except StopIteration:
         pass
-    return PluginPkgMeta(
+    return DistMeta(
         name=dist.name, version=parsed_ver, plugins=eps, repository_url=repo_url
     )

@@ -7,7 +7,8 @@ from panel.viewable import Viewable
 
 from ..container import MetadorContainer, MetadorNode
 from ..plugins import installed
-from ..schema import MetadataSchema, PGSchema
+from ..schema import MetadataSchema
+from ..schema.plugingroup import PGSchema, SchemaPlugin
 from . import PGWidget, Widget
 
 _SCHEMAS = installed.group("schema", PGSchema)
@@ -17,16 +18,20 @@ _WIDGETS = installed.group("widget", PGWidget)
 class DashboardMeta(MetadataSchema):
     """Schema describing dashboard configuration for a node in a container."""
 
+    class Plugin(SchemaPlugin):
+        name = "core.dashboard"
+        version = (0, 1, 0)
+
     show: bool
     """If true, the dashboard will try to instantiate a widget for this node."""
 
-    metador_schema: Optional[str]
+    metador_schema: Optional[str] = None
     """Name of schema of an metadata object at the current node to be visualized.
 
     If not given, any suitable presentable object will be used.
     """
 
-    metador_widget: Optional[str]
+    metador_widget: Optional[str] = None
     """Name of widget to be used to present the (meta)data.
 
     If not given, any suitable will be used.
@@ -47,7 +52,7 @@ class Dashboard:
         # get nodes that are marked to be shown in dashboard
         self._to_show: Dict[MetadorNode, DashboardMeta] = {
             k: cast(DashboardMeta, v)
-            for k, v in self._container.toc.query("dashboard_meta").items()
+            for k, v in self._container.toc.query(DashboardMeta).items()
             if cast(DashboardMeta, v).show
         }
         # figure out what schemas to show and what widgets to use

@@ -3,13 +3,16 @@
 
 # import h5py
 # from overrides import overrides
-# import pytest
+import pytest
 
 # from metador_core.container import MetadorContainer
 # from metador_core.hashutils import DEF_HASH_ALG, dir_hashsums
 # from metador_core.ih5.container import IH5Record
 # from metador_core.packer import DirDiff, Packer
-from metador_core.packer.util import DirValidationErrors
+from metador_core.packer.util import DirValidationErrors, check_file
+from metador_core.schema.common import FileMeta
+
+pytest.skip(allow_module_level=True)  # TODO
 
 
 def test_errors_add_append():
@@ -31,9 +34,36 @@ def test_errors_add_append():
     errs3 = DirValidationErrors()
     errs3.add("b", "entry6")
 
-    errs.append(errs2, errs3)
+    errs.update(errs2, errs3)
     assert errs.errors["a"] == ["entry1", "entry2", "entry3", "entry4"]
     assert errs.errors["b"] == ["entry5", "entry6"]
+
+
+def test_check_file(tmp_ds_path):
+    tmp_ds_path.mkdir()
+    assert tmp_ds_path.is_dir()
+
+    # not existing
+    file = tmp_ds_path / "test.yaml"
+
+    assert not check_file(file)
+    assert not check_file(file, schema=FileMeta)
+
+    ret = check_file(file, required=True)
+    assert ret.errors[str(file)][0].find("file not found") >= 0
+
+    # exists, invalid
+    with open(file, "w") as f:
+        f.write("{ # }")
+
+    assert not check_file(file, required=True)
+    ret = check_file(file, schema=FileMeta)
+    assert ret.errors[str(file)][0].find("validation error") >= 0
+
+    # exists + valid
+    with open(file, "w") as f:
+        f.write(FileMeta(filename="test.yaml", hashsum="sha256:123").yaml())
+    assert not check_file(file, schema=FileMeta)
 
 
 # class DummyPacker(Packer):
