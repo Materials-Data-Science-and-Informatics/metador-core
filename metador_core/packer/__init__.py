@@ -15,8 +15,8 @@ from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
 from ..plugins import installed
 from ..plugins import interface as pg
+from ..schema import PGSchema, SchemaPlugin
 from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
-from ..schema.plugingroup import PGSchema, SchemaPlugin
 from .diff import DirDiff
 from .util import DirValidationErrors
 

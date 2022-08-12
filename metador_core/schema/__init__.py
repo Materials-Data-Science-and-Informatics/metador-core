@@ -2,160 +2,127 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import List, Optional, Type
 
-import isodate
-from pydantic import BaseModel, Extra, Field
-from pydantic.fields import FieldInfo, ModelField
-from pydantic_yaml import YamlModelMixin
-from typing_extensions import Annotated
+from overrides import overrides
 
-from .types import PintQuantity, PintUnit, make_literal
+from ..plugins import interface as pg
+from .core import MetadataSchema, PluginRef
 
-# PGSchema is supposed to be imported by other code from here!
-# this ensures that typing works but no circular imports happen
-if TYPE_CHECKING:
-    from .plugingroup import PGSchema
-else:
-    PGSchema = Any
-
-# ----
+SCHEMA_GROUP_NAME = "schema"
 
 
-def add_annotations(consts: Dict[str, Any], **kwargs):
-    """Decorate pydantic models to add constant annotation fields.
+class SchemaPlugin(pg.PluginBase):
+    group = SCHEMA_GROUP_NAME
+    parent_schema: Optional[PluginRef]
 
-    Must be passed a dict of field names mapped to the default values (only default JSON types).
-
-    Annotated fields are optional during parsing and are added to a parsed instance.
-    If is present during parsing, they must have exactly the passed annotated value.
-
-    Annotation fields are included in serialization, unless exclude_defaults is set.
-
-    This can be used e.g. to make JSON data models semantic by attaching JSON-LD annotations.
-    """
-    allow_override = kwargs.pop("allow_override", True)
-    if kwargs:
-        raise ValueError(f"Unknown keyword arguments: {kwargs}")
-
-    def add_fields(mcls):
-        if not issubclass(mcls, BaseModel):
-            raise ValueError("This is a decorator for pydantic models!")
-        if not allow_override:
-            if shadowed := set.intersection(
-                set(consts.keys()), set(mcls.__fields__.keys())
-            ):
-                msg = f"Attached const fields {shadowed} override defined fields in {mcls}!"
-                raise ValueError(msg)
-
-        for name, value in consts.items():
-            val = value.default if isinstance(value, FieldInfo) else value
-            ctype = Optional[make_literal(val)]  # type: ignore
-            field = ModelField.infer(
-                name=name,
-                value=value,
-                annotation=ctype,
-                class_validators=None,
-                config=mcls.__config__,
-            )
-            mcls.__fields__[name] = field
-            mcls.__annotations__[name] = field.type_
-
-        return mcls
-
-    return add_fields
+    class Fields(pg.PluginBase.Fields):
+        parent_schema: Optional[PluginRef]
+        """Declares a parent schema plugin.
+        By declaring a parent schema you agree to the following contract:
+        Any data that can be loaded using this schema MUST also be
+        loadable by the parent schema (with possible information loss).
+        """
 
 
-def ld_type(name, *, context: str = ""):
-    ret = {"@type": name}
-    if context:
-        ret["@context"] = context
-    return ret
+class PGSchema(pg.PluginGroup[MetadataSchema]):
+    """Interface to access installed schema plugins.
 
+    A valid schema must be subclass of `MetadataSchema` and also subclass of
+    the parent schema plugin (if any) that it returns with parent_schema.
 
-# ----
+    Each instance of a schema MUST be also parsable by the listed parent schema.
 
+    A subschema MUST NOT override existing parent field definitions.
 
-def _mod_def_dump_args(kwargs):
-    """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
-    if "by_alias" not in kwargs:
-        kwargs["by_alias"] = True
-    if "exclude_none" not in kwargs:
-        kwargs["exclude_none"] = True
-    return kwargs
+    (NOTE: with some caveats, we technically could weaken this to:
+    A subschema SHOULD only extend a parent by new fields.
+    It MAY override parent fields with more specific types.)
 
+    All registered schemas can be used anywhere in a Metador container to annotate
+    any group or dataset with metadata objects following that schema.
 
-class MetadataSchema(YamlModelMixin, BaseModel):
-    """Extended Pydantic base model with custom serializers and functions.
+    If you don't want that, do not register the schema as a plugin, but just use the
+    schema class as a normal Python dependency. Unregistered schemas still must inherit
+    from MetadataSchema, to ensure that required (de-)serializers and methods are
+    available.
 
-    Use (subclasses of) this baseclass to create new Metador metadata schemas and plugins.
+    Unregistered schemas can be used as "abstract" base schemas that should not be
+    instantiated in containers, or for schemas that are not "top-level entities",
+    but only describe a part of a meaningful metadata object.
     """
 
-    # Plugin: SchemaPlugin
+    class Plugin(pg.PGPlugin):
+        name = SCHEMA_GROUP_NAME
+        version = (0, 1, 0)
+        required_plugin_groups: List[str] = []
+        plugin_class = MetadataSchema
+        plugin_info_class = SchemaPlugin
 
-    class Config:
-        underscore_attrs_are_private = True  # avoid using PrivateAttr all the time
-        use_enum_values = True  # to serialize enums properly
-        allow_population_by_field_name = (
-            True  # when alias is set, still allow using field name
-        )
-        validate_assignment = True
-        # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
-        json_encoders = {
-            PintUnit.Parsed: lambda x: str(x),
-            PintQuantity.Parsed: lambda x: str(x),
-            isodate.Duration: lambda x: isodate.duration_isoformat(x),
-        }
+    @overrides
+    def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
+        parent_ref = plugin.Plugin.parent_schema
+        if parent_ref is None:
+            return  # no parent method -> nothing to do
 
-    @classmethod
-    def partial_from(cls, model):
-        """Return partial model based on a different model, skipping validation."""
-        return cls.construct(_fields_set=model.__fields_set__, **model.__dict__)
+        # check whether parent is known, compatible and really is a superclass
+        parent = self.get(parent_ref.name)
+        if not parent:
+            msg = f"{name}: Parent schema {parent_ref} not found!"
+            raise TypeError(msg)
 
-    def update(self, new_atrs):
-        """Update fields from dict (validates resulting dict, then modifies model)."""
-        merged = self.dict()
-        merged.update(new_atrs)
-        self.validate(merged)  # also runs root_validators!
-        for k, v in new_atrs.items():
-            setattr(
-                self, k, v
-            )  # parses/validates on assigment due to validate_assignment
+        inst_parent_ref = self.fullname(parent_ref.name)
+        if not inst_parent_ref.supports(parent_ref):
+            msg = f"{name}: Installed parent schema version ({inst_parent_ref}) "
+            msg += "incompatible with required version ({parent_ref})!"
+            raise TypeError(msg)
 
-    def dict(self, *args, **kwargs):
-        return super().dict(*args, **_mod_def_dump_args(kwargs))
+        if not issubclass(plugin, parent):
+            msg = f"{name}: {plugin} is not subclass of "
+            msg += f"claimed parent schema {parent} ({parent_ref})!"
+            raise TypeError(msg)
 
-    def json(self, *args, **kwargs):
-        return super().json(*args, **_mod_def_dump_args(kwargs))
+        # make sure that subclasses don't shadow parent attributes
+        # this is to strong an assumption, we actually want to allow to specialize them
+        # without breaking parsability
+        # TODO: this could go into a test suite helper - check that parsing as parent not broken
+        # parent_fields = get_type_hints(parent)
+        # child_fields = get_type_hints(plugin)
+        # overrides = set(parent_fields.keys()).intersection(set(child_fields.keys()))
+        # for attr_name in overrides:
+        #     if child_fields[attr_name] != parent_fields[attr_name]:
+        #         msg = f"{name}: '{attr_name}' ({child_fields[attr_name]}) is "
+        #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
+        #         raise TypeError(msg)
 
-    def yaml(self, *args, **kwargs):
-        return super().yaml(*args, **_mod_def_dump_args(kwargs))
+    # TODO: what happens if the path changes, i.e. parent plugins are added or removed?
+    # or should this in fact be manually managed?
+    # what kind of situations could actually be possible?
 
-    def __bytes__(self) -> bytes:
-        """Serialize to JSON and return UTF-8 encoded bytes to be written in a file."""
-        # add a newline, as otherwise behaviour with text editors will be confusing
-        # (e.g. vim automatically adds a trailing newline that it hides)
-        # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
-        return (self.json() + "\n").encode(encoding="utf-8")
+    def parent_path(self, schema_name: str) -> List[str]:
+        """Get sequence of registered parent schema names leading to the given schema.
+
+        This sequence can be a subset of the parent sequences in the actual class
+        hierarchy (not every subclass must be registered as a plugin).
+        """
+        ret = [schema_name]
+
+        curr = self[schema_name]  # type: ignore
+        parent = curr.Plugin.parent_schema
+        while parent is not None:
+            ret.append(parent.name)
+            curr = self[parent.name]  # type: ignore
+            parent = curr.Plugin.parent_schema
+
+        ret.reverse()
+        return ret
 
 
-# ----
-
-
-class LDIdRef(MetadataSchema):
-    """Object with just an @id reference (more info is given elsewhere)."""
-
-    class Config:
-        extra = Extra.forbid
-
-    id_: Annotated[str, Field(alias="@id", min_length=1)]
-
-
-class LDSchema(MetadataSchema):
-    """Semantically enriched schema for JSON-LD."""
-
-    id_: Annotated[Optional[str], Field(alias="@id", min_length=1)]
-
-    def ref(self) -> LDIdRef:
-        """Return LDIdRef, i.e. a pure @id reference for object."""
-        return LDIdRef(id_=self.id_)
+# NOTE: this would infer the plugin parent chain as-is,
+# but this is a very bad idea! because the parent chain could accidentally change
+# or be inconsistent if the parent class moves e.g. into a different package
+#        reversed(list(
+#            map(lambda x: x.Plugin.name,
+#            filter(lambda x: pg.is_plugin(x, group=self.Plugin.name),
+#            self[schema_name].mro())
+#            )))

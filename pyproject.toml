@@ -39,7 +39,7 @@ pdoc = "^10.0.3"
 # Metador supports defining custom validated plugin groups.
 # Here we define the default entities used in Metador.
 # For each declared group, plugins can be defined via entrypoints.
-schema = "metador_core.schema.plugingroup:PGSchema"
+schema = "metador_core.schema:PGSchema"
 packer = "metador_core.packer:PGPacker"
 widget = "metador_core.widget:PGWidget"
 

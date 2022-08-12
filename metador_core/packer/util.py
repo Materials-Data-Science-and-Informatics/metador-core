@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from json.decoder import JSONDecodeError
 from pathlib import Path
-
-# from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from typing import Any, Dict, List, Optional
 
 import h5py

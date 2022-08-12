@@ -13,7 +13,7 @@ from typing import List, Optional, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
-from .. import LDSchema, add_annotations, ld_type
+from ..ld import LDSchema, add_annotations, ld_type
 from ..types import Duration, nonempty_str
 
 URL = AnyHttpUrl

@@ -6,8 +6,7 @@ from typing import List, Optional, Tuple, Type, Union
 
 from pydantic import parse_obj_as
 
-from .. import MetadataSchema
-from ..plugingroup import SchemaPlugin
+from .. import MetadataSchema, SchemaPlugin
 from ..types import PintQuantity, PintUnit, SimpleValidator
 from .rocrate import DirMeta, FileMeta, Organization, Person
 from .schemaorg import Number, QuantitativeValue, Text

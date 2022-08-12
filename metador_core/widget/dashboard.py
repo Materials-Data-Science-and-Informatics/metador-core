@@ -7,8 +7,7 @@ from panel.viewable import Viewable
 
 from ..container import MetadorContainer, MetadorNode
 from ..plugins import installed
-from ..schema import MetadataSchema
-from ..schema.plugingroup import PGSchema, SchemaPlugin
+from ..schema import MetadataSchema, PGSchema, SchemaPlugin
 from . import PGWidget, Widget
 
 _SCHEMAS = installed.group("schema", PGSchema)

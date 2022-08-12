@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List, Optional, Set, Type
+from typing import List, Optional, Set, Type
 
 from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
@@ -11,11 +11,9 @@ from typing_extensions import Annotated
 
 from ..container import MetadorNode
 from ..plugins import interface as pg
+from ..schema import PGSchema
 from ..schema.core import MetadataSchema, PluginRef
-from ..schema.plugingroup import PGSchema
-
-if TYPE_CHECKING:
-    from .server import WidgetServer
+from .server import WidgetServer
 
 
 class Widget(ABC, EnforceOverrides):

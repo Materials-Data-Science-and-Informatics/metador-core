@@ -9,8 +9,8 @@ from typing import List
 from pydantic import Field, parse_obj_as, root_validator, validator
 from typing_extensions import Annotated
 
-from .. import LDIdRef, add_annotations, ld_type
-from ..plugingroup import SchemaPlugin
+from .. import SchemaPlugin
+from ..ld import LDIdRef, add_annotations, ld_type
 from . import schemaorg
 from .schemaorg import Text
 

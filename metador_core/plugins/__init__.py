@@ -5,7 +5,6 @@ import lazy_object_proxy
 if TYPE_CHECKING:
     from .interface import PluginGroup as _PluginGroup
 else:
-    # avoid circular import that only is needed for typing
     _PluginGroup = Any
 
 S = TypeVar("S", bound=_PluginGroup)
