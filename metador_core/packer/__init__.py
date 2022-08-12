@@ -16,7 +16,7 @@ from ..hashutils import DirHashsums, dir_hashsums
 from ..plugins import installed
 from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
-from ..schema.plugingroup import SCHEMA_GROUP_NAME, SchemaPlugin
+from ..schema.plugingroup import PGSchema, SchemaPlugin
 from .diff import DirDiff
 from .util import DirValidationErrors
 
@@ -223,7 +223,7 @@ PACKER_GROUP_NAME = "packer"
 
 
 class PackerPlugin(pg.PluginBase):
-    group: str = PACKER_GROUP_NAME
+    group = PACKER_GROUP_NAME
 
 
 class PGPacker(pg.PluginGroup[Packer]):
@@ -232,16 +232,15 @@ class PGPacker(pg.PluginGroup[Packer]):
     class Plugin(pg.PGPlugin):
         name = PACKER_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [SCHEMA_GROUP_NAME]
-        plugin_subclass = PackerPlugin
+        plugin_class = Packer
+        plugin_info_class = PackerPlugin
+        required_plugin_groups = [PGSchema.Plugin.name]
 
-    _PACKER_INFO_NAME = True  # PackerInfo.__metador_plugin__.name
+    _PACKER_INFO_NAME = PackerInfo.Plugin.name
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Packer]):
-        pg.check_is_subclass(name, plugin, Packer)
         pg.check_implements_method(name, plugin, Packer.check_dir)
-
         missing_pack = pg.test_implements_method(plugin, Packer.pack)
         missing_update = pg.test_implements_method(plugin, Packer.update)
         if missing_pack and missing_update:

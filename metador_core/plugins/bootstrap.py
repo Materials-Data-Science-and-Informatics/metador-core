@@ -23,9 +23,13 @@ def get_plugins(group_name: str) -> Dict[str, Any]:
     grp = f"{pg.PGB_GROUP_PREFIX}{group_name}"
     plugins: Dict[str, Any] = {}
     for ep in _eps.select(group=grp):
+        if ep.name in plugins:
+            msg = f"{group_name}: a plugin named '{ep.name}' is already registered!"
+            raise TypeError(msg)
         plugin = ep.load()
-        plugins[ep.name] = plugin
+        # plugin.Plugin.group = group_name
         plugin.Plugin._provided_by = ep.dist.name
+        plugins[ep.name] = plugin
         if ep.dist.name not in _plugin_pkgs:
             _plugin_pkgs.add(ep.dist.name)
             # _dist_meta[ep.dist.name] = distmeta_for(ep.dist)
@@ -34,40 +38,36 @@ def get_plugins(group_name: str) -> Dict[str, Any]:
 
 # initialize plugin discovery by getting pluggable groups (which are a pluggable).
 # PluginGroup name -> entrypoint name -> Entrypoint target
-_loaded_pgroups: Dict[str, Dict[str, Any]]
+_loaded_pgroups: Dict[str, Dict[str, Any]] = {}
 
 
 def _create_pgb_group(pg_cls):
     pg_name = pg_cls.Plugin.name
-    installed[pg_name] = pg_cls(_loaded_pgroups[pg_name])
+    plugins = get_plugins(pg_name)
+    _loaded_pgroups[pg_name] = plugins
+    installed[pg_name] = pg_cls(plugins)
+
+
+def resolve_loading_order(pgs):
+    # hack so schema plugin group is loaded first. cleaner + more general:
+    # use topo sort based on pgb.required_plugin_groups (TODO)
+    ret = list(pgs)
+    ret.remove("schema")
+    ret.insert(0, "schema")
+    return ret
 
 
 def load_plugins():
-    global _loaded_pgroups
-    _loaded_pgroups = {pg.PG_GROUP_NAME: get_plugins(pg.PG_GROUP_NAME)}
-    pgpg = _loaded_pgroups[pg.PG_GROUP_NAME]  # "plugin group plugin group"
-    _create_pgb_group(pg.PluginGroup)
+    _create_pgb_group(pg.PluginGroup)  # "plugin group plugin group"
 
-    # hack so schema plugin group is loaded first. cleaner + more general:
-    # use topo sort based on pgb.required_plugin_groups (TODO)
-    group_loading_order = list(pgpg.keys())
-    group_loading_order.remove("schema")
-    group_loading_order.insert(0, "schema")
+    pgpg = _loaded_pgroups[pg.PG_GROUP_NAME]
+    pgpg_inst = installed[pg.PG_GROUP_NAME]
 
-    # load plugin groups in suitable order
-    for pgb_name in group_loading_order:
-        pgb = pgpg[pgb_name]
-
-        # check the pluggable itself
-        pg._check_plugin_name(pgb_name)
-        if pgb_name in _loaded_pgroups:
-            msg = f"{pgb_name}: this {pg.PG_GROUP_NAME} name already registered!"
-            raise TypeError(msg)
-
-        # load plugins for that pluggable
-        _loaded_pgroups[pgb_name] = get_plugins(pgb_name)
-        # attach the loaded group to the module where they will be imported from
-        _create_pgb_group(pgb)
+    pg_order = resolve_loading_order(pgpg.keys())
+    for pg_name in pg_order:
+        pgroup = pgpg[pg_name]
+        pgpg_inst._check(pg_name, pgroup)
+        _create_pgb_group(pgroup)  # all other plugin groups
 
     # the core package is the one registering the "schema" plugin group.
     # Use that knowledge to hack in that this package also provides the plugingroup plugin:
@@ -85,10 +85,9 @@ def load_plugins():
         pg.PG_GROUP_NAME
     ] = pg.PluginGroup.Plugin.ref()
 
-    # now can use the class structures safely and check the plugingroup specifics:
+    # now can use the class structures and check the plugin validity:
     # (at this point all installed plugins of same kind can be cross-referenced)
-    for pgb_name in _loaded_pgroups.keys():
+    for pgb_name in pg_order:
         pgroup = installed[pgb_name]
         for ep_name, ep in pgroup.items():
             pgroup._check(ep_name, ep)
-            pg.check_is_subclass(ep_name, ep.Plugin, pgroup.Plugin.plugin_subclass)

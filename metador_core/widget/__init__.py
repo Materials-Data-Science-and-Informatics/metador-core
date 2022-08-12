@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Set, Type
+from typing import TYPE_CHECKING, List, Optional, Set, Type
 
 from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
@@ -12,9 +12,10 @@ from typing_extensions import Annotated
 from ..container import MetadorNode
 from ..plugins import interface as pg
 from ..schema.core import MetadataSchema, PluginRef
-from ..schema.plugingroup import SCHEMA_GROUP_NAME
-from .server import WidgetServer
-from .server.standalone import widget_server
+from ..schema.plugingroup import PGSchema
+
+if TYPE_CHECKING:
+    from .server import WidgetServer
 
 
 class Widget(ABC, EnforceOverrides):
@@ -27,11 +28,21 @@ class Widget(ABC, EnforceOverrides):
     Plugin: WidgetPlugin
 
     def __init__(
-        self, node: MetadorNode, schema_name: str = "", server: WidgetServer = None
+        self,
+        node: MetadorNode,
+        schema_name: str = "",
+        server: Optional[WidgetServer] = None,
     ):
         self._node = node
 
-        srv = server or widget_server()
+        srv: WidgetServer
+        if server is not None:
+            srv = server
+        else:
+            from .server.standalone import widget_server
+
+            srv = widget_server()
+
         if srv is None:
             raise ValueError("No widget server passed and standalone launch failed!")
         self._server = srv
@@ -81,8 +92,7 @@ WIDGET_GROUP_NAME = "widget"
 
 
 class WidgetPlugin(pg.PluginBase):
-    group: str = WIDGET_GROUP_NAME
-
+    group = WIDGET_GROUP_NAME
     supports: List[pg.PluginRef]
 
     class Fields(pg.PluginBase.Fields):
@@ -96,12 +106,12 @@ class PGWidget(pg.PluginGroup[Widget]):
     class Plugin(pg.PGPlugin):
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [SCHEMA_GROUP_NAME]
-        plugin_subclass = WidgetPlugin
+        required_plugin_groups = [PGSchema.Plugin.name]
+        plugin_class = Widget
+        plugin_info_class = WidgetPlugin
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Widget]):
-        pg.check_is_subclass(name, plugin, Widget)
         pg.check_implements_method(name, plugin, Widget.show)
 
     def supported_schemas(self) -> Set[PluginRef]:

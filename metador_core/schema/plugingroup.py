@@ -6,17 +6,18 @@ from overrides import overrides
 
 from ..plugins import interface as pg
 from . import MetadataSchema
+from .core import PluginRef
 
 SCHEMA_GROUP_NAME = "schema"
 
 
 class SchemaPlugin(pg.PluginBase):
-    group: str = SCHEMA_GROUP_NAME
+    group = SCHEMA_GROUP_NAME
+    parent_schema: Optional[PluginRef]
 
     class Fields(pg.PluginBase.Fields):
-        parent_schema: Optional[pg.PluginRef]
+        parent_schema: Optional[PluginRef]
         """Declares a parent schema plugin.
-
         By declaring a parent schema you agree to the following contract:
         Any data that can be loaded using this schema MUST also be
         loadable by the parent schema (with possible information loss).
@@ -54,12 +55,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         name = SCHEMA_GROUP_NAME
         version = (0, 1, 0)
         required_plugin_groups: List[str] = []
-        plugin_subclass = SchemaPlugin
+        plugin_class = MetadataSchema
+        plugin_info_class = SchemaPlugin
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        pg.check_is_subclass(name, plugin, MetadataSchema)
-
         parent_ref = plugin.Plugin.parent_schema
         if parent_ref is None:
             return  # no parent method -> nothing to do
@@ -94,6 +94,10 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
         #         raise TypeError(msg)
 
+    # TODO: what happens if the path changes, i.e. parent plugins are added or removed?
+    # or should this in fact be manually managed?
+    # what kind of situations could actually be possible?
+
     def parent_path(self, schema_name: str) -> List[str]:
         """Get sequence of registered parent schema names leading to the given schema.
 
@@ -111,3 +115,13 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
         ret.reverse()
         return ret
+
+
+# NOTE: this would infer the plugin parent chain as-is,
+# but this is a very bad idea! because the parent chain could accidentally change
+# or be inconsistent if the parent class moves e.g. into a different package
+#        reversed(list(
+#            map(lambda x: x.Plugin.name,
+#            filter(lambda x: pg.is_plugin(x, group=self.Plugin.name),
+#            self[schema_name].mro())
+#            )))

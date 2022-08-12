@@ -51,8 +51,11 @@ class PluginRef(MetadataSchema):
 class PluginBase:
     """All Plugin inner classes must be called `Plugin` and inherit from this class."""
 
+    # set during plugin bootstrap to providing python package
     _provided_by: str = ""
-    group: str
+    group: str  # fixed in subclasses for specific plugin groups
+
+    # for type checking (mirrors Fields)
     name: str
     version: SemVerTuple
 

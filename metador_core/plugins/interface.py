@@ -26,13 +26,17 @@ PG_GROUP_NAME = "plugingroup"
 
 
 class PGPlugin(PluginBase):
-    group: str = PG_GROUP_NAME
+    group = PG_GROUP_NAME
+
+    plugin_class: Any = object
+    plugin_info_class: Type[PluginBase]
+
     required_plugin_groups: List[str]
-    plugin_subclass: Any
 
     class Fields(PluginBase.Fields):
+        plugin_class: Optional[Any]
+        plugin_info_class: Any
         required_plugin_groups: List[str]
-        plugin_subclass: Any
         """List of plugin group names that must be loaded before this one.
 
         Should be added if plugins require plugins from those groups.
@@ -50,15 +54,6 @@ def _check_plugin_name(name: str):
     if not re.fullmatch("[A-Za-z0-9._-]+", name):
         msg = f"{name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
         raise TypeError(msg)
-
-
-def _check_plugin_valid(name: str, ep):
-    """Check inner Plugin class that is required for all plugins."""
-    # all plugins and other plugin groups:
-    if not ep.__dict__.get("Plugin"):
-        raise TypeError(f"{name}: {ep} is missing Plugin inner class!")
-    check_is_subclass(name, ep.Plugin, PluginBase)
-    ep.Plugin._check(ep_name=name)
 
 
 def check_is_subclass(name: str, plugin, base):
@@ -80,6 +75,23 @@ def check_implements_method(name: str, plugin, base_method):
         raise TypeError(msg)
 
 
+def is_plugin(p_cls, *, group: str = ""):
+    """Check whether given class is a loaded plugin.
+
+    If group not specified, will accept any kind of plugin.
+
+    Args:
+        p_cls: class of supposed plugin
+        group: name of desired plugin group
+    """
+    if not hasattr(p_cls, "Plugin") or not issubclass(p_cls.Plugin, PluginBase):
+        return False  # not suitable
+    if not hasattr(p_cls.Plugin, "_provided_by"):
+        return False  # not loaded
+    g = p_cls.Plugin.group
+    return bool(g and (not group or group == g))
+
+
 # ----
 
 
@@ -99,7 +111,7 @@ class PluginGroup(Generic[T]):
         name = PG_GROUP_NAME
         version = (0, 1, 0)
         required_plugin_groups: List[str] = []
-        plugin_subclass = PGPlugin
+        plugin_info_class = PGPlugin
 
     PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
@@ -174,10 +186,19 @@ class PluginGroup(Generic[T]):
         Raises a TypeError with message in case of failure.
         """
         _check_plugin_name(name)
-        # check and complete Plugin inner class
-        if plugin != type(self):
-            _check_plugin_valid(name, plugin)
-            plugin.Plugin._group = self.name
+
+        if not plugin.__dict__.get("Plugin"):
+            raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
+
+        # check inner Plugin class checks (with possibly new Fields cls)
+        pgi_cls = self.Plugin.plugin_info_class
+        check_is_subclass(name, pgi_cls, PluginBase)
+        check_is_subclass(name, plugin.Plugin, pgi_cls)
+        plugin.Plugin._check(ep_name=name)
+
+        # check correct inheritance for plugin and its info
+        if pg_cls := self.Plugin.plugin_class:
+            check_is_subclass(name, plugin, pg_cls)
 
         # run the (usually overridden) plugin validation
         self.check_plugin(name, plugin)
@@ -193,20 +214,15 @@ class PluginGroup(Generic[T]):
             name: Declared entrypoint name.
             plugin: Object the entrypoint is pointing to.
         """
-        plugin_ = cast(Any, plugin)
         # the default implementation is the one for the plugin group plugin group
         # and must make sure that all child plugin groups override it
-        if id(type(self)) == id(PluginGroup):
-            check_is_subclass(name, plugin, PluginGroup)
-            check_is_subclass(name, plugin_.Plugin, PGPlugin)
+        if id(type(self)) != id(PluginGroup):
+            return
 
-            if not plugin_.Plugin.plugin_subclass:
-                raise TypeError(
-                    f"'plugin_subclass' of {plugin_.Plugin} must be defined!"
-                )
-            check_is_subclass(name, plugin_.Plugin.plugin_subclass, PluginBase)
-            if not hasattr(plugin_.Plugin.plugin_subclass, "group"):
-                raise TypeError("PGPlugin subclass must set 'group'!")
+        check_is_subclass(name, plugin, PluginGroup)
+        if plugin != PluginGroup:
+            check_implements_method(name, plugin, PluginGroup.check_plugin)
 
-            if plugin != PluginGroup:
-                check_implements_method(name, plugin, PluginGroup.check_plugin)
+        ppgi_cls = cast(Any, plugin).Plugin.plugin_info_class
+        if not hasattr(ppgi_cls, "group"):
+            raise TypeError(f"{name}: {ppgi_cls} is missing 'group' attribute!")
