@@ -24,8 +24,8 @@ class ImageWidget(Widget):
         # If multiple supported schemas are listed,
         # case splitting based on the schema type must be done here.
         # Everything that instances can reuse should also be done here.
-        self._w = self._meta.width.value  # type: ignore
-        self._h = self._meta.height.value  # type: ignore
+        self._w = self._meta.width.value
+        self._h = self._meta.height.value
         self._aspect_ratio = self._w / self._h
         self._image_url = self.file_url_for(self._node)
 

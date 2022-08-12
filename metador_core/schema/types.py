@@ -1,11 +1,12 @@
 """Useful types and validators for use in pydantic models."""
 
+import datetime
 import re
 from typing import _GenericAlias  # type: ignore
-from typing import Any, Dict, Tuple, Type
+from typing import Tuple
 
 import isodate
-from pint import Quantity, Unit
+from pint import Quantity, UndefinedUnitError, Unit
 from pydantic import Field, NonNegativeInt
 from typing_extensions import Annotated, Literal, TypedDict
 
@@ -38,108 +39,160 @@ def make_literal(val):
     return _GenericAlias(Literal, val)
 
 
-class SimpleValidator:
-    """Simple validator base class for custom data types.
+class ParserMixin:
+    """Base mixin class to simplify creation of custom pydantic field types."""
 
-    See: https://pydantic-docs.helpmanual.io/usage/types/#custom-data-types
-    """
+    class ParserConfig:
+        _loaded = True
 
-    Parsed: Type[Any] = str
-    """Type stored in the model after validation by this class.
+    @classmethod
+    def _parser_config(cls, base=None):
+        base = base or cls
+        try:
+            conf = base.ParserConfig
+        except AttributeError:
+            # this class has no own parser config
+            # -> look up in base class and push down
+            conf = cls._parser_config(base)
+            setattr(base, "ParserConfig", conf)
 
-    Override this in subclasses.
-    """
+        # config is initialized -> return it
+        if getattr(conf, "_loaded", False):
+            return conf
 
-    _field_infos: Dict[str, Any] = {}
-    """Infos added to JSON Schema when the value is serialized again.
+        # find next upper parser config
+        nxt = list(filter(lambda c: issubclass(c, ParserMixin), base.mro()))[1]
+        if nxt is None:
+            raise RuntimeError("Did not find base ParserConfig")
 
-    Override this in subclasses to add helpful information.
-    """
+        base_conf = base._parser_config(nxt)
+        for key, value in base_conf.__dict__.items():
+            if key[0] == "_":
+                continue
+            if not hasattr(conf, key):
+                setattr(conf, key, value)
+
+        setattr(conf, "_loaded", True)
+        return conf
 
     @classmethod
     def __get_validators__(cls):
         yield cls.validate
 
     @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(**cls._field_infos)
-
-    @classmethod
-    def parse(cls, v):
-        """Parse passed string value and return as declared `Parsed` type.
-
-        Default implementation will parse a string by calling `Parsed(v)`,
-        override this for a custom parsing function.
-        """
-        if not isinstance(v, str):
-            raise TypeError(f"Expected {cls.Parsed.__name__} or str, got {type(v)}.")
-        return cls.Parsed(v)
+    def __modify_schema__(cls, schema):
+        schema.update(**cls._parser_config().schema)
 
     @classmethod
     def validate(cls, v):
         """Validate passed value and return as declared `Parsed` type."""
-        if isinstance(v, cls.Parsed):
-            return v
         try:
             return cls.parse(v)
-        except Exception as e:
+        except ValueError as e:
             msg = f"Could not parse {cls.__name__} value {v}: {str(e)}"
             raise ValueError(msg)
 
 
 # ----
-# Some useful pydantic validators.
+# Some generally useful pydantic validators.
 
 
-class Duration(SimpleValidator):
+class Duration(ParserMixin):
     """Parser from str -> isodate.Duration."""
 
-    Parsed = isodate.Duration
-    _field_infos = {
-        "title": "string in ISO 8601 duration format",
-        "type": "string",
-        "examples": ["PT3H4M1S"],
-    }
+    class ParserConfig:
+        schema = {
+            "title": "string in ISO 8601 duration format",
+            "type": "string",
+            "examples": ["PT3H4M1S"],
+        }
 
     @classmethod
     def parse(cls, v):
+        if isinstance(v, datetime.timedelta):
+            return v
+        if isinstance(v, str):
+            return isodate.parse_duration(v)
+        raise TypeError(f"Expected timedelta or str, got {type(v)}.")
+
+
+class Number(ParserMixin):
+    """Whole or floating point number."""
+
+    class ParserConfig:
+        schema = {
+            "title": "An integer or floating point number.",
+            "type": "number",
+        }
+
+    @classmethod
+    def parse(cls, v):
+        if isinstance(v, int) or isinstance(v, float):
+            return v
+        if isinstance(v, str):
+            if re.match("^[0-9]+$", v.strip()):
+                return int(v)
+            else:
+                return float(v)
+        raise TypeError("Expected int, float or str")
+
+
+class StringParser(ParserMixin):
+    class ParserConfig:
+        def identity(x):
+            return x
+
+        parser = identity
+        returns: str
+
+    @classmethod
+    def parse(cls, v):
+        conf = cls._parser_config()
+        rcls = conf.returns
+        if isinstance(v, rcls):
+            return v
+
         if not isinstance(v, str):
-            raise TypeError(f"Expected {cls.Parsed.__name__} or str, got {type(v)}.")
-        return isodate.parse_duration(v)
+            msg = f"Expected {rcls} or str, got {type(v)}."
+            raise TypeError(msg)
+
+        return conf.parser(v)
 
 
-def pint_validator(pcls, **field_infos):
-    class PintValidator(SimpleValidator):
-        Parsed = pcls
-        _field_infos = field_infos
-        REGEX = r"^[0-9\w ()*/]+$"
-
-        @classmethod
-        def parse(cls, v):
-            if not isinstance(v, str):
-                raise TypeError(
-                    f"Expected {cls.Parsed.__name__} or str, got {type(v)}."
-                )
-            if re.match(cls.REGEX, v) is None:
-                raise ValueError(f"Invalid {cls.Parsed.__name__}: {v}")
-            return super().parse(v)
-
-    PintValidator.__name__ = f"Pint{pcls.__name__}"
-    return PintValidator
+class PintParser(StringParser):
+    @classmethod
+    def parse(cls, v):
+        if not v:
+            raise ValueError("Got empty string, expected number.")
+        try:
+            super().parse(v)
+        except UndefinedUnitError as e:
+            raise ValueError(str(e))
 
 
-PintUnit = pint_validator(
-    Unit,
-    title="Physical unit compatible with the Python pint library.",
-    type="string",
-    examples=["meter * candela", "kilogram / second ** 2"],
-)
-"""Parser from str -> pint.Unit."""
+class PintUnit(PintParser, Unit):
+    """pydantic-suitable pint.Unit."""
 
-PintQuantity = pint_validator(
-    Quantity,
-    title="Physical quantity compatible with the Python pint library.",
-    type="string",
-    examples=["5 meter * candela", "7.12 kilogram / second ** 2"],
-)
-"""Parser from str -> pint.Quantity."""
+    class ParserConfig:
+        parser = Unit
+        returns = Unit
+
+        schema = {
+            "title": "Physical unit compatible with the Python pint library.",
+            "type": "string",
+            "examples": ["meter * candela", "kilogram / second ** 2"],
+        }
+
+
+class PintQuantity(PintParser, Quantity):
+    """pydantic-suitable pint.Quantity."""
+
+    class ParserConfig:
+        parser = Quantity
+        returns = Quantity
+
+        schema = {
+            "title": "Physical quantity compatible with the Python pint library.",
+            "type": "string",
+            "examples": ["5 meter * candela", "7.12 kilogram / second ** 2"],
+        }

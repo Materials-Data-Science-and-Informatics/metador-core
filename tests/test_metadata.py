@@ -39,7 +39,7 @@ def test_str_types():
     # PintUnit
     parse_obj_as(t.PintUnit, "meter / (second * kg) ** 2")
     parse_obj_as(t.PintUnit, "dimensionless")
-    parse_obj_as(t.PintUnit, t.PintUnit.Parsed("second"))
+    parse_obj_as(t.PintUnit, t.PintUnit("second"))
     parse_obj_as(t.PintUnit, "1")
     with pytest.raises(ValidationError):
         parse_obj_as(t.PintUnit, "invalid")

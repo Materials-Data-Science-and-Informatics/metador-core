@@ -14,11 +14,10 @@ from typing import List, Optional, Union
 from pydantic import AnyHttpUrl, NonNegativeInt
 
 from ..ld import LDSchema, add_annotations, ld_type
-from ..types import Duration, nonempty_str
+from ..types import Duration, Number, nonempty_str
 
 URL = AnyHttpUrl
 Text = nonempty_str
-Number = Union[int, float]
 DateOrDatetime = Union[date, datetime]
 TimeOrDatetime = Union[time, datetime]
 

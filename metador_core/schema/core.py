@@ -38,8 +38,8 @@ class MetadataSchema(YamlModelMixin, BaseModel):
         validate_assignment = True
         # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
         json_encoders = {
-            PintUnit.Parsed: lambda x: str(x),
-            PintQuantity.Parsed: lambda x: str(x),
+            PintUnit: lambda x: str(x),
+            PintQuantity: lambda x: str(x),
             isodate.Duration: lambda x: isodate.duration_isoformat(x),
         }
 
