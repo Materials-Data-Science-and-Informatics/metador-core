@@ -82,6 +82,7 @@ from __future__ import annotations
 
 from itertools import takewhile
 from typing import (
+    Any,
     Dict,
     ItemsView,
     Iterator,
@@ -937,24 +938,43 @@ class MetadorMeta:
 
     # all following only work with known (i.e. registered/correct) schema:
 
-    def __setitem__(self, schema: Union[str, Type[S]], value: MetadataSchema):
+    def __setitem__(
+        self, schema: Union[str, Type[S]], value: Union[Dict[str, Any], MetadataSchema]
+    ):
         self._guard_read_only()
         schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_unknown_schema(schema_name)
         if self._get_raw(schema_name):
             raise ValueError(f"Metadata object for schema {schema_name} exists!")
 
-        schema_class: Type[MetadataSchema] = _SCHEMAS[schema_name]  # type: ignore
-        if not isinstance(value, schema_class):
-            raise ValueError(f"Metadata object is invalid for schema {schema_name}!")
+        # get the correct installed plugin class (don't trust the user class!)
+        schema_class: Type[MetadataSchema] = _SCHEMAS[schema_name]
 
+        # handle and check the passed metadata
+        if isinstance(value, schema_class):
+            validated = value  # skip validation, already suitable model
+        else:
+            # try to convert/parse it -> make sure we have a dict
+            if isinstance(value, dict):
+                val_dict = value
+            elif isinstance(value, MetadataSchema):
+                val_dict = value.dict()
+            else:
+                msg = f"Cannot process metadata object of type {type(value)}!"
+                raise ValueError(msg)
+            # parse/validate. let ValidationError be raised (if it happens)
+            validated = schema_class.parse_obj(val_dict)
+
+        # all good -> store it
         obj_path = self._mc.toc._register_link(self._base_dir, schema_name)
-        self._mc.__wrapped__[obj_path] = bytes(value)  # RAW
+        self._mc.__wrapped__[obj_path] = bytes(validated)  # RAW
 
-        # notify dep manager to register possibly new dependency.
+        # notify TOC dependency tracking to register possibly new dependency.
         # we do it here instead of in toc._register_link, because _register_link
         # is also used in cases where we might not have the schema installed,
         # e.g. when fixing the TOC.
+        # here, adding new metadata only works with a properly installed schema
+        # so we can get all required information.
         self._mc.toc._notify_used_schema(schema_name)
 
     # following have transitive semantics (i.e. logic also works with parent schemas)
