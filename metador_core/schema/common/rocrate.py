@@ -28,8 +28,9 @@ class FileMeta(schemaorg.MediaObject):
         version = (0, 1, 0)
 
     # required by RO-Crate to be relative to RO Crate root and be URL-encoded
-    # we keep just the actual filename and fix that when assembling the crate.
-    id_: Annotated[str, Field(alias="@id", min_length=1)]
+    # we keep just the actual filename in "name"
+    # and set @id when assembling the crate.
+
     # NOTE: preferably size in bytes
     contentSize: Annotated[str, Field(regex="^[0-9]+$")]
     # NOTE: preferably MIME type or PRONOM or contextual entity
@@ -45,8 +46,9 @@ class DirMeta(schemaorg.Dataset):
         version = (0, 1, 0)
 
     # required by RO-Crate to be relative to RO Crate root, URL-encoded and end with slash
-    # we keep just the actual filename and fix that when assembling the crate.
-    id_: Annotated[str, Field(alias="@id", min_length=1)]
+    # we keep just the actual dir name in "name"
+    # and set @id when assembling the crate.
+
     # to list (subset of) files and subdirectories:
     hasPart: List[LDIdRef] = []
 

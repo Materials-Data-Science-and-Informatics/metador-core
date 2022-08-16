@@ -965,8 +965,8 @@ class MetadorMeta:
         Will also accept a child schema object and parse it as the parent schema.
         If multiple suitable objects are found, picks the alphabetically first to parse it.
         """
-        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_skel_only()
+        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_unknown_schema(schema_name)
         # don't include parents, because we need to parse some physical instance
         candidates = self.find(schema_name)
@@ -1193,6 +1193,10 @@ class MetadorContainerTOC:
         if curr_info is None:
             self._used[pkg_name] = set()
         self._used[pkg_name].add(schema_name)
+        self._used_schemas.add(schema_name)
+        if schema_name not in self._parent_paths:
+            ppath = "/".join(_SCHEMAS.parent_path(schema_name))
+            self._parent_paths[schema_name] = ppath
 
     def _notify_unused_schema(self, schema_name: str):
         """Notify that a schema is not used at any container node anymore.
@@ -1209,6 +1213,8 @@ class MetadorContainerTOC:
 
         del self._provider[schema_name]
         self._used[pkg_name].remove(schema_name)
+        if schema_name in self._used_schemas:
+            self._used_schemas.remove(schema_name)
 
         if not self._used[pkg_name]:
             # no schemas of its providing package are used anymore.
@@ -1236,13 +1242,17 @@ class MetadorContainerTOC:
         self._parent_paths: Dict[str, str] = {}
         # uuid -> path in dataset
         self._toc_path_from_uuid: Dict[str, str] = {}
+        # actually embedded objects
+        self._used_schemas: Set[str] = set()
 
         def collect_schemas(path):
-            schema_name = path.split("/")[-1]
+            path_segs = path.split("/")
+            schema_name = path_segs[-1]
             if schema_name[0] == "=":  # links/metadata entries start with =
                 self._toc_path_from_uuid[
                     schema_name[1:]
                 ] = f"{M.METADOR_TOC_PATH}/{path}"
+                self._used_schemas.add(path_segs[-2])
             else:
                 self._parent_paths[schema_name] = path
 
@@ -1273,7 +1283,7 @@ class MetadorContainerTOC:
                     self._provider[schema] = name
 
         # initialize tracking of used schemas
-        for schema_name in self.schemas:
+        for schema_name in self.schemas():
             # we assume that each schema has a provider dep!
             pkg_name = self._provider[schema_name]
             # add schema to list of actually used schemas provided by this dep
@@ -1287,10 +1297,13 @@ class MetadorContainerTOC:
         # for that, the container env entry must be implemented and enforced!
         # also must be careful with parsing - need to mark colliding but wrong as unknown
 
-    @property
-    def schemas(self) -> Set[str]:
+    def schemas(self, *, include_parents: bool = True) -> Set[str]:
         """Return names of all schemas used in the container."""
-        return set(self._provider.keys())
+        if include_parents:
+            schemas = map(lambda p: set(p.split("/")), self._parent_paths.values())
+            return set.union(set(), *schemas)
+        else:
+            return self._used_schemas
 
     @property
     def deps(self) -> Set[str]:
@@ -1329,7 +1342,7 @@ class MetadorContainerTOC:
         ...
 
     def query(
-        self, schema: Union[str, Type[S]]
+        self, schema: Union[str, Type[S]] = ""
     ) -> Dict[MetadorNode, Union[MetadataSchema, S]]:
         """Return nodes that contain a metadata object valid for the given schema."""
         schema_name = schema if isinstance(schema, str) else schema.Plugin.name

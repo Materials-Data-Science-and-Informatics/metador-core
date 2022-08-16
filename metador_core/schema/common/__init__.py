@@ -94,14 +94,16 @@ class BibMeta(DirMeta):
         version = (0, 1, 0)
         parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
 
+    # id_: Annotated[Literal["./"], Field(alias="@id")] = "./"
+
     name: Text
-    """Title of dataset."""
+    """Title for data in the container."""
 
     description: Text
-    """Description of dataset."""
+    """Description of data in the container."""
 
     author: List[Union[Person, Organization]]
-    """List of authors of dataset."""
+    """List of authors."""
 
 
 class ImageFileMeta(FileMeta):

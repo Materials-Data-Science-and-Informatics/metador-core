@@ -76,5 +76,9 @@ class LDSchema(MetadataSchema):
     id_: Annotated[Optional[str], Field(alias="@id", min_length=1)]
 
     def ref(self) -> LDIdRef:
-        """Return LDIdRef, i.e. a pure @id reference for object."""
+        """Return LDIdRef, i.e. a pure @id reference for object.
+
+        Throws an exception if no @id is found.
+        """
+        assert self.id_ is not None, "Object has no @id attribute!"
         return LDIdRef(id_=self.id_)
