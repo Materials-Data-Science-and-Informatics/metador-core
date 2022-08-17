@@ -58,11 +58,14 @@ def resolve_loading_order(pgs):
 
 
 def load_plugins():
-    _create_pgb_group(pg.PluginGroup)  # "plugin group plugin group"
-
+    # prepare the "plugin group plugin group", mother of all plugins
+    _create_pgb_group(pg.PluginGroup)
     pgpg = _loaded_pgroups[pg.PG_GROUP_NAME]
     pgpg_inst = installed[pg.PG_GROUP_NAME]
+    pgpg_inst._check(pg.PG_GROUP_NAME, pg.PluginGroup)
+    pgpg_inst.post_load()
 
+    # load groups in a reasonable order
     pg_order = resolve_loading_order(pgpg.keys())
     for pg_name in pg_order:
         pgroup = pgpg[pg_name]
@@ -85,9 +88,10 @@ def load_plugins():
         pg.PG_GROUP_NAME
     ] = pg.PluginGroup.Plugin.ref()
 
-    # now can use the class structures and check the plugin validity:
+    # now can use the class structures and check the plugin validity for other groups:
     # (at this point all installed plugins of same kind can be cross-referenced)
     for pgb_name in pg_order:
         pgroup = installed[pgb_name]
         for ep_name, ep in pgroup.items():
             pgroup._check(ep_name, ep)
+        pgroup.post_load()

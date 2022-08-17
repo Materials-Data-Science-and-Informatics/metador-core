@@ -8,6 +8,7 @@ from overrides import overrides
 
 from ..plugins import interface as pg
 from .core import MetadataSchema, PluginRef
+from .utils import LiftedRODict, collect_model_types
 
 SCHEMA_GROUP_NAME = "schema"
 
@@ -19,6 +20,7 @@ class SchemaPlugin(pg.PluginBase):
     class Fields(pg.PluginBase.Fields):
         parent_schema: Optional[PluginRef]
         """Declares a parent schema plugin.
+
         By declaring a parent schema you agree to the following contract:
         Any data that can be loaded using this schema MUST also be
         loadable by the parent schema (with possible information loss).
@@ -28,28 +30,61 @@ class SchemaPlugin(pg.PluginBase):
 class PGSchema(pg.PluginGroup[MetadataSchema]):
     """Interface to access installed schema plugins.
 
-    A valid schema must be subclass of `MetadataSchema` and also subclass of
-    the parent schema plugin (if any) that it returns with parent_schema.
+    All registered schema plugins can be used anywhere in a Metador container to
+    annotate any group or dataset with metadata objects following that schema.
 
-    Each instance of a schema MUST be also parsable by the listed parent schema.
+    If you don't want that, do not register the schema as a plugin, but just use
+    the schema class as a normal Python dependency. Schemas that are not
+    registered as plugins still must inherit from MetadataSchema, to ensure that
+    all required methods are available and work as expected by the system.
 
-    A subschema MUST NOT override existing parent field definitions.
+    Unregistered schemas can be used as "abstract" parent schemas that cannot be
+    instantiated in containers because they are too general to be useful, or for
+    schemas that are not intended to be used on their own in the container, but
+    model a meaningful metadata object that can be part of a larger schema.
 
-    (NOTE: with some caveats, we technically could weaken this to:
-    A subschema SHOULD only extend a parent by new fields.
-    It MAY override parent fields with more specific types.)
+    Rules for schema versioning:
 
-    All registered schemas can be used anywhere in a Metador container to annotate
-    any group or dataset with metadata objects following that schema.
+    All schemas must be subclass of `MetadataSchema` and also subclass of the
+    parent schema plugin declared as `parent_schema` (if defined).
 
-    If you don't want that, do not register the schema as a plugin, but just use the
-    schema class as a normal Python dependency. Unregistered schemas still must inherit
-    from MetadataSchema, to ensure that required (de-)serializers and methods are
-    available.
+    Semantic versioning (MAJOR, MINOR, PATCH) is to be followed.
+    For schemas, this roughly translates to:
 
-    Unregistered schemas can be used as "abstract" base schemas that should not be
-    instantiated in containers, or for schemas that are not "top-level entities",
-    but only describe a part of a meaningful metadata object.
+    If you do not modify the set of parsable instances by your changes,
+    you may increment only PATCH.
+
+    If your changes strictly increase parsable instances, that is,
+    your new version can parse older metadata of the same MAJOR,
+    you may increment only MINOR (resetting PATCH to 0).
+
+    If your changes could make some older metadata invalid,
+    you must increment MAJOR (resetting MINOR and PATCH to 0).
+
+    If you add, remove or change the name of a parent schema,
+    you must increment MAJOR.
+
+    If you change the version in the `parent_schema` to a version
+    that with higher X (MAJOR, MINOR or PATCH), the version
+    of your schema must be incremented in X as well.
+
+    Rules for schema extension:
+
+    A child schema that only extends a parent with new fields is safe.
+    To schemas that redefine parent fields additional rules apply:
+
+    EACH instance of a schema MUST also be parsable by the parent schema
+
+    This means that a child schema may only override parent fields
+    with more specific types, i.e., only RESTRICT the set of possible
+    values compared to the parent field (safe examples include
+    adding new or narrowing existing bounds and constraints,
+    or excluding some values that are allowed by the parent schema).
+
+    As automatically verifying this is not feasible, but the ability
+    is very much needed in practical use, the schema developer
+    MUST create suitable represantative test cases that check whether
+    this property is satisfied.
     """
 
     class Plugin(pg.PGPlugin):
@@ -68,13 +103,13 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # check whether parent is known, compatible and really is a superclass
         parent = self.get(parent_ref.name)
         if not parent:
-            msg = f"{name}: Parent schema {parent_ref} not found!"
+            msg = f"{name}: Parent schema '{parent_ref}' not found!"
             raise TypeError(msg)
 
         inst_parent_ref = self.fullname(parent_ref.name)
         if not inst_parent_ref.supports(parent_ref):
             msg = f"{name}: Installed parent schema version ({inst_parent_ref}) "
-            msg += "incompatible with required version ({parent_ref})!"
+            msg += "is incompatible with required version ({parent_ref})!"
             raise TypeError(msg)
 
         if not issubclass(plugin, parent):
@@ -95,10 +130,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
         #         raise TypeError(msg)
 
-    # TODO: what happens if the path changes, i.e. parent plugins are added or removed?
-    # or should this in fact be manually managed?
-    # what kind of situations could actually be possible?
-
     def parent_path(self, schema_name: str) -> List[str]:
         """Get sequence of registered parent schema names leading to the given schema.
 
@@ -117,12 +148,21 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         ret.reverse()
         return ret
 
+    @classmethod
+    def _subschemas_for(cls, schema: MetadataSchema):
+        """Return fancy class to be bolted onto a schema plugin to lookup subschemas."""
+        mtypes = collect_model_types(schema, bound=MetadataSchema)
+        # custom repr string to make it look like the class was there all along
+        rep = f'<class \'{".".join([schema.__module__, schema.__name__, "Schemas"])}\'>'
 
-# NOTE: this would infer the plugin parent chain as-is,
-# but this is a very bad idea! because the parent chain could accidentally change
-# or be inconsistent if the parent class moves e.g. into a different package
-#        reversed(list(
-#            map(lambda x: x.Plugin.name,
-#            filter(lambda x: pg.is_plugin(x, group=self.Plugin.name),
-#            self[schema_name].mro())
-#            )))
+        class Schemas(metaclass=LiftedRODict):
+            _repr = rep
+            _schemas = {t.__name__: t for t in mtypes}
+
+        return Schemas
+
+    def post_load(self):
+        # To each plugin, attach schema classes used in the annotations
+        # to enable user access without imports (decoupling schema location)
+        for schema in self.values():
+            setattr(schema, "Schemas", self._subschemas_for(schema))

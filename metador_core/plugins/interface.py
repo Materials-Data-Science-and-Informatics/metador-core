@@ -219,10 +219,20 @@ class PluginGroup(Generic[T]):
         if id(type(self)) != id(PluginGroup):
             return
 
+        # these are the checks done for PluginGroup plugins (schema, etc.)
         check_is_subclass(name, plugin, PluginGroup)
-        if plugin != PluginGroup:
+        if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             check_implements_method(name, plugin, PluginGroup.check_plugin)
 
+        # make sure that the declared plugin_info_class for the group sets 'group',
+        # and it is also equal to the plugin group 'name'.
+        # this is the safest way to make sure that Plugin.ref() works correctly.
         ppgi_cls = cast(Any, plugin).Plugin.plugin_info_class
         if not hasattr(ppgi_cls, "group"):
             raise TypeError(f"{name}: {ppgi_cls} is missing 'group' attribute!")
+        if not ppgi_cls.group == cast(Any, plugin).Plugin.name:
+            msg = f"{name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
+            raise TypeError(msg)
+
+    def post_load(self):
+        """Do something after all plugins of a group are loaded."""
