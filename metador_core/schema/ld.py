@@ -7,7 +7,7 @@ from pydantic.fields import FieldInfo, ModelField
 from typing_extensions import Annotated
 
 from .core import MetadataSchema
-from .types import make_literal
+from .utils import make_literal
 
 
 def add_annotations(consts: Dict[str, Any], **kwargs):

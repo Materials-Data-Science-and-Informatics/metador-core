@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import isodate
 from pydantic import AnyHttpUrl, BaseModel, Extra, Field, ValidationError
@@ -10,6 +10,9 @@ from pydantic_yaml import YamlModelMixin
 from typing_extensions import Annotated
 
 from .types import PintQuantity, PintUnit, SemVerTuple, nonempty_str
+
+if TYPE_CHECKING:
+    from . import SchemaPlugin
 
 
 def _mod_def_dump_args(kwargs):
@@ -27,7 +30,7 @@ class MetadataSchema(YamlModelMixin, BaseModel):
     Use (subclasses of) this baseclass to create new Metador metadata schemas and plugins.
     """
 
-    # Plugin: SchemaPlugin
+    Plugin: SchemaPlugin
 
     class Config:
         underscore_attrs_are_private = True  # avoid using PrivateAttr all the time

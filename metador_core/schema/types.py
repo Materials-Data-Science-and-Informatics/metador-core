@@ -2,15 +2,15 @@
 
 import datetime
 import re
-from typing import _GenericAlias  # type: ignore
 from typing import Tuple
 
 import isodate
 from pint import Quantity, UndefinedUnitError, Unit
 from pydantic import Field, NonNegativeInt
-from typing_extensions import Annotated, Literal, TypedDict
+from typing_extensions import Annotated
 
 from ..hashutils import _hash_alg
+from .utils import ParserMixin
 
 nonempty_str = Annotated[str, Field(min_length=1)]
 
@@ -25,78 +25,6 @@ SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 """Type to be used for SemVer triples."""
 
 
-def make_literal(val):
-    """Given a JSON object, return type that parses exactly that object."""
-    if isinstance(val, dict):
-        d = {k: make_literal(v) for k, v in val.items()}
-        return TypedDict("AnonConstDict", d)  # type: ignore
-    if isinstance(val, tuple) or isinstance(val, list):
-        args = tuple(map(make_literal, val))
-        return _GenericAlias(Tuple, args)
-    if val is None:
-        return type(None)
-    # using Literal directly makes Literal[True] -> Literal[1] -> don't want that
-    return _GenericAlias(Literal, val)
-
-
-class ParserMixin:
-    """Base mixin class to simplify creation of custom pydantic field types."""
-
-    class ParserConfig:
-        _loaded = True
-
-    @classmethod
-    def _parser_config(cls, base=None):
-        base = base or cls
-        try:
-            conf = base.ParserConfig
-        except AttributeError:
-            # this class has no own parser config
-            # -> look up in base class and push down
-            conf = cls._parser_config(base)
-            setattr(base, "ParserConfig", conf)
-
-        # config is initialized -> return it
-        if getattr(conf, "_loaded", False):
-            return conf
-
-        # find next upper parser config
-        nxt = list(filter(lambda c: issubclass(c, ParserMixin), base.mro()))[1]
-        if nxt is None:
-            raise RuntimeError("Did not find base ParserConfig")
-
-        base_conf = base._parser_config(nxt)
-        for key, value in base_conf.__dict__.items():
-            if key[0] == "_":
-                continue
-            if not hasattr(conf, key):
-                setattr(conf, key, value)
-
-        setattr(conf, "_loaded", True)
-        return conf
-
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def __modify_schema__(cls, schema):
-        schema.update(**cls._parser_config().schema)
-
-    @classmethod
-    def validate(cls, v):
-        """Validate passed value and return as declared `Parsed` type."""
-        try:
-            return cls.parse(v)
-        except ValueError as e:
-            msg = f"Could not parse {cls.__name__} value {v}: {str(e)}"
-            raise ValueError(msg)
-
-
-# ----
-# Some generally useful pydantic validators.
-
-
 class Duration(ParserMixin):
     """Parser from str -> isodate.Duration."""
 
@@ -106,6 +34,9 @@ class Duration(ParserMixin):
             "type": "string",
             "examples": ["PT3H4M1S"],
         }
+
+    def __new__(cls, v):
+        return cls.parse(v)
 
     @classmethod
     def parse(cls, v):
@@ -140,7 +71,12 @@ class Number(ParserMixin):
         raise TypeError("Expected int, float or str")
 
 
+# Physical units
+
+
 class StringParser(ParserMixin):
+    """Mixin that should handle a plain string as user input."""
+
     class ParserConfig:
         def identity(x):
             return x
@@ -163,18 +99,21 @@ class StringParser(ParserMixin):
 
 
 class PintParser(StringParser):
+    """Shared mixin for `PintUnit` and `PintQuantity`."""
+
     @classmethod
     def parse(cls, v):
         if not v:
-            raise ValueError("Got empty string, expected number.")
+            msg = f"Got empty string, expected {cls.ParserConfig.parser.__name__}."
+            raise ValueError(msg)
         try:
-            super().parse(v)
+            return super().parse(v)
         except UndefinedUnitError as e:
             raise ValueError(str(e))
 
 
 class PintUnit(PintParser, Unit):
-    """pydantic-suitable pint.Unit."""
+    """pydantic-compatible pint.Unit."""
 
     class ParserConfig:
         parser = Unit
@@ -188,7 +127,7 @@ class PintUnit(PintParser, Unit):
 
 
 class PintQuantity(PintParser, Quantity):
-    """pydantic-suitable pint.Quantity."""
+    """pydantic-compatible pint.Quantity."""
 
     class ParserConfig:
         parser = Quantity
