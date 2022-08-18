@@ -5,36 +5,31 @@ import metador_core.schema.types as t
 
 
 def test_str_types():
-    # nonempty_str
-    parse_obj_as(t.nonempty_str, "a")
-    with pytest.raises(ValidationError):
-        parse_obj_as(t.nonempty_str, "")
-
     # mimetype_str
-    parse_obj_as(t.mimetype_str, "application/json")
-    parse_obj_as(t.mimetype_str, "application/JSON;q=0.9;v=abc")
+    parse_obj_as(t.MimeType, "application/json")
+    parse_obj_as(t.MimeType, "application/JSON;q=0.9;v=abc")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.mimetype_str, "invalid/mime/type")
+        parse_obj_as(t.MimeType, "invalid/mime/type")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.mimetype_str, "invalid mime")
+        parse_obj_as(t.MimeType, "invalid mime")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.mimetype_str, "invalidMime")
+        parse_obj_as(t.MimeType, "invalidMime")
 
-    # hashsum_str
-    parse_obj_as(t.hashsum_str, "sha256:aebf")
-    parse_obj_as(t.hashsum_str, "sha512:aebf")
+    # QualHashsum
+    parse_obj_as(t.QualHashsum, "sha256:aebf")
+    parse_obj_as(t.QualHashsum, "sha512:aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, "wrong:aebf")
+        parse_obj_as(t.QualHashsum, "wrong:aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, "sha512:invalid")
+        parse_obj_as(t.QualHashsum, "sha512:invalid")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, "sha256")
+        parse_obj_as(t.QualHashsum, "sha256")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, "sha256:")
+        parse_obj_as(t.QualHashsum, "sha256:")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, "aebf")
+        parse_obj_as(t.QualHashsum, "aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.hashsum_str, ":aebf")
+        parse_obj_as(t.QualHashsum, ":aebf")
 
     # PintUnit
     parse_obj_as(t.PintUnit, "meter / (second * kg) ** 2")

@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Optional
 
 import isodate
+from phantom.sized import NonEmpty
 from pydantic import AnyHttpUrl, BaseModel, Extra, Field, ValidationError
 from pydantic_yaml import YamlModelMixin
 from typing_extensions import Annotated
 
-from .types import PintQuantity, PintUnit, SemVerTuple, nonempty_str
-
-if TYPE_CHECKING:
-    from . import SchemaPlugin
+from .types import PintQuantity, PintUnit, SemVerTuple
 
 
 def _mod_def_dump_args(kwargs):
@@ -30,7 +28,10 @@ class MetadataSchema(YamlModelMixin, BaseModel):
     Use (subclasses of) this baseclass to create new Metador metadata schemas and plugins.
     """
 
-    Plugin: SchemaPlugin
+    if TYPE_CHECKING:
+        from . import SchemaPlugin
+
+        Plugin: SchemaPlugin
 
     class Config:
         underscore_attrs_are_private = True  # avoid using PrivateAttr all the time
@@ -89,10 +90,10 @@ class PluginRef(MetadataSchema):
     class Config:
         frozen = True
 
-    group: nonempty_str
+    group: NonEmpty[str]
     """Metador pluggable group name, i.e. name of the entry point group."""
 
-    name: nonempty_str
+    name: NonEmpty[str]
     """Registered entry point name inside an entry point group."""
 
     version: SemVerTuple
@@ -167,7 +168,7 @@ Plugins = Dict[str, Dict[str, PluginRef]]
 class PluginPkgMeta(MetadataSchema):
     """Metadata of a Python package containing Metador plugins."""
 
-    name: nonempty_str
+    name: NonEmpty[str]
     """Name of the Python package."""
 
     version: SemVerTuple

@@ -5,21 +5,24 @@ import re
 from typing import Tuple
 
 import isodate
+from phantom.re import FullMatch
 from pint import Quantity, UndefinedUnitError, Unit
-from pydantic import Field, NonNegativeInt
-from typing_extensions import Annotated
+from pydantic import NonNegativeInt
 
 from ..hashutils import _hash_alg
 from .utils import ParserMixin
 
-nonempty_str = Annotated[str, Field(min_length=1)]
 
-# rough regex checking a string looks like a mime-type
-mimetype_str = Annotated[str, Field(regex=r"^[^ /;]+/[^ /;]+(;[^ /;]+)*$")]
+class MimeType(FullMatch, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):  # type: ignore
+    """String that looks like a mime-type."""
 
-# a hashsum string is to be prepended by the used algorithm
+
 _hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
-hashsum_str = Annotated[str, Field(regex=r"^" + _hashalg_regex + r":[0-9a-fA-F]+$")]
+
+
+class QualHashsum(FullMatch, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):  # type: ignore
+    """Hashsum string, prepended by the used algorithm."""
+
 
 SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 """Type to be used for SemVer triples."""

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final, Literal
 
 from ..hashutils import qualified_hashsum
-from ..schema.types import hashsum_str
+from ..schema.types import QualHashsum
 from .overlay import IH5Group, h5_copy_from_to
 
 # the magic string we use to identify a valid container
@@ -71,7 +71,7 @@ class IH5UserBlock(BaseModel):
     prev_patch: Optional[UUID]
     """UUID of the previous patch UUID (unless it is a base container, i.e. first one)."""
 
-    hdf5_hashsum: Optional[hashsum_str] = None
+    hdf5_hashsum: Optional[QualHashsum] = None
     """Hashsum to verity integrity of the HDF5 data after the user block."""
 
     ub_exts: Dict[str, Any]
@@ -560,7 +560,7 @@ class IH5Record:
 
         # compute checksum, write user block
         chksum = hashsum_file(filepath, skip_bytes=USER_BLOCK_SIZE)
-        self._ublocks[filepath].hdf5_hashsum = chksum
+        self._ublocks[filepath].hdf5_hashsum = QualHashsum(chksum)
         self._ublocks[filepath].save(filepath)
 
         # reopen the container file now as read-only
@@ -604,7 +604,7 @@ class IH5Record:
         ub = self._ublock(-1).copy(update={"prev_patch": self._ublock(0).prev_patch})
         # update hashsum with saved new merged hdf5 payload
         chksum = hashsum_file(cfile, skip_bytes=USER_BLOCK_SIZE)
-        ub.hdf5_hashsum = chksum
+        ub.hdf5_hashsum = QualHashsum(chksum)
 
         self._fixes_after_merge(cfile, ub)  # for subclass hooks
 

@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Optional
 
+from phantom.sized import NonEmpty
 from pydantic import BaseModel, Extra, Field
 from pydantic.fields import FieldInfo, ModelField
 from typing_extensions import Annotated
@@ -54,7 +55,7 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
     return add_fields
 
 
-def ld_type(name, *, context: str = ""):
+def ld_type(name, *, context=None) -> Dict[str, Any]:
     ret = {"@type": name}
     if context:
         ret["@context"] = context
@@ -67,13 +68,13 @@ class LDIdRef(MetadataSchema):
     class Config:
         extra = Extra.forbid
 
-    id_: Annotated[str, Field(alias="@id", min_length=1)]
+    id_: Annotated[NonEmpty[str], Field(alias="@id")]
 
 
 class LDSchema(MetadataSchema):
     """Semantically enriched schema for JSON-LD."""
 
-    id_: Annotated[Optional[str], Field(alias="@id", min_length=1)]
+    id_: Annotated[Optional[NonEmpty[str]], Field(alias="@id")]
 
     def ref(self) -> LDIdRef:
         """Return LDIdRef, i.e. a pure @id reference for object.
