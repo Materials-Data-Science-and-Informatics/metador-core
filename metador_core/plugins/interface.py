@@ -47,12 +47,15 @@ class PGPlugin(PluginBase):
 
 
 def _check_plugin_name(name: str):
-    """Perform common checks on a registered plugin (applies to any plugin group).
-
-    Raises a TypeError with message in case of failure.
-    """
     if not re.fullmatch("[A-Za-z0-9._-]+", name):
-        msg = f"{name}: Invalid pluggable name! Only use: A-z, a-z, 0-9, _ and -"
+        msg = f"{name}: Invalid plugin name! Only use: A-z, a-z, 0-9, _ - and ."
+        raise TypeError(msg)
+
+
+def _check_plugin_name_prefix(name: str):
+    xs = name.split(".")
+    if len(xs) < 2 or not (2 < len(xs[0]) < 11):
+        msg = f"{name}: Missing/invalid namespace prefix (must have length 3-10)!"
         raise TypeError(msg)
 
 
@@ -186,6 +189,8 @@ class PluginGroup(Generic[T]):
         Raises a TypeError with message in case of failure.
         """
         _check_plugin_name(name)
+        if id(type(self)) != id(PluginGroup):
+            _check_plugin_name_prefix(name)
 
         if not plugin.__dict__.get("Plugin"):
             raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")

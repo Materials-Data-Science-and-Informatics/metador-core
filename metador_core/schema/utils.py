@@ -57,7 +57,7 @@ def collect_model_types(m: BaseModel, *, bound=object) -> Set:
           contain only subclasses of the bound.
     """
     return set.union(
-        *map(lambda mf: set(field_types(mf, bound=bound)), m.__fields__.values())
+        set(), *map(lambda mf: set(field_types(mf, bound=bound)), m.__fields__.values())
     )
 
 
