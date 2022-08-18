@@ -21,9 +21,12 @@ Text = nonempty_str
 DateOrDatetime = Union[date, datetime]
 TimeOrDatetime = Union[time, datetime]
 
+CTX_URL_SCHEMAORG = "https://schema.org"
+
 
 def annotate_schemaorg_type(name: str):
-    return add_annotations(ld_type(name, context="https://schema.org/"))
+    # return add_annotations(ld_type(name, context=))
+    return add_annotations(ld_type(name, context=CTX_URL_SCHEMAORG))
 
 
 @annotate_schemaorg_type("Thing")

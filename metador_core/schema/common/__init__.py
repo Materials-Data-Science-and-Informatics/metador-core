@@ -44,6 +44,10 @@ class NumValue(ParserMixin, QuantitativeValue):
         infer_unit: Optional[str] = None
         require_unit: bool = False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__dict__.update(self.parse(self).__dict__)
+
     @classmethod
     def parse(cls, v):
         conf = cls._parser_config()
@@ -51,7 +55,7 @@ class NumValue(ParserMixin, QuantitativeValue):
         if isinstance(v, int) or isinstance(v, float):
             if conf.require_unit:
                 raise ValueError(f"Value '{v}' must have a unit!")
-            return cls(value=v, unitText=conf.infer_unit)
+            return cls.construct(value=v, unitText=conf.infer_unit)
 
         if isinstance(v, str):
             arr = v.strip().split(maxsplit=1)
@@ -60,19 +64,20 @@ class NumValue(ParserMixin, QuantitativeValue):
         if isinstance(v, dict):
             v = parse_obj_as(QuantitativeValue, v)
         if isinstance(v, QuantitativeValue):
-            arr = (v.value, v.unitText or v.unitCode or "")
+            def_unit = conf.infer_unit or ""
+            arr = (v.value, v.unitText or v.unitCode or def_unit)
 
         if len(arr) == 1:
             if conf.require_unit:
                 raise ValueError(f"Value '{v}' must have a unit!")
             val = parse_obj_as(Number, arr[0])
-            return cls(value=val, unitText=conf.infer_unit)
+            return cls.construct(value=val, unitText=conf.infer_unit)
 
         val = parse_obj_as(Tuple[Number, str], arr)
         if conf.allowed_units and not val[1] in conf.allowed_units:
             msg = f"Invalid unit '{val[1]}', unit must be one of {conf.allowed_units}"
             raise ValueError(msg)
-        return cls(value=val[0], unitText=val[1])
+        return cls.construct(value=val[0], unitText=val[1])
 
 
 class Pixels(NumValue):

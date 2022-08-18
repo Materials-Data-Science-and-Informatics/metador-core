@@ -125,6 +125,9 @@ class Number(ParserMixin):
             "type": "number",
         }
 
+    def __new__(cls, v):
+        return cls.parse(v)
+
     @classmethod
     def parse(cls, v):
         if isinstance(v, int) or isinstance(v, float):

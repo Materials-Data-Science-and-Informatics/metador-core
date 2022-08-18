@@ -14,11 +14,11 @@ from ..ld import LDIdRef, add_annotations, ld_type
 from . import schemaorg
 from .schemaorg import Text
 
+CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
+
 
 def annotate_rocrate_type(name: str):
-    return add_annotations(
-        ld_type(name, context="https://w3id.org/ro/crate/1.1/context")
-    )
+    return add_annotations(ld_type(name, context=CTX_URL_ROCRATE))
 
 
 @annotate_rocrate_type("File")
@@ -81,7 +81,7 @@ class Person(schemaorg.Person):
         return values
 
     @root_validator
-    def assemble_name(cls, values):
+    def infer_name(cls, values):
         missing_name = values.get("name") is None
         if missing_name:
             parts = []
@@ -99,5 +99,3 @@ rocrate_self_meta = {
     "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
     "about": {"@id": "./"},
 }
-
-# TODO: add somewhere helper to assemble RO Crate metadata file
