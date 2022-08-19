@@ -11,46 +11,19 @@
 ![Docs](https://img.shields.io/badge/read-docs-success)
 ](https://materials-data-science-and-informatics.github.io/metador-core/)
 
-Core library of Metador. It provides:
+Core library of the Metador platform. It provides:
 
-* an API to manage immutable (but still "patchable") HDF5 files
-* an API to store and retrieve metadata attached to groups and datasets in HDF5-based containers
-* an extensible entry-points based Metador plugin system
-* core pluggable type interfaces (Schemas, Mappings, Packers)
-* a set of core schemas required for the minimal functioning of the system
+* an interface for managing structured and validated metadata (`MetadorContainer`)
+* an API to manage immutable (but still "patchable") HDF5 files (`IH5Record`)
+* an extensible entry-points based plugin system defining plugin groups and plugins
+* core plugin group interfaces (schemas, packers, widgets, ...)
+* general semantically aligned schemas that should be used and extended
+* visualization widgets for common data types based on Bokeh and Panel
+* generic dashboard presenting (meta)data for which suitable widgets are installed
 
-**NOTE:** This repository currently also includes functionality that will be split out
-into separate packages in the future. This includes:
+## Developer Tutorial
 
-* Pluggable widgets based on Bokeh and Panel
-* A generic dashboard for presenting annotated nodes in a Metador container
-
-# Immutable HDF5 (IH5) Records
-
-`IH5Record` is an (almost) drop-in replacement for and wrapper of
-[h5py](https://docs.h5py.org/en/latest/index.html) to manage
-layered immutable records consisting of a series of patches.
-(See [here](./metador_core/ih5/PATCH_THEORY.md) for technical details of the design)
-
-When needed, a `IH5Record` can be flattened down into a single valid HDF5 file
-for applications where the IH5 API cannot be used to inspect the
-multi-file records.
-
-# Implementing Metador Plugins
-
-You can easily extend Metador both with plugins of existing plugin types
-and also register new plugin types and corresponding interfaces and functionality.
-
-TODO: write example / provide template poetry-based repo
-
-# HDF5-based MetadorContainer
-
-`MetadorContainer` provides a wrapper interface for annotating, inspecting and retrieving
-metadata stored in regular HDF5 files (`h5py.File`) as well as IH5 containers (`IH5Record`).
-
-## User Tutorial
-
-**TODO**
+Tutorials on various topics are provided [here](./tutorial)
 
 ## Getting Started
 
