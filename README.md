@@ -21,22 +21,28 @@ Core library of the Metador platform. It provides:
 * visualization widgets for common data types based on Bokeh and Panel
 * generic dashboard presenting (meta)data for which suitable widgets are installed
 
-## Developer Tutorial
-
-Tutorials on various topics are provided [here](./tutorial)
-
 ## Getting Started
 
-As a user, you can install this package just as any other package into your current
-Python environment using:
+This library is not a batteries-included solution, it is intended for people interested in
+using and extending the Metador ecosystem and who are willing to write their own plugins
+to adapt Metador to their use-case and provide services based on it.
+
+Please check out the tutorials that explain general concepts,
+interfaces and specific plugin development topics are provided [here](./tutorial).
+
+For a first taste, you can install this package just as any other package into your
+current Python environment using:
 ```
 $ pip install metador-core@git+https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
 ```
-
 As usual, it is highly recommended that you use a
 [virtual environment](https://stackoverflow.com/questions/41573587/what-is-the-difference-between-venv-pyvenv-pyenv-virtualenv-virtualenvwrappe)
-to ensure isolation of dependencies between unrelated projects
-(or use `poetry` as described further below, which automatically takes care of this).
+to ensure isolation of dependencies between unrelated projects.
+
+If you want to write or extend plugins, such as metadata schemas or widgets,
+the provided tutorials will get you started.
+
+If you want to contribute to the actual core, see further below.
 
 ## Compatibility and Known Issues
 
