@@ -126,7 +126,15 @@ class CreativeWork(Thing):
 class MediaObject(CreativeWork):
     """See http://schema.org/MediaObject for field documentation."""
 
-    contentSize: Optional[Text]
+    # we deviate to accept only bytes and as a number,
+    # storing it as string if we don't allow units is plain stupid
+    # google jsonld tester did not complain.
+    #
+    # alternatively, we could try using a variant of
+    # the quantity parser, but it should serialize to string, like pint
+    # but this requires to support the K(i)/M(i)/G(i)B units
+    contentSize: Optional[int]
+
     sha256: Optional[Text]
     encodingFormat: Optional[List[Union[URL, Text]]]
 

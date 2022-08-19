@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Type
+from queue import SimpleQueue
+from typing import Any, Dict, List, Optional, Set, Type
 
 from overrides import overrides
 
 from ..plugins import interface as pg
 from .core import MetadataSchema, PluginRef
+from .partial import create_partial_model
 from .utils import LiftedRODict, collect_model_types
 
 SCHEMA_GROUP_NAME = "schema"
@@ -96,6 +98,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
+        for forbidden in ["Schemas", "Partial"]:
+            # check that the auto-generated field names are not used
+            if hasattr(plugin, forbidden):
+                raise TypeError(f"{name}: Schema has forbidden field '{forbidden}'!")
+
         parent_ref = plugin.Plugin.parent_schema
         if parent_ref is None:
             return  # no parent method -> nothing to do
@@ -149,20 +156,60 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         return ret
 
     @classmethod
-    def _subschemas_for(cls, schema: MetadataSchema):
-        """Return fancy class to be bolted onto a schema plugin to lookup subschemas."""
-        mtypes = collect_model_types(schema, bound=MetadataSchema)
+    def _attach_subschemas(cls, schema: MetadataSchema, subschemas):
+        """Attach inner class to a schema for subschema lookup.
+
+        This enables users to access subschemas without extra imports
+        that bypass the plugin system and improves decoupling.
+        """
         # custom repr string to make it look like the class was there all along
         rep = f'<class \'{".".join([schema.__module__, schema.__name__, "Schemas"])}\'>'
 
         class Schemas(metaclass=LiftedRODict):
             _repr = rep
-            _schemas = {t.__name__: t for t in mtypes}
+            _schemas = {t.__name__: t for t in subschemas}
 
-        return Schemas
+        setattr(schema, "Schemas", Schemas)
 
     def post_load(self):
-        # To each plugin, attach schema classes used in the annotations
-        # to enable user access without imports (decoupling schema location)
+        subschemas: Dict[Any, Set[Any]] = {}
+
+        # collect registered schemas
         for schema in self.values():
-            setattr(schema, "Schemas", self._subschemas_for(schema))
+            subschemas[schema] = collect_model_types(schema, bound=MetadataSchema)
+            # to those we attach the subschemas helper inner class
+            self._attach_subschemas(schema, subschemas[schema])
+
+        # collect possibly unregistered schemas (non-plugins)
+        missed = set()
+        for deps in subschemas.values():
+            for dep in deps:
+                if dep not in subschemas:
+                    missed.add(dep)
+
+        # explore the hierarchy of unregistered schemas
+        q = SimpleQueue()
+        for s in missed:
+            q.put(s)
+        while not q.empty():
+            s = q.get()
+            if s in subschemas:
+                continue
+            subschemas[s] = collect_model_types(s, bound=MetadataSchema)
+            if s in subschemas[s]:
+                subschemas[s].remove(s)  # recursive model
+            for dep in subschemas[s]:
+                if dep not in subschemas:
+                    q.put(dep)
+
+        partials = {}  # schema -> its partial
+        refs = {}  # partial name -> partial
+
+        for schema in subschemas.keys():
+            partial = create_partial_model(schema)
+            partials[schema] = partial
+            refs[partial.__name__] = partial
+
+        for schema, partial in partials.items():
+            partial.update_forward_refs(**refs)
+            setattr(schema, "Partial", partial)

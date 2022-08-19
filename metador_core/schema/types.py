@@ -22,10 +22,6 @@ class NonEmptyStr(FullMatch, pattern=".+"):
     # use that instead of NonEmpty[str] so we can subclass more flexibly
 
 
-class IntStr(NonEmptyStr, pattern="[0-9]+"):
-    """Integer string (i.e. string of digits)."""
-
-
 class MimeType(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
     """String that looks like a mime-type."""
 

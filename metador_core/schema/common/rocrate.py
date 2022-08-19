@@ -4,15 +4,14 @@ Here we do impose certain constraints (make fields mandatory).
 
 See https://www.researchobject.org/ro-crate/1.1/
 """
-from typing import List
+from typing import List, Union
 
 from pydantic import parse_obj_as, root_validator, validator
 
 from .. import SchemaPlugin
 from ..ld import LDIdRef, add_annotations, ld_type
-from ..types import IntStr, NonEmptyStr
 from . import schemaorg
-from .schemaorg import Text
+from .schemaorg import URL, Text
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
@@ -31,10 +30,8 @@ class FileMeta(schemaorg.MediaObject):
     # we keep just the actual filename in "name"
     # and set @id when assembling the crate.
 
-    # NOTE: preferably size in bytes
-    contentSize: IntStr
     # NOTE: preferably MIME type or PRONOM or contextual entity
-    encodingFormat: List[NonEmptyStr]  # type: ignore  # mypy is wrong here
+    encodingFormat: List[Union[URL, Text]]
     # we require hashsums
     sha256: Text
 

@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Iterable, Set, Tuple
 
 from pydantic import BaseModel
 from pydantic.fields import ModelField
-from typing_extensions import Literal, TypedDict, get_args
+from typing_extensions import Literal, TypedDict, get_args, get_origin
 
 
 class ParserMixin:
@@ -88,7 +88,9 @@ def is_subclass_of(t: Any) -> Callable[[Any], bool]:
     return lambda obj: issubclass(obj, t)
 
 
-def tree_traversal(children: Callable[[Any], Iterable], *, post_order: bool = False):
+def make_tree_traversal(
+    succ_func: Callable[[Any], Iterable], *, post_order: bool = False
+):
     """Return generator to traverse nodes of a tree-shaped object.
 
     Args:
@@ -99,7 +101,7 @@ def tree_traversal(children: Callable[[Any], Iterable], *, post_order: bool = Fa
     def traverse(obj):
         if not post_order:
             yield obj
-        for t in children(obj):
+        for t in succ_func(obj):
             yield from traverse(t)
         if post_order:
             yield obj
@@ -107,12 +109,30 @@ def tree_traversal(children: Callable[[Any], Iterable], *, post_order: bool = Fa
     return traverse
 
 
-traverse_typehint = tree_traversal(get_args)
+traverse_typehint = make_tree_traversal(get_args)
 """Perform depth-first pre-order traversal of a type annotation.
 
 Args:
     th: type hint object to be traversed
 """
+
+
+def make_tree_mapper(node_constructor, succ_func):
+    def map_func(obj, leaf_map_func):
+        if children := succ_func(obj):
+            mcs = (map_func(c, leaf_map_func) for c in children)
+            return node_constructor(obj, *mcs)
+        else:
+            return leaf_map_func(obj)
+
+    return map_func
+
+
+def make_typehint(t_cons, *t_args):
+    return _GenericAlias(get_origin(t_cons), tuple(t_args))
+
+
+map_typehint = make_tree_mapper(make_typehint, get_args)
 
 
 def field_types(mf: ModelField, *, bound=object) -> Iterable:

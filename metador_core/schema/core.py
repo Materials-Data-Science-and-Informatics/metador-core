@@ -15,9 +15,9 @@ from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 def _mod_def_dump_args(kwargs):
     """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
     if "by_alias" not in kwargs:
-        kwargs["by_alias"] = True
+        kwargs["by_alias"] = True  # e.g. so we get correct @id, etc fields
     if "exclude_none" not in kwargs:
-        kwargs["exclude_none"] = True
+        kwargs["exclude_none"] = True  # we treat None as "missing" so leave it out
     return kwargs
 
 
@@ -45,21 +45,6 @@ class MetadataSchema(YamlModelMixin, BaseModel):
             PintQuantity: lambda x: str(x),
             isodate.Duration: lambda x: isodate.duration_isoformat(x),
         }
-
-    @classmethod
-    def partial_from(cls, model):
-        """Return partial model based on a different model, skipping validation."""
-        return cls.construct(_fields_set=model.__fields_set__, **model.__dict__)
-
-    def update(self, new_atrs):
-        """Update fields from dict (validates resulting dict, then modifies model)."""
-        merged = self.dict()
-        merged.update(new_atrs)
-        self.validate(merged)  # also runs root_validators!
-        for k, v in new_atrs.items():
-            setattr(
-                self, k, v
-            )  # parses/validates on assigment due to validate_assignment
 
     def dict(self, *args, **kwargs):
         return super().dict(*args, **_mod_def_dump_args(kwargs))
