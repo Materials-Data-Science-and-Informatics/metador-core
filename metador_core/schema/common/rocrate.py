@@ -6,11 +6,11 @@ See https://www.researchobject.org/ro-crate/1.1/
 """
 from typing import List
 
-from pydantic import Field, parse_obj_as, root_validator, validator
-from typing_extensions import Annotated
+from pydantic import parse_obj_as, root_validator, validator
 
 from .. import SchemaPlugin
 from ..ld import LDIdRef, add_annotations, ld_type
+from ..types import IntStr, NonEmptyStr
 from . import schemaorg
 from .schemaorg import Text
 
@@ -32,9 +32,9 @@ class FileMeta(schemaorg.MediaObject):
     # and set @id when assembling the crate.
 
     # NOTE: preferably size in bytes
-    contentSize: Annotated[str, Field(regex="^[0-9]+$")]
+    contentSize: IntStr
     # NOTE: preferably MIME type or PRONOM or contextual entity
-    encodingFormat: List[str]
+    encodingFormat: List[NonEmptyStr]  # type: ignore  # mypy is wrong here
     # we require hashsums
     sha256: Text
 

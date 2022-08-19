@@ -5,12 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Optional
 
 import isodate
-from phantom.sized import NonEmpty
 from pydantic import AnyHttpUrl, BaseModel, Extra, Field, ValidationError
 from pydantic_yaml import YamlModelMixin
 from typing_extensions import Annotated
 
-from .types import PintQuantity, PintUnit, SemVerTuple
+from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 
 
 def _mod_def_dump_args(kwargs):
@@ -90,10 +89,10 @@ class PluginRef(MetadataSchema):
     class Config:
         frozen = True
 
-    group: NonEmpty[str]
+    group: NonEmptyStr
     """Metador pluggable group name, i.e. name of the entry point group."""
 
-    name: NonEmpty[str]
+    name: NonEmptyStr
     """Registered entry point name inside an entry point group."""
 
     version: SemVerTuple
@@ -168,7 +167,7 @@ Plugins = Dict[str, Dict[str, PluginRef]]
 class PluginPkgMeta(MetadataSchema):
     """Metadata of a Python package containing Metador plugins."""
 
-    name: NonEmpty[str]
+    name: NonEmptyStr
     """Name of the Python package."""
 
     version: SemVerTuple

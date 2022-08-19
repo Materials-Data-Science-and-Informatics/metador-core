@@ -12,20 +12,29 @@ from pydantic import NonNegativeInt
 from ..hashutils import _hash_alg
 from .utils import ParserMixin
 
+SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
+"""Type to be used for SemVer triples."""
 
-class MimeType(FullMatch, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):  # type: ignore
+
+class NonEmptyStr(FullMatch, pattern=".+"):
+    """Non-empty string."""
+
+    # use that instead of NonEmpty[str] so we can subclass more flexibly
+
+
+class IntStr(NonEmptyStr, pattern="[0-9]+"):
+    """Integer string (i.e. string of digits)."""
+
+
+class MimeType(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
     """String that looks like a mime-type."""
 
 
 _hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
 
 
-class QualHashsum(FullMatch, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):  # type: ignore
+class QualHashsum(NonEmptyStr, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):
     """Hashsum string, prepended by the used algorithm."""
-
-
-SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
-"""Type to be used for SemVer triples."""
 
 
 class Duration(ParserMixin):

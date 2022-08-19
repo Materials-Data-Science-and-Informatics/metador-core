@@ -2,12 +2,12 @@
 
 from typing import Any, Dict, Optional
 
-from phantom.sized import NonEmpty
 from pydantic import BaseModel, Extra, Field
 from pydantic.fields import FieldInfo, ModelField
 from typing_extensions import Annotated
 
 from .core import MetadataSchema
+from .types import NonEmptyStr
 from .utils import make_literal
 
 
@@ -68,13 +68,13 @@ class LDIdRef(MetadataSchema):
     class Config:
         extra = Extra.forbid
 
-    id_: Annotated[NonEmpty[str], Field(alias="@id")]
+    id_: Annotated[NonEmptyStr, Field(alias="@id")]
 
 
 class LDSchema(MetadataSchema):
     """Semantically enriched schema for JSON-LD."""
 
-    id_: Annotated[Optional[NonEmpty[str]], Field(alias="@id")]
+    id_: Annotated[Optional[NonEmptyStr], Field(alias="@id")]
 
     def ref(self) -> LDIdRef:
         """Return LDIdRef, i.e. a pure @id reference for object.

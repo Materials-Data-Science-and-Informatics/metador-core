@@ -141,7 +141,7 @@ class WrappedAttributeManager(wrapt.ObjectProxy):
         elif self._self_ro:
             self._self_allowed = {"keys", "values", "items", "get"}
         else:
-            self._self_allowed = {}  # this means everything is allowed
+            self._self_allowed = set()  # this means everything is allowed
 
     def _raise_illegal_op(self, flag: str):
         raise RuntimeError(f"This attribute set belongs to a node marked as {flag}!")
@@ -628,10 +628,6 @@ class MetadorDataset(MetadorNode):
         return self.__wrapped__.__setitem__(*args, **kwargs)  # RAW
 
 
-# NOTE: one could try writing a ZIP wrapper providing the minimal HDF5 like API and
-# to make it work it just needs to be registered for H5Type and implement the protocol
-
-
 class MetadorContainer(wrapt.ObjectProxy):
     """Wrapper class adding Metador container interface to h5py.File-like objects.
 
@@ -979,7 +975,15 @@ class MetadorMeta:
 
     # following have transitive semantics (i.e. logic also works with parent schemas)
 
-    def get(self, schema: Union[str, Type[S]]) -> Optional[S]:
+    @overload
+    def get(self, schema: str) -> Optional[MetadataSchema]:
+        ...
+
+    @overload
+    def get(self, schema: Type[S]) -> Optional[S]:
+        ...
+
+    def get(self, schema: Union[str, Type[S]]) -> Optional[Union[MetadataSchema, S]]:
         """Get a parsed metadata object (if it exists) matching the given known schema.
 
         Will also accept a child schema object and parse it as the parent schema.
@@ -1191,8 +1195,8 @@ class MetadorContainerTOC:
 
         This assumes that the already existing schemas and the new one are compatible!
         """
-        env_pkg_info = _SCHEMAS.provider(schema_name)
-        pkg_name = env_pkg_info.name
+        env_pkg_info: PluginPkgMeta = _SCHEMAS.provider(schema_name)
+        pkg_name = str(env_pkg_info.name)
 
         # update/create metadata entry in container
         curr_info = self._pkginfos.get(pkg_name)
