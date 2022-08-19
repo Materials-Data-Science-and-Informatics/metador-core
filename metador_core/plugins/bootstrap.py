@@ -1,6 +1,7 @@
 """Base functionality for declaring validated plugin types for Metador."""
 from __future__ import annotations
 
+from graphlib import TopologicalSorter
 from typing import Any, Dict
 
 from importlib_metadata import entry_points
@@ -48,15 +49,6 @@ def _create_pgb_group(pg_cls):
     installed[pg_name] = pg_cls(plugins)
 
 
-def resolve_loading_order(pgs):
-    # hack so schema plugin group is loaded first. cleaner + more general:
-    # use topo sort based on pgb.required_plugin_groups (TODO)
-    ret = list(pgs)
-    ret.remove("schema")
-    ret.insert(0, "schema")
-    return ret
-
-
 def load_plugins():
     # prepare the "plugin group plugin group", mother of all plugins
     _create_pgb_group(pg.PluginGroup)
@@ -65,8 +57,10 @@ def load_plugins():
     pgpg_inst._check(pg.PG_GROUP_NAME, pg.PluginGroup)
     pgpg_inst.post_load()
 
-    # load groups in a reasonable order
-    pg_order = resolve_loading_order(pgpg.keys())
+    # load other plugin groups in proper order
+    pg_deps = {name: grp.Plugin.required_plugin_groups for name, grp in pgpg.items()}
+    pg_order = list(TopologicalSorter(pg_deps).static_order())
+
     for pg_name in pg_order:
         pgroup = pgpg[pg_name]
         pgpg_inst._check(pg_name, pgroup)
