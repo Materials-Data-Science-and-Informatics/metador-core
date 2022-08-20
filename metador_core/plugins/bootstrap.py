@@ -49,7 +49,15 @@ def _create_pgb_group(pg_cls):
     installed[pg_name] = pg_cls(plugins)
 
 
+_loaded = False
+
+
 def load_plugins():
+    global _loaded
+    if _loaded:
+        raise RuntimeError("Plugins have already been loaded and initialized!")
+    _loaded = True
+
     # prepare the "plugin group plugin group", mother of all plugins
     _create_pgb_group(pg.PluginGroup)
     pgpg = _loaded_pgroups[pg.PG_GROUP_NAME]

@@ -5,10 +5,6 @@ from typing import Any, Dict
 
 import pytest
 
-from metador_core.plugins.bootstrap import load_plugins
-
-load_plugins()
-
 
 @pytest.fixture(scope="session")
 def ds_dir(tmpdir_factory):
