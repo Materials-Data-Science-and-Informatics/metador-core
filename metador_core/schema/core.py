@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Optional
 
 import isodate
-from pydantic import AnyHttpUrl, BaseModel, Extra, Field, ValidationError
+from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, Field, ValidationError
 from pydantic_yaml import YamlModelMixin
 from typing_extensions import Annotated
 
@@ -22,17 +22,15 @@ def _mod_def_dump_args(kwargs):
 
 
 class MetadataSchema(YamlModelMixin, BaseModel):
-    """Extended Pydantic base model with custom serializers and functions.
-
-    Use (subclasses of) this baseclass to create new Metador metadata schemas and plugins.
-    """
+    """Extends Pydantic models with custom serializers and functions."""
 
     if TYPE_CHECKING:
         from . import SchemaPlugin
 
         Plugin: SchemaPlugin
+        Partial: MetadataSchema
 
-    class Config:
+    class Config(BaseConfig):
         underscore_attrs_are_private = True  # avoid using PrivateAttr all the time
         use_enum_values = True  # to serialize enums properly
         allow_population_by_field_name = (
@@ -74,7 +72,7 @@ class PluginRef(MetadataSchema):
     class Config:
         frozen = True
 
-    group: NonEmptyStr
+    group: str
     """Metador pluggable group name, i.e. name of the entry point group."""
 
     name: NonEmptyStr

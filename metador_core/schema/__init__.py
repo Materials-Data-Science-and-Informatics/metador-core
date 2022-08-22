@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 from queue import SimpleQueue
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import Any, Dict, List, Literal, Optional, Set, Type
 
 from overrides import overrides
 
 from ..plugins import interface as pg
-from .core import MetadataSchema, PluginRef
+from .core import MetadataSchema
 from .partial import create_partial_model
 from .utils import LiftedRODict, collect_model_types
 
 SCHEMA_GROUP_NAME = "schema"
 
 
+class SchemaPluginRef(pg.PluginRef):
+    group: Literal["schema"]
+
+
 class SchemaPlugin(pg.PluginBase):
     group = SCHEMA_GROUP_NAME
-    parent_schema: Optional[PluginRef]
+    parent_schema: Optional[SchemaPluginRef]
 
     class Fields(pg.PluginBase.Fields):
-        parent_schema: Optional[PluginRef]
+        parent_schema: Optional[SchemaPluginRef]
         """Declares a parent schema plugin.
 
         By declaring a parent schema you agree to the following contract:
@@ -88,6 +92,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     MUST create suitable represantative test cases that check whether
     this property is satisfied.
     """
+
+    class PluginRef(SchemaPluginRef):
+        ...
 
     class Plugin(pg.PGPlugin):
         name = SCHEMA_GROUP_NAME
@@ -206,10 +213,13 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         refs = {}  # partial name -> partial
 
         for schema in subschemas.keys():
+            schema.update_forward_refs()
+
+        for schema in subschemas.keys():
             partial = create_partial_model(schema)
             partials[schema] = partial
             refs[partial.__name__] = partial
 
         for schema, partial in partials.items():
-            partial.update_forward_refs(**refs)
+            # partial.update_forward_refs(**refs)
             setattr(schema, "Partial", partial)

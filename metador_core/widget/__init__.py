@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set, Type
+from typing import List, Literal, Optional, Set, Type
 
 from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
@@ -12,7 +12,7 @@ from typing_extensions import Annotated
 from ..container import MetadorNode
 from ..plugins import interface as pg
 from ..schema import PGSchema
-from ..schema.core import MetadataSchema, PluginRef
+from ..schema.core import MetadataSchema
 from .server import WidgetServer
 
 
@@ -64,7 +64,7 @@ class Widget(ABC, EnforceOverrides):
         return self._server.file_url_for(node)
 
     @classmethod
-    def supports(cls, schema: PluginRef) -> bool:
+    def supports(cls, schema: PGSchema.PluginRef) -> bool:
         """Return whether a certain schema is supported by the widget."""
         return any(map(lambda sref: sref.supports(schema), cls.Plugin.supports))
 
@@ -91,15 +91,18 @@ WIDGET_GROUP_NAME = "widget"
 
 class WidgetPlugin(pg.PluginBase):
     group = WIDGET_GROUP_NAME
-    supports: List[pg.PluginRef]
+    supports: List[PGSchema.PluginRef]
 
     class Fields(pg.PluginBase.Fields):
-        supports: Annotated[List[pg.PluginRef], Field(min_items=1)]
+        supports: Annotated[List[PGSchema.PluginRef], Field(min_items=1)]
         """Return list of schemas supported by this widget."""
 
 
 class PGWidget(pg.PluginGroup[Widget]):
     """Widget plugin group interface."""
+
+    class PluginRef(pg.PluginRef):
+        group: Literal["widget"]
 
     class Plugin(pg.PGPlugin):
         name = WIDGET_GROUP_NAME
@@ -112,10 +115,10 @@ class PGWidget(pg.PluginGroup[Widget]):
     def check_plugin(self, name: str, plugin: Type[Widget]):
         pg.check_implements_method(name, plugin, Widget.show)
 
-    def supported_schemas(self) -> Set[PluginRef]:
+    def supported_schemas(self) -> Set[PGSchema.PluginRef]:
         """Return union of all schemas supported by all installed widgets."""
         return set.union(*(set(w.Plugin.supports) for w in self.values()))
 
-    def widgets_for(self, schema: PluginRef) -> List[Type[Widget]]:
+    def widgets_for(self, schema: PGSchema.PluginRef) -> List[Type[Widget]]:
         """Return widgets that support the given schema."""
         return [wclass for wclass in self.values() if wclass.supports(schema)]

@@ -42,6 +42,7 @@ pdoc = "^10.0.3"
 # Here we define the default entities used in Metador.
 # For each declared group, plugins can be defined via entrypoints.
 schema = "metador_core.schema:PGSchema"
+harvester = "metador_core.harvester:PGHarvester"
 packer = "metador_core.packer:PGPacker"
 widget = "metador_core.widget:PGWidget"
 
@@ -55,8 +56,12 @@ widget = "metador_core.widget:PGWidget"
 'core.bib' = "metador_core.schema.common:BibMeta"
 'core.imagefile' = "metador_core.schema.common:ImageFileMeta"
 'core.table' = "metador_core.schema.common:TableMeta"
-# This one needed for configuring the dashboard for a container:
+# This one needed for configuring the generic dashboard for a container:
 'core.dashboard' = "metador_core.widget.dashboard:DashboardMeta"
+
+[tool.poetry.plugins.metador_harvester]
+'core.file.generic' = "metador_core.harvester.common:FileMetaHarvester"
+'core.imagefile.dim' = "metador_core.harvester.common:ImageFileMetaHarvester"
 
 [tool.poetry.plugins.metador_widget]
 'core.imagefile' = "metador_core.widget.common:ImageWidget"

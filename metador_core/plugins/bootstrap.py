@@ -62,8 +62,7 @@ def load_plugins():
     _create_pgb_group(pg.PluginGroup)
     pgpg = _loaded_pgroups[pg.PG_GROUP_NAME]
     pgpg_inst = installed[pg.PG_GROUP_NAME]
-    pgpg_inst._check(pg.PG_GROUP_NAME, pg.PluginGroup)
-    pgpg_inst.post_load()
+    pgpg_inst._check(pg.PG_GROUP_NAME, pg.PluginGroup)  # self-check
 
     # load other plugin groups in proper order
     pg_deps = {name: grp.Plugin.required_plugin_groups for name, grp in pgpg.items()}
@@ -73,6 +72,8 @@ def load_plugins():
         pgroup = pgpg[pg_name]
         pgpg_inst._check(pg_name, pgroup)
         _create_pgb_group(pgroup)  # all other plugin groups
+
+    pgpg_inst.post_load()  # finalize loading of plugin groups
 
     # the core package is the one registering the "schema" plugin group.
     # Use that knowledge to hack in that this package also provides the plugingroup plugin:

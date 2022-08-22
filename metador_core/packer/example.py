@@ -11,37 +11,17 @@ is registered as a packer plugin called `example`.)
 """
 
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
-import magic
 import pandas
 from overrides import overrides
-from PIL import Image
 
-from metador_core.schema.common import BibMeta, FileMeta, ImageFileMeta, TableMeta
-
-from ..hashutils import hashsum
 from . import MetadorContainer, Packer, PackerPlugin
 from .diff import DiffNode, DirDiff
 from .util import DirValidationErrors, check_file, wrap_bytes_h5
 
-# TODO: should we define "harvester" plugins for helpers like that? what should the interface be like?
-
-
-def file_meta_for(path: Path):
-    """Return FileMeta object for a file using magic and computing a hashsum."""
-    sz = path.stat().st_size
-    hs = hashsum(open(path, "rb"), "sha256")
-    mt = magic.from_file(path, mime=True)
-    return FileMeta(id_=path.name, contentSize=sz, sha256=hs, encodingFormat=[mt])
-
-
-def image_meta_for(path: Path):
-    ret = ImageFileMeta.partial_from(file_meta_for(path))
-    with Image.open(path) as img:
-        width, height = img.size
-    ret.update({"width": width, "height": height})
-    return ret
+BibMeta = Any
+TableMeta = Any
 
 
 class GenericPacker(Packer):
@@ -153,11 +133,11 @@ class GenericPacker(Packer):
                         # embed image file with image-specific metadata
                         print("CREATE:", path, "->", key, "(image)")
                         mc[key] = wrap_bytes_h5(path.read_bytes())
-                        mc[key].meta["common_image"] = image_meta_for(path)
+                        # mc[key].meta["common_image"] = image_meta_for(path)
 
                     else:
                         # treat as opaque blob and add file metadata
                         print("CREATE:", path, "->", key, "(file)")
                         mc[key] = wrap_bytes_h5(path.read_bytes())
 
-                    mc[key].meta["common_file"] = file_meta_for(path)
+                    # mc[key].meta["common_file"] = file_meta_for(path)

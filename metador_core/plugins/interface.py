@@ -9,12 +9,15 @@ from typing import (
     ItemsView,
     KeysView,
     List,
+    Literal,
     Optional,
     Type,
     TypeVar,
     Union,
     ValuesView,
     cast,
+    get_args,
+    get_origin,
     overload,
 )
 
@@ -22,7 +25,12 @@ from ..schema.core import PluginBase, PluginPkgMeta, PluginRef
 
 # group prefix for metador plugin entry point groups.
 PGB_GROUP_PREFIX: str = "metador_"
+
 PG_GROUP_NAME = "plugingroup"
+
+
+class PGPluginRef(PluginRef):
+    group: Literal["plugingroup"]
 
 
 class PGPlugin(PluginBase):
@@ -111,12 +119,15 @@ class PluginGroup(Generic[T]):
     """
 
     class Plugin(PGPlugin):
+        """This is the plugin group plugin group, the first loaded group."""
+
         name = PG_GROUP_NAME
         version = (0, 1, 0)
         required_plugin_groups: List[str] = []
         plugin_info_class = PGPlugin
 
-    PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
+    class PluginRef(PGPluginRef):
+        """PluginRef where 'group' is fixed to this plugin group."""
 
     _PKG_META: Dict[str, PluginPkgMeta] = {}
     """Mapping from package name to metadata of the package.
@@ -126,6 +137,8 @@ class PluginGroup(Generic[T]):
 
     _LOADED_PLUGINS: Dict[str, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
+
+    PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
     def __init__(self, loaded_plugins: Dict[str, Type[T]]):
         self._LOADED_PLUGINS = loaded_plugins
@@ -201,7 +214,7 @@ class PluginGroup(Generic[T]):
         check_is_subclass(name, plugin.Plugin, pgi_cls)
         plugin.Plugin._check(ep_name=name)
 
-        # check correct inheritance for plugin and its info
+        # check correct inheritance for plugin info
         if pg_cls := self.Plugin.plugin_class:
             check_is_subclass(name, plugin, pg_cls)
 
@@ -219,15 +232,24 @@ class PluginGroup(Generic[T]):
             name: Declared entrypoint name.
             plugin: Object the entrypoint is pointing to.
         """
-        # the default implementation is the one for the plugin group plugin group
-        # and must make sure that all child plugin groups override it
-        if id(type(self)) != id(PluginGroup):
-            return
+        if type(self) is not PluginGroup:
+            return  # called not for "plugin group plugin group"
 
         # these are the checks done for PluginGroup plugins (schema, etc.)
         check_is_subclass(name, plugin, PluginGroup)
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             check_implements_method(name, plugin, PluginGroup.check_plugin)
+
+        # check attached subclass of PluginRef
+        if not hasattr(plugin, "PluginRef"):
+            raise TypeError(f"{name}: {plugin} is missing 'PluginRef' attribute!")
+        check_is_subclass(name, cast(Any, plugin).PluginRef, PluginRef)
+        group_type = cast(Any, plugin).PluginRef.__fields__["group"].type_
+        t_const = get_origin(group_type)
+        t_args = get_args(group_type)
+        if t_const is not Literal or t_args != (name,):
+            msg = f"{name}: {plugin}.PluginRef.group type must be Literal['{name}']!"
+            raise TypeError(msg)
 
         # make sure that the declared plugin_info_class for the group sets 'group',
         # and it is also equal to the plugin group 'name'.

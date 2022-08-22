@@ -4,7 +4,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from io import UnsupportedOperation
 from pathlib import Path
-from typing import Tuple, Type
+from typing import Literal, Tuple, Type
 
 import wrapt
 from overrides import EnforceOverrides, overrides
@@ -228,6 +228,9 @@ class PackerPlugin(pg.PluginBase):
 
 class PGPacker(pg.PluginGroup[Packer]):
     """Packer plugin group interface."""
+
+    class PluginRef(pg.PluginRef):
+        group: Literal["packer"]
 
     class Plugin(pg.PGPlugin):
         name = PACKER_GROUP_NAME
