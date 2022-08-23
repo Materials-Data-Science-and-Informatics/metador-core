@@ -16,10 +16,10 @@ from typing import (
     Union,
     ValuesView,
     cast,
-    get_args,
-    get_origin,
     overload,
 )
+
+from typing_extensions import get_args, get_origin
 
 from ..schema.core import PluginBase, PluginPkgMeta, PluginRef
 

@@ -87,7 +87,7 @@ class Harvester(ABC, Generic[T]):
         """
         raise NotImplementedError
 
-    def combine(self, existing: S, harvested: S) -> S:
+    def merge(self, existing: S, harvested: S) -> S:
         """Return fresh object combining the metadata of the arguments.
 
         Override this ONLY if you are sure that you need custom logic for
@@ -111,14 +111,7 @@ class Harvester(ABC, Generic[T]):
         Returns:
             An fresh combined instance of the same type as the arguments.
         """
-        return existing.update(harvested)
-
-
-def cast_partial(pmodel: Type[T], obj: MetadataSchema) -> T:
-    """Try converting to pmodel if not already instance of it."""
-    if isinstance(obj, pmodel):
-        return obj
-    return pmodel.to_partial(obj)
+        return existing.merge(harvested)
 
 
 def partial_arg(pmodel: Type[T], obj: Union[str, Path, MetadataSchema]) -> T:
@@ -126,7 +119,7 @@ def partial_arg(pmodel: Type[T], obj: Union[str, Path, MetadataSchema]) -> T:
     if isinstance(obj, (str, Path)):
         return pmodel.parse_file(Path(obj))
     else:
-        return cast_partial(pmodel, obj)
+        return pmodel.cast(obj)
 
 
 def schema_arg(obj: Union[str, Type[MetadataSchema]]) -> Type[MetadataSchema]:
@@ -273,12 +266,12 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         for i, h in enumerate(harvesters):
             # harvesters can have different but compatible output
             # models, to we cast the result if needed
-            result: T = cast_partial(schema.Partial, results[i])
+            result: T = schema.Partial.cast(results[i])
             # combine metadata (like a "reduce" step, only that
             # at each step the reducing function can be modified)
-            merged = h.combine(merged, result)
+            merged = h.merge(merged, result)
         if last:
-            merged = merged.update(last)
+            merged = merged.merge(last)
 
         # retrieve (completed) metadata model
         return merged if return_partial else merged.from_partial()

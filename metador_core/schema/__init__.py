@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from queue import SimpleQueue
-from typing import Any, Dict, List, Literal, Optional, Set, Type
+from typing import Any, Dict, List, Literal, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
 from ..plugins import interface as pg
 from .core import MetadataSchema
-from .partial import PartialModel, create_partial_model
-from .utils import LiftedRODict, collect_model_types
+from .partial import PartialModel, create_partial_model, is_mergeable_type
+from .utils import LiftedRODict, collect_model_types, get_annotations
 
 SCHEMA_GROUP_NAME = "schema"
 
@@ -49,6 +49,30 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     schemas that are not intended to be used on their own in the container, but
     model a meaningful metadata object that can be part of a larger schema.
 
+
+    Guidelines for field definition:
+
+    * Stick to the following types to construct your field annotation:
+      - basic types: (`bool, int, float, str`)
+      - basic hints from `typing`: `Optional, Literal, Union, Set, List, Tuple`
+      - default pydantic types (such as `AnyHttpUrl`)
+      - default classes supported by pydantic (e.g. `enum.Enum`, `datetime`, etc.)
+      - constrained types defined using the `phantom` package
+      - valid schema classes (subclasses of `MetadataSchema`)
+    * `Optional` is for values that are semantically *missing*,
+      You must not assume that a `None` value represents anything else than that.
+    * Avoid using plain `Dict`, always define a schema instead if you know the keys,
+      unless you really need to "pass through" whatever is given, which is usually
+      not necessary for schemas that you design from scratch.
+    * Prefer types from `phantom` over using pydantic `Field` settings for expressing
+      simple value constraints (e.g. minimal/maximal value or collection length, etc.),
+      because `phantom` types can be subclassed to narrow them down.
+    * In general, avoid using `Field` at all, except for defining an `alias` for
+      attributes that are not valid as Python variables (e.g. `@id` or `$schema`).
+    * When using `Field`, make sure to annotate it with `typing_extensions.Annotated`,
+      instead of assigning the `Field` object to the field name.
+
+
     Rules for schema versioning:
 
     All schemas must be subclass of `MetadataSchema` and also subclass of the
@@ -74,7 +98,8 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     that with higher X (MAJOR, MINOR or PATCH), the version
     of your schema must be incremented in X as well.
 
-    Rules for schema extension:
+
+    Rules for schema subclassing:
 
     A child schema that only extends a parent with new fields is safe.
     To schemas that redefine parent fields additional rules apply:
@@ -82,15 +107,23 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     EACH instance of a schema MUST also be parsable by the parent schema
 
     This means that a child schema may only override parent fields
-    with more specific types, i.e., only RESTRICT the set of possible
+    with more specific types, i.e., only RESTRICT the set of acceptable
     values compared to the parent field (safe examples include
     adding new or narrowing existing bounds and constraints,
     or excluding some values that are allowed by the parent schema).
 
-    As automatically verifying this is not feasible, but the ability
-    is very much needed in practical use, the schema developer
-    MUST create suitable represantative test cases that check whether
-    this property is satisfied.
+    As automatically verifying this in full generality is not feasible, but the
+    ability to "restrict" fields is very much needed in practical use, the
+    schema developer MUST create suitable represantative test cases that check
+    whether this property is satisfied.
+
+    Try expressing field value restrictions by:
+
+    * removing alternatives from a `Union`
+    * using a subclass of a schema or `phantom` type used in the parent
+
+    These can be statically type-checked by e.g. mypy most of the time.
+
     """
 
     class PluginRef(SchemaPluginRef):
@@ -104,9 +137,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin_info_class = SchemaPlugin
 
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
+        """Sanity-checks for possibly defined parent schema."""
         parent_ref = plugin.Plugin.parent_schema
         if parent_ref is None:
-            return  # no parent method -> nothing to do
+            plugin.__overrides__ = set()
+            return  # no parent schema listed -> nothing to do
 
         # check whether parent is known, compatible and really is a superclass
         parent = self.get(parent_ref.name)
@@ -125,8 +160,22 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             msg += f"claimed parent schema {parent} ({parent_ref})!"
             raise TypeError(msg)
 
+        # tag the overridden fields (defined in parent and in child)
+        # (could be automatically tested by pytest to check correct narrowing)
+        parent_fields = get_annotations(parent)
+        child_fields = get_annotations(plugin)
+        plugin.__overrides__ = set(parent_fields.keys()).intersection(
+            set(child_fields.keys())
+        )
+
     def _check_types(self, name: str, plugin: Type[MetadataSchema]):
-        ...
+        """Check shape of defined fields."""
+        hints = get_type_hints(plugin)
+        for field, hint in hints.items():
+            if field[0] == "_":
+                continue  # private field
+            if not is_mergeable_type(hint):
+                raise TypeError(f"{name}: '{field}' contains a forbidden pattern!")
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
@@ -142,9 +191,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # this is to strong an assumption, we actually want to allow to specialize them
         # without breaking parsability
         # TODO: this could go into a test suite helper - check that parsing as parent not broken
-        # parent_fields = get_type_hints(parent)
-        # child_fields = get_type_hints(plugin)
-        # overrides = set(parent_fields.keys()).intersection(set(child_fields.keys()))
         # for attr_name in overrides:
         #     if child_fields[attr_name] != parent_fields[attr_name]:
         #         msg = f"{name}: '{attr_name}' ({child_fields[attr_name]}) is "
@@ -237,17 +283,17 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         refs: Dict[str, MetadataSchema] = {}  # partial name -> partial
 
         for schema in subschemas.keys():
-            # update refs for all models we collected
+            # update refs for all models we collected (just in case)
             schema.update_forward_refs()
 
         for schema in subschemas.keys():
             # create and collect partials
             partial = create_partial_model(schema)
             partials[schema] = partial
-            refs[partial.__name__] = partial
+            refs[partial._forwardref_name] = partial
 
         for schema, partial in partials.items():
-            # partial.update_forward_refs(**refs)
+            partial.update_forward_refs(**refs)
             setattr(schema, "Partial", partial)
 
     # ----

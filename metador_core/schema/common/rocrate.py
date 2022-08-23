@@ -54,6 +54,8 @@ class DirMeta(schemaorg.Dataset):
 class Organization(schemaorg.Organization):
     @validator("id_")
     def check_id(cls, v):
+        if not v:
+            return None
         if not v.startswith("https://ror.org/"):
             raise ValueError("Person @id must be a valid ROR URL!")
         return parse_obj_as(schemaorg.URL, v)
@@ -63,18 +65,20 @@ class Organization(schemaorg.Organization):
 class Person(schemaorg.Person):
     @validator("id_")
     def check_id(cls, v):
+        if not v:
+            return None
         if not v.startswith("https://orcid.org/"):
             raise ValueError("Person @id must be a valid ORCID URL!")
         return parse_obj_as(schemaorg.URL, v)
 
     @root_validator(pre=True)
     def check_name(cls, values):
-        if (values.get("givenName") or values.get("additionalName")) and not values.get(
-            "familyName"
-        ):
-            raise ValueError(
-                "givenName and additionalName require also familyName to be provided!"
-            )
+        has_given_or_additional = values.get("givenName") or values.get(
+            "additionalName"
+        )
+        if has_given_or_additional and not values.get("familyName"):
+            msg = "givenName and additionalName require also familyName to be provided!"
+            raise ValueError(msg)
         return values
 
     @root_validator

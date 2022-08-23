@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, ClassVar, Dict, Optional, Set, Type
 
 import isodate
 from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, Field, ValidationError
@@ -24,11 +24,20 @@ def _mod_def_dump_args(kwargs):
 class MetadataSchema(YamlModelMixin, BaseModel):
     """Extends Pydantic models with custom serializers and functions."""
 
+    # fields overriding immediate parent (for testing)
+    __overrides__: ClassVar[Set[str]]
+    # fields with constant values added by add_annotations
+    __constants__: ClassVar[Set[str]]
+
+    # important! breaks field hint inspection, if we add hints here without the guard!
     if TYPE_CHECKING:
         from . import SchemaPlugin
 
+        # user-defined:
         Plugin: SchemaPlugin
-        Partial: MetadataSchema
+        # auto-generated:
+        Schemas: Type  # used subschemas, for import-less access
+        Partial: MetadataSchema  # partial schemas for harvesters
 
     class Config(BaseConfig):
         underscore_attrs_are_private = True  # avoid using PrivateAttr all the time

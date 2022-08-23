@@ -1,10 +1,115 @@
+from collections import ChainMap
 from io import UnsupportedOperation
-from typing import _GenericAlias  # type: ignore
-from typing import Any, Callable, Dict, Iterable, Set, Tuple
+from typing import (  # type: ignore
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    _GenericAlias,
+)
 
+import typing_extensions
 from pydantic import BaseModel
 from pydantic.fields import ModelField
-from typing_extensions import Literal, TypedDict, get_args, get_origin
+from typing_extensions import Annotated, Literal, TypedDict, get_args
+
+
+def is_instance_of(t: Any) -> Callable[[Any], bool]:
+    """Return a predicate to check isinstance for a given type."""
+    return lambda obj: isinstance(obj, t)
+
+
+def is_subclass_of(t: Any) -> Callable[[Any], bool]:
+    """Return a predicate to check issubclass for a given type."""
+    return lambda obj: issubclass(obj, t)
+
+
+to38hint: Dict[Type, Any] = {
+    list: List,
+    set: Set,
+    dict: Dict,
+    type: Type,
+}
+
+
+def get_origin(hint):
+    # Fixed get_origin to return 3.8-compatible type hints.
+    # Need this for pydantic dynamic model generation in 3.8.
+    o = typing_extensions.get_origin(hint)
+    return to38hint.get(o, o)
+
+
+def is_list(hint):
+    return get_origin(hint) is List
+
+
+def is_set(hint):
+    return get_origin(hint) is Set
+
+
+def is_union(hint):
+    return get_origin(hint) is Union
+
+
+NoneType = type(None)
+
+
+def is_nonetype(hint):
+    return hint is NoneType
+
+
+def is_optional(hint):
+    # internally, Optional is just sugar for a Union including NoneType.
+    return is_union(hint) and any(map(is_nonetype, get_args(hint)))
+
+
+def get_annotations(cls):
+    """Return (non-inherited) annotations (unparsed) of given class."""
+    return cls.__dict__.get("__annotations__", {})
+
+
+def get_type_hints(cls, *, include_inherited: bool = False) -> Mapping[str, Any]:
+    """Return type hints of this class (if desired, including inherited)."""
+    if not include_inherited:
+        return typing_extensions.get_type_hints(cls, include_extras=True)
+    return ChainMap(
+        *(
+            typing_extensions.get_type_hints(c, include_extras=True)
+            for c in cls.__mro__
+            if "__annotations__" in c.__dict__
+        )
+    )
+
+
+def make_typehint(t_cons_proxy, *t_args):
+    """Construct a type hint based on a proxy type hint object and desired args."""
+    t_cons = get_origin(t_cons_proxy)
+    if t_cons is Annotated:
+        return typing_extensions._AnnotatedAlias(t_args[0], tuple(t_args[1:]))
+    return _GenericAlias(t_cons, tuple(t_args))
+
+
+def make_literal(val):
+    """Given a JSON object, return type that parses exactly that object."""
+    if isinstance(val, dict):
+        d = {k: make_literal(v) for k, v in val.items()}
+        return TypedDict("AnonConstDict", d)  # type: ignore
+    if isinstance(val, tuple) or isinstance(val, list):
+        args = tuple(map(make_literal, val))
+        return _GenericAlias(Tuple, args)
+    if val is None:
+        return type(None)
+    # using Literal directly makes Literal[True] -> Literal[1] -> don't want that
+    return _GenericAlias(Literal, val)
+
+
+# ----
 
 
 class ParserMixin:
@@ -61,31 +166,7 @@ class ParserMixin:
             raise ValueError(msg)
 
 
-def make_literal(val):
-    """Given a JSON object, return type that parses exactly that object."""
-    if isinstance(val, dict):
-        d = {k: make_literal(v) for k, v in val.items()}
-        return TypedDict("AnonConstDict", d)  # type: ignore
-    if isinstance(val, tuple) or isinstance(val, list):
-        args = tuple(map(make_literal, val))
-        return _GenericAlias(Tuple, args)
-    if val is None:
-        return type(None)
-    # using Literal directly makes Literal[True] -> Literal[1] -> don't want that
-    return _GenericAlias(Literal, val)
-
-
 # ----
-
-
-def is_instance_of(t: Any) -> Callable[[Any], bool]:
-    """Return a predicate to check isinstance for a given type."""
-    return lambda obj: isinstance(obj, t)
-
-
-def is_subclass_of(t: Any) -> Callable[[Any], bool]:
-    """Return a predicate to check issubclass for a given type."""
-    return lambda obj: issubclass(obj, t)
 
 
 def make_tree_traversal(
@@ -128,10 +209,6 @@ def make_tree_mapper(node_constructor, succ_func):
     return map_func
 
 
-def make_typehint(t_cons, *t_args):
-    return _GenericAlias(get_origin(t_cons), tuple(t_args))
-
-
 map_typehint = make_tree_mapper(make_typehint, get_args)
 
 
@@ -151,6 +228,9 @@ def collect_model_types(m: BaseModel, *, bound=object) -> Set:
     return set.union(
         set(), *map(lambda mf: set(field_types(mf, bound=bound)), m.__fields__.values())
     )
+
+
+# ----
 
 
 class LiftedDict(type):

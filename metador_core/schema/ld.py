@@ -30,6 +30,7 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
     def add_fields(mcls):
         if not issubclass(mcls, BaseModel):
             raise ValueError("This is a decorator for pydantic models!")
+
         if not allow_override:
             if shadowed := set.intersection(
                 set(consts.keys()), set(mcls.__fields__.keys())
@@ -37,6 +38,7 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
                 msg = f"Attached const fields {shadowed} override defined fields in {mcls}!"
                 raise ValueError(msg)
 
+        # hacking it in-place approach:
         for name, value in consts.items():
             val = value.default if isinstance(value, FieldInfo) else value
             ctype = Optional[make_literal(val)]  # type: ignore
@@ -49,8 +51,19 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
             )
             mcls.__fields__[name] = field
             mcls.__annotations__[name] = field.type_
+        ret = mcls
 
-        return mcls
+        # dynamic subclass approach:
+        # ret = create_model(
+        #     mcls.__name__, __base__=mcls, __module__=mcls.__module__, **consts
+        # )
+        # if hasattr(mcls, "Plugin"):
+        #     ret.Plugin = mcls.Plugin
+
+        # to later detect annotation fields:
+        parent_consts = mcls.__dict__.get("__constants__", set())
+        ret.__constants__ = parent_consts.union(set(consts.keys()))
+        return ret
 
     return add_fields
 
