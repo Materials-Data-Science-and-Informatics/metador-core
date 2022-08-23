@@ -162,7 +162,9 @@ class PluginGroup(Generic[T]):
         return self._LOADED_PLUGINS.items()
 
     def __getitem__(self, key: str) -> Type[T]:
-        return self._LOADED_PLUGINS[key]
+        if ret := self._LOADED_PLUGINS.get(key):
+            return ret
+        raise KeyError(f"{self.name} not found: {key}")
 
     @overload
     def get(self, key: str) -> Optional[Type[T]]:
@@ -190,7 +192,7 @@ class PluginGroup(Generic[T]):
         """Return package metadata of Python package providing this plugin."""
         pkg = cast(Any, self[ep_name]).Plugin._provided_by
         if pkg is None:
-            msg = f"Did not find package providing {self.Plugin.name} plugin: {ep_name}"
+            msg = f"No package found providing this {self.name} plugin: {ep_name}"
             raise KeyError(msg)
         return self._PKG_META[pkg]
 

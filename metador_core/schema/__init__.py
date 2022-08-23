@@ -9,7 +9,7 @@ from overrides import overrides
 
 from ..plugins import interface as pg
 from .core import MetadataSchema
-from .partial import create_partial_model
+from .partial import PartialModel, create_partial_model
 from .utils import LiftedRODict, collect_model_types
 
 SCHEMA_GROUP_NAME = "schema"
@@ -103,13 +103,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
 
-    @overrides
-    def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        for forbidden in ["Schemas", "Partial"]:
-            # check that the auto-generated field names are not used
-            if hasattr(plugin, forbidden):
-                raise TypeError(f"{name}: Schema has forbidden field '{forbidden}'!")
-
+    def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
         parent_ref = plugin.Plugin.parent_schema
         if parent_ref is None:
             return  # no parent method -> nothing to do
@@ -131,6 +125,19 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             msg += f"claimed parent schema {parent} ({parent_ref})!"
             raise TypeError(msg)
 
+    def _check_types(self, name: str, plugin: Type[MetadataSchema]):
+        ...
+
+    @overrides
+    def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
+        for forbidden in ["Schemas", "Partial"]:
+            # check that the auto-generated field names are not used
+            if hasattr(plugin, forbidden):
+                raise TypeError(f"{name}: Schema has forbidden field '{forbidden}'!")
+
+        self._check_parent(name, plugin)
+        self._check_types(name, plugin)
+
         # make sure that subclasses don't shadow parent attributes
         # this is to strong an assumption, we actually want to allow to specialize them
         # without breaking parsability
@@ -144,23 +151,38 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
         #         raise TypeError(msg)
 
-    def parent_path(self, schema_name: str) -> List[str]:
-        """Get sequence of registered parent schema names leading to the given schema.
-
-        This sequence can be a subset of the parent sequences in the actual class
-        hierarchy (not every subclass must be registered as a plugin).
-        """
+    def _compute_parent_path(self, schema_name: str) -> List[str]:
+        # NOTE: schemas must be already loaded
         ret = [schema_name]
 
-        curr = self[schema_name]  # type: ignore
+        curr = self[schema_name]
         parent = curr.Plugin.parent_schema
         while parent is not None:
             ret.append(parent.name)
-            curr = self[parent.name]  # type: ignore
+            curr = self[parent.name]
             parent = curr.Plugin.parent_schema
 
         ret.reverse()
         return ret
+
+    def _compute_parent_paths(self) -> Dict[str, List[str]]:
+        parents: Dict[str, List[str]] = {}
+        for name in self.keys():
+            parents[name] = self._compute_parent_path(name)
+        return parents
+
+    def _compute_children(self) -> Dict[str, Set[str]]:
+        # NOTE: parent paths must be already initialized
+        children: Dict[str, Set[str]] = {}
+        for schema in self.keys():
+            if schema not in children:  # need that for childless
+                children[schema] = set()
+            parents = self.parent_path(schema)[:-1]
+            for parent in parents:
+                if parent not in children:
+                    children[parent] = set()
+                children[parent].add(schema)
+        return children
 
     @classmethod
     def _attach_subschemas(cls, schema: MetadataSchema, subschemas):
@@ -179,15 +201,17 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         setattr(schema, "Schemas", Schemas)
 
     def post_load(self):
-        subschemas: Dict[Any, Set[Any]] = {}
+        self._parents = self._compute_parent_paths()
+        self._children = self._compute_children()
 
-        # collect registered schemas
+        subschemas: Dict[Any, Set[Any]] = {}
         for schema in self.values():
+            # collect immediate subschemas used in a schema
             subschemas[schema] = collect_model_types(schema, bound=MetadataSchema)
-            # to those we attach the subschemas helper inner class
+            # attach the subschemas helper inner class to registered schemas
             self._attach_subschemas(schema, subschemas[schema])
 
-        # collect possibly unregistered schemas (non-plugins)
+        # now collect possibly unregistered schemas (non-plugins)
         missed = set()
         for deps in subschemas.values():
             for dep in deps:
@@ -209,13 +233,15 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
                 if dep not in subschemas:
                     q.put(dep)
 
-        partials = {}  # schema -> its partial
-        refs = {}  # partial name -> partial
+        partials: Dict[MetadataSchema, PartialModel] = {}  # schema -> partial
+        refs: Dict[str, MetadataSchema] = {}  # partial name -> partial
 
         for schema in subschemas.keys():
+            # update refs for all models we collected
             schema.update_forward_refs()
 
         for schema in subschemas.keys():
+            # create and collect partials
             partial = create_partial_model(schema)
             partials[schema] = partial
             refs[partial.__name__] = partial
@@ -223,3 +249,17 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         for schema, partial in partials.items():
             # partial.update_forward_refs(**refs)
             setattr(schema, "Partial", partial)
+
+    # ----
+
+    def parent_path(self, schema_name: str) -> List[str]:
+        """Get sequence of registered parent schema names leading to the given schema.
+
+        This sequence can be a subset of the parent sequences in the actual class
+        hierarchy (not every subclass must be registered as a plugin).
+        """
+        return list(self._parents[schema_name])
+
+    def children(self, schema_name: str) -> Set[str]:
+        """Get set of names of registered (strict) child schemas."""
+        return set(self._children[schema_name])
