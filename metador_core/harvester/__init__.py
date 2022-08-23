@@ -3,18 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import (
-    Dict,
-    Generic,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Set,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Dict, Generic, Literal, Sequence, Set, Type, TypeVar, Union
 
 from overrides import overrides
 
@@ -114,15 +103,7 @@ class Harvester(ABC, Generic[T]):
         return existing.merge(harvested)
 
 
-def partial_arg(pmodel: Type[T], obj: Union[str, Path, MetadataSchema]) -> T:
-    """Try converting a path or a model instance into given partial model."""
-    if isinstance(obj, (str, Path)):
-        return pmodel.parse_file(Path(obj))
-    else:
-        return pmodel.cast(obj)
-
-
-def schema_arg(obj: Union[str, Type[MetadataSchema]]) -> Type[MetadataSchema]:
+def _schema_arg(obj: Union[str, Type[MetadataSchema]]) -> Type[MetadataSchema]:
     """Return installed schema by name or same schema as passed.
 
     Ensures that passed object is in fact a valid, installed schema.
@@ -194,7 +175,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         Returns:
             Set of harvesters.
         """
-        schema_name = schema_arg(schema).Plugin.name
+        schema_name = _schema_arg(schema).Plugin.name
         ret = set(self._harvesters_for[schema_name])
         if include_children:
             for child in _SCHEMAS.children(schema_name):
@@ -204,74 +185,84 @@ class PGHarvester(pg.PluginGroup[Harvester]):
                 ret = ret.union(self.for_schema(parent))
         return ret
 
-    def harvest(
-        self,
-        schema: Type[T],
-        harvesters: Sequence[Harvester[T]],
-        *,
-        start_with: Optional[Union[Path, MetadataSchema]] = None,
-        merge_with: Optional[Union[Path, MetadataSchema]] = None,
-        return_partial: bool = False,
-    ) -> T:
-        """Run a harvesting pipeline and return combined results.
 
-        Will run the harvesters in the passed order, combining results.
-        The combination of partial results can be customized in harvesters,
-        but in general you can expect that if two harvesters provide the same field,
-        the newer value by a later harvester will overwrite an existing one from an
-        earlier harvester or combined with it in a suitable way.
+# harvesting helpers
 
-        If `start_with` is given as a path or partial metadata object, will perform
-        harvesting on top of the provided partial object instead of an empty one.
 
-        If `merge_with` is given as a path or partial metadata object, will
-        combine result of the harvester pipeline with the passed metadata
-        before returning.
+def _harvest_file(schema: Type[T], *paths: Path) -> T:
+    """Harvest partial metadata from the passed path(s) into target schema.
 
-        By default, it is assumed that the result can be converted into a fully
-        valid schema instance that can be returned. If this final conversion fails,
-        an exception will be raised.
+    Will return empty partial schema if file does not exist.
+    If it does exist, the provided fields must be valid, or
+    an exception will be raised.
+    """
+    files = filter(Path.is_file, map(Path, paths))
+    return schema.Partial.merge(*map(schema.Partial.parse_file, files))
 
-        If `return_partial` is set, then the partial instance is returned
-        without the final conversion. In that case, you can manually add
-        additional metadata and then call `from_partial()` to complete it.
 
-        If converting between possibly different schemas fails at some point
-        of the harvester pipeline, a `ValidationError` will be raised.
+def _harvest_source(
+    schema: Type[T], obj: Union[Path, Harvester], *, ignore_invalid: bool = False
+) -> T:
+    """Harvest partial metadata from the passed Harvester or Path into target schema."""
+    if not isinstance(obj, (Path, Harvester)):
+        raise ValueError("Metadata source must be a Harvester or a Path!")
+    if isinstance(obj, Harvester):
+        return schema.Partial.cast(
+            obj.harvest(), ignore_invalid=True
+        )  # could use different schema -> cast
+    else:
+        return _harvest_file(schema, obj)
 
-        Args:
-            schema: Class of schema to be returned.
-            harvesters: List of harvester instances to run.
-            start_with: (Filepath of) partial metadata to be used as base (default: None)
-            merge_with: (Filepath of) partial metadata to be merged with result (default: None).
-            return_partial: Whether to return raw partial instance (default: False).
 
-        Returns:
-            Metadata object with combined results.
-        """
-        # partial to start sequence with (e.g. previous partial data):
-        first: T = schema.Partial()
-        if start_with:
-            first = partial_arg(schema.Partial, start_with)
-        # partial to complete sequence with (e.g. user overrides):
-        last: Optional[T] = None
-        if merge_with:
-            last = partial_arg(schema.Partial, merge_with)
+# this is what one the users should use directly:
 
-        # collect partial metadata (NOTE: in principle, this could be parallelized)
-        results: List[T] = list(map(lambda h: h.harvest(), harvesters))
 
-        # accumulate results in provided order
-        merged = first
-        for i, h in enumerate(harvesters):
-            # harvesters can have different but compatible output
-            # models, to we cast the result if needed
-            result: T = schema.Partial.cast(results[i])
-            # combine metadata (like a "reduce" step, only that
-            # at each step the reducing function can be modified)
-            merged = h.merge(merged, result)
-        if last:
-            merged = merged.merge(last)
+def harvest(
+    schema: Type[T],
+    sources: Sequence[Union[Path, Harvester]],
+    *,
+    ignore_invalid: bool = False,
+    return_partial: bool = False,
+) -> T:
+    """Run a harvesting pipeline and return combined results.
 
-        # retrieve (completed) metadata model
-        return merged if return_partial else merged.from_partial()
+    Will run the harvesters in the passed order, combining results.
+
+    In general you can expect that if two harvesters provide the same field,
+    the newer value by a later harvester will overwrite an existing one from an
+    earlier harvester or combined with it in a suitable way.
+
+    If converting some Harvester result to the desired schema fails,
+    a `ValidationError` will be raised, unless `ignore_invalid` is set,
+    which will make sure that suitable fields are still used, even if the
+    given object is not fully compatible.
+
+    Note that `ignore_invalid` does NOT affect file sources, which ALWAYS
+    must be valid for all provided fields. This is to avoid the situation
+    where a user intends to add or override harvester metadata, but the
+    fields are silently ignored, leading to possible surprise and confusion.
+
+    By default, it is assumed that the result of the whole pipeline can be
+    converted into a fully valid schema instance that can be returned.
+    If this final conversion fails, an exception will be raised.
+    To prevent this conversion, set `return_partial`. In that case, you will
+    get the partial instance as-is and can manually call `from_partial()`
+    when it is finalized.
+
+    Args:
+        schema: Class of schema to be returned.
+        sources: List of sources (Paths or Harvester instances).
+        ignore_invalid: Whether to ignore invalid fields in Harvester results.
+        return_partial: Whether to return raw partial instance (default: False).
+
+    Returns:
+        Metadata object with combined results.
+    """
+    # collect partial metadata (NOTE: in principle, this could be parallelized)
+    results = map(
+        lambda s: _harvest_source(schema, s, ignore_invalid=ignore_invalid), sources
+    )
+    # accumulate resultsp in provided order
+    merged = schema.Partial.merge(*results)
+    # retrieve (completed) metadata model
+    return merged if return_partial else merged.from_partial()

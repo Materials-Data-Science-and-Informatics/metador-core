@@ -9,7 +9,7 @@ from overrides import overrides
 
 from ..plugins import interface as pg
 from .core import MetadataSchema
-from .partial import PartialModel, create_partial_model, is_mergeable_type
+from .partial import PartialSchema, create_partial_schema, is_mergeable_type
 from .utils import LiftedRODict, collect_model_types, get_annotations
 
 SCHEMA_GROUP_NAME = "schema"
@@ -279,8 +279,8 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
                 if dep not in subschemas:
                     q.put(dep)
 
-        partials: Dict[MetadataSchema, PartialModel] = {}  # schema -> partial
-        refs: Dict[str, MetadataSchema] = {}  # partial name -> partial
+        partials: Dict[MetadataSchema, PartialSchema] = {}
+        refs: Dict[str, MetadataSchema] = {}
 
         for schema in subschemas.keys():
             # update refs for all models we collected (just in case)
@@ -288,7 +288,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
         for schema in subschemas.keys():
             # create and collect partials
-            partial = create_partial_model(schema)
+            partial = create_partial_schema(schema)
             partials[schema] = partial
             refs[partial._forwardref_name] = partial
 
