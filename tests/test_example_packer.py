@@ -4,8 +4,8 @@ import h5py
 import pytest
 
 from metador_core.packer import PGPacker
-from metador_core.packer.util import DirValidationErrors
-from metador_core.plugins import installed
+from metador_core.packer.utils import DirValidationErrors
+from metador_core.plugin import plugingroups
 
 pytest.skip(reason="FIXME when API complete", allow_module_level=True)
 
@@ -14,7 +14,7 @@ def test_example_packer(tmp_path_factory, tmp_ds_path, testutils):
     tmp1 = tmp_path_factory.mktemp("tmp1")
     tmp2 = tmp_path_factory.mktemp("tmp2")
 
-    PACKERS = installed.group("packer", PGPacker)
+    PACKERS = plugingroups.group("packer", PGPacker)
     generic = PACKERS["generic"]
 
     # prepare directory and check that it is packer-compatible (just to make sure)

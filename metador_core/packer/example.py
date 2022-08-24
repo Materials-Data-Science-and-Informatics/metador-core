@@ -18,7 +18,7 @@ from overrides import overrides
 
 from . import MetadorContainer, Packer, PackerPlugin
 from .diff import DiffNode, DirDiff
-from .util import DirValidationErrors, check_file, wrap_bytes_h5
+from .utils import DirValidationErrors, check_metadata_file, embed_file
 
 BibMeta = Any
 TableMeta = Any
@@ -59,7 +59,9 @@ class GenericPacker(Packer):
         print("called check_dir")
         errs = DirValidationErrors()
         errs.update(
-            check_file(data_dir / cls.META_SUFFIX, required=True, schema=BibMeta)
+            check_metadata_file(
+                data_dir / cls.META_SUFFIX, required=True, schema=BibMeta
+            )
         )
         return errs
 
@@ -132,12 +134,12 @@ class GenericPacker(Packer):
                     elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
                         # embed image file with image-specific metadata
                         print("CREATE:", path, "->", key, "(image)")
-                        mc[key] = wrap_bytes_h5(path.read_bytes())
+                        embed_file(mc, key, path)
                         # mc[key].meta["common_image"] = image_meta_for(path)
 
                     else:
                         # treat as opaque blob and add file metadata
                         print("CREATE:", path, "->", key, "(file)")
-                        mc[key] = wrap_bytes_h5(path.read_bytes())
+                        embed_file(mc, key, path)
 
                     # mc[key].meta["common_file"] = file_meta_for(path)

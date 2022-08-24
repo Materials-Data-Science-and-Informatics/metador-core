@@ -74,7 +74,7 @@ class PartialSchema(MetadataSchema):
         if isinstance(obj, cls._partial_of):
             return cls.construct(**obj.__dict__)
         if ignore_invalid:
-            data, fields, errs = validate_model(cls, obj)
+            data, fields, _ = validate_model(cls, obj)
             return cls.construct(_fields_set=fields, **data)
         if isinstance(obj, MetadataSchema):
             obj = obj.dict(exclude_none=True)
@@ -223,11 +223,13 @@ def create_partial_schema(mcls: MetadataSchema):
         if k[0] != "_"  # ignore private ones
     }
 
-    # NOTE: partial MUST NOT be subclass of real model!
-    # this semantically does not make sense and would break things!
+    # WARNING: using the subclass as base semantically does not make sense!
+    # unfortunately avoiding it is almost impossible to get right,
+    # in order to get correct behaviour including possible parsing mixins etc.
+    # Take care that partials don't end up in containers!
     ret: Type[PartialSchema] = create_model(
         partial_name(mcls),
-        __base__=PartialSchema,
+        __base__=(PartialSchema, mcls),
         __module__=mcls.__module__,
         __validators__=mcls.__validators__,  # type: ignore
         **fields,
@@ -237,6 +239,8 @@ def create_partial_schema(mcls: MetadataSchema):
     # (they can require combinations of fields to be present!)
     ret.__pre_root_validators__ = []
     ret.__post_root_validators__ = []
+    if hasattr(ret, "Plugin"):  # a partial is not a plugin!
+        ret.Plugin = None  # will make is_plugin() == False
 
     # add required info and return
     ret._partial_of = mcls

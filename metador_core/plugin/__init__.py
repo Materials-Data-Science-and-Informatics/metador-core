@@ -24,29 +24,29 @@ class InstalledPlugins:
         return self._installed.keys()
 
     def __getitem__(self, key: str) -> _PluginGroup:
-        return self.group(key)
+        return self.get(key)
 
     # the get method takes the type of the returned PluginGroup as opt. second argument
     # see this nice trick: https://stackoverflow.com/a/60362860
 
     # get by plugin class
     @overload
-    def group(self, key: Type[S]) -> S:
+    def get(self, key: Type[S]) -> S:
         ...
 
     # get by plugin name (with pg_class indicating type)
     @overload
-    def group(self, key: str, pg_class: Type[S]) -> S:
+    def get(self, key: str, pg_class: Type[S]) -> S:
         ...
 
     # get by plugin name (without pg_class -> more general type)
     @overload
-    def group(
+    def get(
         self, key: str, pg_class: Type[_PluginGroup] = _PluginGroup
     ) -> _PluginGroup:
         ...
 
-    def group(
+    def get(
         self,
         key: Union[str, Type[S]],
         pg_class: Union[Type[S], Type[_PluginGroup]] = _PluginGroup,
@@ -63,5 +63,12 @@ class InstalledPlugins:
 
 
 # To be imported for access to installed plugins
-installed: InstalledPlugins = InstalledPlugins()
+plugingroups: InstalledPlugins = InstalledPlugins()
 """Installed metador plugin groups, to be imported in code to access plugins."""
+
+
+def load_plugins():
+    """Run to initialize Metador plugins."""
+    from .interface import load_plugins
+
+    return load_plugins()

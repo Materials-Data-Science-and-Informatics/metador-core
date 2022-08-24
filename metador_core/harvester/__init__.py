@@ -3,15 +3,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Generic, Literal, Sequence, Set, Type, TypeVar, Union
+from typing import Dict, Literal, Sequence, Set, Type, TypeVar, Union
 
 from overrides import overrides
 
-from ..plugins import installed
-from ..plugins import interface as pg
-from ..schema import SCHEMA_GROUP_NAME, MetadataSchema, PGSchema
-
-_SCHEMAS: PGSchema = installed.group(SCHEMA_GROUP_NAME, PGSchema)
+from ..plugin import interface as pg
+from ..plugin import plugingroups
+from ..schema import MetadataSchema, schemas
+from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
 
 HARVESTER_GROUP_NAME = "harvester"
 
@@ -25,11 +24,10 @@ class HarvesterPlugin(pg.PluginBase):
         """Schema returned by this harvester."""
 
 
-T = TypeVar("T", bound=MetadataSchema)
 S = TypeVar("S", bound=MetadataSchema)
 
 
-class Harvester(ABC, Generic[T]):
+class Harvester(ABC):
     """Base class for metadata harvesters.
 
     A harvester is a class that can be instantiated to extract
@@ -39,13 +37,14 @@ class Harvester(ABC, Generic[T]):
     Plugin: HarvesterPlugin
 
     @property
-    def schema(self) -> Type[T]:
+    def schema(self):
         """Partial schema class returned by this harvester.
 
         Provided for implementation convenience.
         """
-        return _SCHEMAS[self.Plugin.returns.name].Partial
+        return schemas[self.Plugin.returns.name].Partial
 
+    @abstractmethod
     def __init__(self, *args, **kwargs):
         """Configure harvester instance.
 
@@ -56,7 +55,7 @@ class Harvester(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def harvest(self) -> T:
+    def harvest(self):
         """Run harvesting according to instance configuration and return metadata.
 
         Override this method with your custom metadata harvesting logic.
@@ -109,7 +108,7 @@ def _schema_arg(obj: Union[str, Type[MetadataSchema]]) -> Type[MetadataSchema]:
     Ensures that passed object is in fact a valid, installed schema.
     """
     name = obj if isinstance(obj, str) else obj.Plugin.name
-    return _SCHEMAS[name]
+    return schemas[name]
 
 
 class PGHarvester(pg.PluginGroup[Harvester]):
@@ -121,7 +120,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
     class Plugin(pg.PGPlugin):
         name = HARVESTER_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [PGSchema.Plugin.name]
+        required_plugin_groups = [SCHEMA_GROUP_NAME]
         plugin_class = Harvester
         plugin_info_class = HarvesterPlugin
 
@@ -130,7 +129,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         hv_ref = plugin.Plugin.returns
 
         schema_name = hv_ref.name
-        schema = _SCHEMAS[schema_name]
+        schema = schemas[schema_name]
         if not schema:
             raise TypeError(f"{name}: Schema '{schema_name}' not installed!")
 
@@ -178,10 +177,10 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         schema_name = _schema_arg(schema).Plugin.name
         ret = set(self._harvesters_for[schema_name])
         if include_children:
-            for child in _SCHEMAS.children(schema_name):
+            for child in schemas.children(schema_name):
                 ret = ret.union(self.for_schema(child))
         if include_parents:
-            for parent in _SCHEMAS.parent_path(schema_name)[:-1]:
+            for parent in schemas.parent_path(schema_name)[:-1]:
                 ret = ret.union(self.for_schema(parent))
         return ret
 
@@ -189,7 +188,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
 # harvesting helpers
 
 
-def _harvest_file(schema: Type[T], *paths: Path) -> T:
+def _harvest_file(schema: Type[S], *paths: Path) -> S:
     """Harvest partial metadata from the passed path(s) into target schema.
 
     Will return empty partial schema if file does not exist.
@@ -201,15 +200,14 @@ def _harvest_file(schema: Type[T], *paths: Path) -> T:
 
 
 def _harvest_source(
-    schema: Type[T], obj: Union[Path, Harvester], *, ignore_invalid: bool = False
-) -> T:
+    schema: Type[S], obj: Union[Path, Harvester], *, ignore_invalid: bool = False
+) -> S:
     """Harvest partial metadata from the passed Harvester or Path into target schema."""
     if not isinstance(obj, (Path, Harvester)):
         raise ValueError("Metadata source must be a Harvester or a Path!")
     if isinstance(obj, Harvester):
-        return schema.Partial.cast(
-            obj.harvest(), ignore_invalid=True
-        )  # could use different schema -> cast
+        # could use different schema -> cast
+        return schema.Partial.cast(obj.harvest(), ignore_invalid=ignore_invalid)
     else:
         return _harvest_file(schema, obj)
 
@@ -218,12 +216,12 @@ def _harvest_source(
 
 
 def harvest(
-    schema: Type[T],
+    schema: Type[S],
     sources: Sequence[Union[Path, Harvester]],
     *,
     ignore_invalid: bool = False,
     return_partial: bool = False,
-) -> T:
+) -> S:
     """Run a harvesting pipeline and return combined results.
 
     Will run the harvesters in the passed order, combining results.
@@ -266,3 +264,7 @@ def harvest(
     merged = schema.Partial.merge(*results)
     # retrieve (completed) metadata model
     return merged if return_partial else merged.from_partial()
+
+
+harvesters: PGHarvester
+harvesters = plugingroups.get(HARVESTER_GROUP_NAME, PGHarvester)

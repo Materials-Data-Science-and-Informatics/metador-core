@@ -6,12 +6,11 @@ import panel as pn
 from panel.viewable import Viewable
 
 from ..container import MetadorContainer, MetadorNode
-from ..plugins import installed
-from ..schema import MetadataSchema, PGSchema, SchemaPlugin
-from . import PGWidget, Widget
+from ..schema import MetadataSchema, SchemaPlugin, schemas
+from . import Widget, widgets
 
-_SCHEMAS = installed.group("schema", PGSchema)
-_WIDGETS = installed.group("widget", PGWidget)
+_SCHEMAS = schemas
+_WIDGETS = widgets
 
 
 class DashboardMeta(MetadataSchema):

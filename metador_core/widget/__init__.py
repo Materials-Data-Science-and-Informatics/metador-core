@@ -10,9 +10,11 @@ from pydantic import Field
 from typing_extensions import Annotated
 
 from ..container import MetadorNode
-from ..plugins import interface as pg
-from ..schema import PGSchema
-from ..schema.core import MetadataSchema
+from ..plugin import interface as pg
+from ..plugin import plugingroups
+from ..schema import MetadataSchema
+from ..schema.pg import PG_NAME as SCHEMA_GROUP_NAME
+from ..schema.pg import PGSchema
 from .server import WidgetServer
 
 
@@ -107,7 +109,7 @@ class PGWidget(pg.PluginGroup[Widget]):
     class Plugin(pg.PGPlugin):
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [PGSchema.Plugin.name]
+        required_plugin_groups = [SCHEMA_GROUP_NAME]
         plugin_class = Widget
         plugin_info_class = WidgetPlugin
 
@@ -122,3 +124,7 @@ class PGWidget(pg.PluginGroup[Widget]):
     def widgets_for(self, schema: PGSchema.PluginRef) -> List[Type[Widget]]:
         """Return widgets that support the given schema."""
         return [wclass for wclass in self.values() if wclass.supports(schema)]
+
+
+widgets: PGWidget
+widgets = plugingroups.get(WIDGET_GROUP_NAME, PGWidget)

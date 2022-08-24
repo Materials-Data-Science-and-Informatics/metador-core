@@ -4,7 +4,7 @@ Here we do impose certain constraints (make fields mandatory).
 
 See https://www.researchobject.org/ro-crate/1.1/
 """
-from typing import List, Union
+from typing import Set, Union
 
 from pydantic import parse_obj_as, root_validator, validator
 
@@ -31,7 +31,7 @@ class FileMeta(schemaorg.MediaObject):
     # and set @id when assembling the crate.
 
     # NOTE: preferably MIME type or PRONOM or contextual entity
-    encodingFormat: List[Union[URL, Text]]
+    encodingFormat: Set[Union[URL, Text]]
     # we require hashsums
     sha256: Text
 
@@ -47,7 +47,7 @@ class DirMeta(schemaorg.Dataset):
     # and set @id when assembling the crate.
 
     # to list (subset of) files and subdirectories:
-    hasPart: List[LDIdRef] = []
+    hasPart: Set[LDIdRef] = set()
 
 
 @annotate_rocrate_type("Organization")

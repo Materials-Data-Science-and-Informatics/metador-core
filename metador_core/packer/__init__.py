@@ -13,12 +13,12 @@ from metador_core.ih5.manifest import IH5MFRecord
 
 from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
-from ..plugins import installed
-from ..plugins import interface as pg
-from ..schema import PGSchema, SchemaPlugin
-from ..schema.core import MetadataSchema, PluginPkgMeta, PluginRef
+from ..plugin import interface as pg
+from ..plugin import plugingroups
+from ..schema import SchemaPlugin
+from ..schema.core import SCHEMA_GROUP_NAME, MetadataSchema, PluginPkgMeta, PluginRef
 from .diff import DirDiff
-from .util import DirValidationErrors
+from .types import DirValidationErrors
 
 
 class Packer(ABC, EnforceOverrides):
@@ -195,10 +195,9 @@ class PackerInfo(MetadataSchema):
 
     @classmethod
     def for_packer(cls, packer_name: str) -> PackerInfo:
-        _PACKERS = installed.group("packer")
         return PackerInfo(
-            packer=_PACKERS.fullname(packer_name),
-            pkg=_PACKERS.provider(packer_name),
+            packer=packers.fullname(packer_name),
+            pkg=packers.provider(packer_name),
         )
 
 
@@ -237,7 +236,7 @@ class PGPacker(pg.PluginGroup[Packer]):
         version = (0, 1, 0)
         plugin_class = Packer
         plugin_info_class = PackerPlugin
-        required_plugin_groups = [PGSchema.Plugin.name]
+        required_plugin_groups = [SCHEMA_GROUP_NAME]
 
     _PACKER_INFO_NAME = PackerInfo.Plugin.name
 
@@ -334,3 +333,7 @@ class PGPacker(pg.PluginGroup[Packer]):
             cont.manifest.manifest_exts[self.name] = pinfo.dict()
 
         cont.close()
+
+
+packers: PGPacker
+packers = plugingroups.get(PACKER_GROUP_NAME, PGPacker)

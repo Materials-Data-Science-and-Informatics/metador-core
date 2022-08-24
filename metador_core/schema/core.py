@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Dict, Optional, Set, Type
+from typing import TYPE_CHECKING, ClassVar, Dict, Literal, Optional, Set, Type
 
 import isodate
 from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, Field, ValidationError
@@ -24,21 +24,22 @@ def _mod_def_dump_args(kwargs):
 class MetadataSchema(YamlModelMixin, BaseModel):
     """Extends Pydantic models with custom serializers and functions."""
 
-    # fields overriding immediate parent (for testing)
-    __overrides__: ClassVar[Set[str]]
-    # fields with constant values added by add_annotations
-    __constants__: ClassVar[Set[str]]
-
     # important! breaks field hint inspection, if we add hints here without the guard!
     if TYPE_CHECKING:
-        from . import SchemaPlugin
-
         # user-defined:
         Plugin: SchemaPlugin
         # auto-generated:
         Schemas: Type  # used subschemas, for import-less access
         Partial: MetadataSchema  # partial schemas for harvesters
 
+    # These are fine (ClassVar is ignored by pydantic):
+
+    # fields overriding immediate parent (for testing)
+    __overrides__: ClassVar[Set[str]]
+    # fields with constant values added by add_annotations
+    __constants__: ClassVar[Set[str]]
+
+    # Pydantic configuration
     class Config(BaseConfig):
         underscore_attrs_are_private = True  # avoid using PrivateAttr all the time
         use_enum_values = True  # to serialize enums properly
@@ -52,6 +53,11 @@ class MetadataSchema(YamlModelMixin, BaseModel):
             PintQuantity: lambda x: str(x),
             isodate.Duration: lambda x: isodate.duration_isoformat(x),
         }
+
+    @classmethod
+    def is_plugin(cls):
+        """Return whether this schema is a registered plugin."""
+        return hasattr(cls, "Plugin") and issubclass(cls.Plugin, SchemaPlugin)
 
     def dict(self, *args, **kwargs):
         return super().dict(*args, **_mod_def_dump_args(kwargs))
@@ -177,18 +183,41 @@ class PluginPkgMeta(MetadataSchema):
         # avoid circular import by importing here
         from importlib_metadata import distribution
 
-        from ..plugins import installed
-        from ..plugins.utils import DistMeta, distmeta_for
+        from ..plugin import plugingroups
+        from ..plugin.utils import DistMeta, distmeta_for
 
         dm: DistMeta = distmeta_for(distribution(package_name))
         plugins: Plugins = {}
         for group, names in dm.plugins.items():
             plugins[group] = {}
             for name in names:
-                plugins[group][name] = installed[group][name].Plugin.ref()
+                plugins[group][name] = plugingroups[group][name].Plugin.ref()
         return cls(
             name=dm.name,
             version=dm.version,
             repository_url=dm.repository_url,
             plugins=plugins,
         )
+
+
+# ---- subclasses for schema plugin group ----
+
+SCHEMA_GROUP_NAME = "schema"
+
+
+class SchemaPluginRef(PluginRef):
+    group: Literal["schema"]
+
+
+class SchemaPlugin(PluginBase):
+    group = SCHEMA_GROUP_NAME
+    parent_schema: Optional[SchemaPluginRef]
+
+    class Fields(PluginBase.Fields):
+        parent_schema: Optional[SchemaPluginRef]
+        """Declares a parent schema plugin.
+
+        By declaring a parent schema you agree to the following contract:
+        Any data that can be loaded using this schema MUST also be
+        loadable by the parent schema (with possible information loss).
+        """

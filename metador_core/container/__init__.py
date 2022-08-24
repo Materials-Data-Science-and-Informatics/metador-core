@@ -112,8 +112,7 @@ from metador_core.ih5.protocols import (
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
-from ..plugins import installed
-from ..schema import MetadataSchema, PGSchema
+from ..schema import MetadataSchema, schemas
 from ..schema.core import PluginPkgMeta, PluginRef
 from . import utils as M
 
@@ -484,7 +483,9 @@ class MetadorGroup(MetadorNode):
         if len(segs) == 1:
             return has_first_seg
         else:
-            return "/".join(segs[1:]) in self[segs[0]]
+            if nxt := self.get(segs[0]):
+                return "/".join(segs[1:]) in nxt
+            return False
 
     # these we can take care of but are a bit more tricky to think through
 
@@ -768,7 +769,7 @@ class MetadorContainer(wrapt.ObjectProxy):
 # --------
 
 
-_SCHEMAS = installed.group("schema", PGSchema)
+_SCHEMAS = schemas
 
 S = TypeVar("S", bound=MetadataSchema)
 

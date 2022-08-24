@@ -5,14 +5,12 @@ from PIL import Image
 
 from ..harvester import Harvester, HarvesterPlugin
 from ..hashutils import hashsum
-from ..plugins import installed
+from ..schema import schemas
 
-_SCHEMAS = installed.group("schema")
-
-FileMeta = _SCHEMAS["core.file"]
-ImageFileMeta = _SCHEMAS["core.imagefile"]
-BibMeta = _SCHEMAS["core.bib"]
-TableMeta = _SCHEMAS["core.table"]
+FileMeta = schemas["core.file"]
+ImageFileMeta = schemas["core.imagefile"]
+BibMeta = schemas["core.bib"]
+TableMeta = schemas["core.table"]
 
 
 class FileMetaHarvester(Harvester):

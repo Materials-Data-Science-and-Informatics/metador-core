@@ -9,7 +9,7 @@ Can serve as the basis for more specific schemas.
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import List, Optional, Union
+from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
@@ -44,9 +44,9 @@ class Thing(LDSchema):
     disambiguatingDescription: Optional[Text]
 
     # linking:
-    additionalType: Optional[List[URL]]
-    sameAs: Optional[List[URL]]
-    alternateName: Optional[List[Text]]
+    additionalType: Optional[Set[URL]]
+    sameAs: Optional[Set[URL]]
+    alternateName: Optional[Set[Text]]
 
 
 @annotate_schemaorg_type("QuantitativeValue")
@@ -87,11 +87,11 @@ class CreativeWork(Thing):
     """See http://schema.org/CreativeWork for field documentation."""
 
     version: Optional[Union[NonNegativeInt, Text]]
-    citation: Optional[List[Union[CreativeWork, Text]]]
+    citation: Optional[Set[Union[CreativeWork, Text]]]
 
     # search
     abstract: Optional[Text]
-    keywords: Optional[List[Text]]
+    keywords: Optional[Set[Text]]
 
     # people
     author: Optional[List[OrgOrPerson]]
@@ -115,11 +115,11 @@ class CreativeWork(Thing):
     license: Optional[Union[URL, CreativeWork]]
 
     # provenance
-    about: Optional[List[Thing]]
-    subjectOf: Optional[List[CreativeWork]]
-    hasPart: Optional[List[CreativeWork]]
-    isPartOf: Optional[List[Union[URL, CreativeWork]]]
-    isBasedOn: Optional[List[Union[URL, CreativeWork]]]
+    about: Optional[Set[Thing]]
+    subjectOf: Optional[Set[CreativeWork]]
+    hasPart: Optional[Set[CreativeWork]]
+    isPartOf: Optional[Set[Union[URL, CreativeWork]]]
+    isBasedOn: Optional[Set[Union[URL, CreativeWork]]]
 
 
 @annotate_schemaorg_type("MediaObject")
@@ -136,7 +136,7 @@ class MediaObject(CreativeWork):
     contentSize: Optional[int]
 
     sha256: Optional[Text]
-    encodingFormat: Optional[List[Union[URL, Text]]]
+    encodingFormat: Optional[Set[Union[URL, Text]]]
 
     width: Optional[QuantitativeValue]
     height: Optional[QuantitativeValue]
