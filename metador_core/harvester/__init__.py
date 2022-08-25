@@ -120,9 +120,13 @@ class PGHarvester(pg.PluginGroup[Harvester]):
     class Plugin(pg.PGPlugin):
         name = HARVESTER_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [SCHEMA_GROUP_NAME]
+        requires = [SCHEMA_GROUP_NAME]
         plugin_class = Harvester
         plugin_info_class = HarvesterPlugin
+
+    @overrides
+    def pre_load(self):
+        self._harvesters_for: Dict[str, Set[str]] = {}
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Harvester]):
@@ -138,14 +142,14 @@ class PGHarvester(pg.PluginGroup[Harvester]):
             msg = f"{name}: Installed schema {inst_ref} incompatible with harvester schema {hv_ref}!"
             raise TypeError(msg)
 
-    def post_load(self):
-        """Initialize harvester lookup table."""
-        self._harvesters_for: Dict[str, Set[str]] = {}
-        for h_name, h in self.items():
-            schema = h.Plugin.returns
-            if schema.name not in self._harvesters_for:
-                self._harvesters_for[schema.name] = set()
-            self._harvesters_for[schema.name].add(h_name)
+    @overrides
+    def init_plugin(self, plugin):
+        """Add harvester to harvester lookup table."""
+        h_name = plugin.Plugin.name
+        schema = plugin.Plugin.returns
+        if schema.name not in self._harvesters_for:
+            self._harvesters_for[schema.name] = set()
+        self._harvesters_for[schema.name].add(h_name)
 
     def for_schema(
         self,

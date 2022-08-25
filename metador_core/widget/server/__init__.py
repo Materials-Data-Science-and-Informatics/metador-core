@@ -14,7 +14,6 @@ from werkzeug.exceptions import BadRequest, NotFound
 
 from metador_core.container import MetadorContainer, MetadorNode
 
-from ...schema.common import FileMeta
 from .util import ContainerIndex
 
 
@@ -190,7 +189,7 @@ class WidgetServer:
 
             dl = bool(request.args.get("download", False))  # as explicit file download?
             # if object has attached file metadata, use it to serve:
-            filemeta = container[record_path].meta.get(FileMeta)
+            filemeta = container[record_path].meta.get("core.file")
             def_name = f"{record_uuid}_{record_path.replace('/', '__')}"
             name = filemeta.id_ if filemeta else def_name
             mime = filemeta.encodingFormat[0] if filemeta else None

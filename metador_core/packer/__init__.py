@@ -12,6 +12,7 @@ from overrides import EnforceOverrides, overrides
 from metador_core.ih5.manifest import IH5MFRecord
 
 from ..container import MetadorContainer
+from ..harvester import HARVESTER_GROUP_NAME
 from ..hashutils import DirHashsums, dir_hashsums
 from ..plugin import interface as pg
 from ..plugin import plugingroups
@@ -236,7 +237,7 @@ class PGPacker(pg.PluginGroup[Packer]):
         version = (0, 1, 0)
         plugin_class = Packer
         plugin_info_class = PackerPlugin
-        required_plugin_groups = [SCHEMA_GROUP_NAME]
+        requires = [SCHEMA_GROUP_NAME, HARVESTER_GROUP_NAME]
 
     _PACKER_INFO_NAME = PackerInfo.Plugin.name
 

@@ -9,7 +9,6 @@ from typing import (
     Generic,
     ItemsView,
     KeysView,
-    List,
     Literal,
     Optional,
     Type,
@@ -92,16 +91,9 @@ class PGPlugin(PluginBase):
     plugin_class: Any = object
     plugin_info_class: Type[PluginBase]
 
-    required_plugin_groups: List[str]
-
     class Fields(PluginBase.Fields):
         plugin_class: Optional[Any]
         plugin_info_class: Any
-        required_plugin_groups: List[str]
-        """List of plugin group names that must be loaded before this one.
-
-        Should be added if plugins require plugins from those groups.
-        """
 
 
 T = TypeVar("T")
@@ -121,7 +113,6 @@ class PluginGroup(Generic[T]):
 
         name = PG_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups: List[str] = []
         plugin_info_class = PGPlugin
 
     class PluginRef(PGPluginRef):
@@ -133,13 +124,21 @@ class PluginGroup(Generic[T]):
     Class attribute, shared with subclasses.
     """
 
-    _LOADED_PLUGINS: Dict[str, Type[T]]
+    _LOADED_PLUGINS: Dict[str, Type[T]] = {}
     """Dict from entry points to loaded plugins of that pluggable type."""
 
     PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
-    def __init__(self, loaded_plugins: Dict[str, Type[T]]):
-        self._LOADED_PLUGINS = loaded_plugins
+    def load(self):
+        assert self._LOADED_PLUGINS
+        self.pre_load()
+
+        # load plugins in dependency-aligned order:
+        pg_deps = {name: cast(Any, grp).Plugin.requires for name, grp in self.items()}
+        for pg_name in TopologicalSorter(pg_deps).static_order():
+            self._load_plugin(pg_name, self[pg_name])
+
+        self.post_load()
 
     @property
     def name(self) -> str:
@@ -195,6 +194,12 @@ class PluginGroup(Generic[T]):
         return self._PKG_META[pkg]
 
     # ----
+
+    def _load_plugin(self, name: str, plugin):
+        """Run checks and finalize loaded plugin."""
+        self._check_common(name, plugin)
+        self.check_plugin(name, plugin)
+        self.init_plugin(plugin)
 
     def _check_common(self, name: str, plugin):
         """Perform both the common and specific checks a registered plugin.
@@ -264,55 +269,33 @@ class PluginGroup(Generic[T]):
         if type(self) is not PluginGroup:
             return  # is not the "plugingroup" group itself
 
-        if plugin is PluginGroup:
-            pg = self
-            # load other plugin groups:
-            pg_deps = {
-                name: cast(Any, grp).Plugin.required_plugin_groups
-                for name, grp in self.items()
-            }
-            pg_order = list(TopologicalSorter(pg_deps).static_order())
-            for pg_name in pg_order:
-                pg_class = self[pg_name]
-                pg._add_plugin(pg_name, pg_class)
+        if plugin is not PluginGroup:
+            create_pg(plugin)
 
-            # add itself as plugin
-            self._LOADED_PLUGINS[PG_GROUP_NAME] = plugin
-        else:
-            # load plugins of some other plugingroup:
-            pg = create_pg(plugin)
-
-            for ep_name, ep in pg.items():
-                pg._add_plugin(ep_name, ep)
-
-        # finalize plugin group loading
-        pg.post_load()
-
-    def _add_plugin(self, name: str, plugin):
-        """Run checks and finalize loaded plugin."""
-        self._check_common(name, plugin)
-        self.check_plugin(name, plugin)
-        self.init_plugin(plugin)
-
-    def post_load(self):
-        """Do something after all plugins of this group are loaded."""
+    def pre_load(self):
+        """Do something before all plugins of this group are initialized."""
         if type(self) is not PluginGroup:
-            return  # is not the "plugingroup" group itself
-
-        # executed after loading all plugin groups:
+            return
 
         # the core package is also the one registering the "schema" plugin group.
         # Use that to hack in that it also provides the "plugingroup" plugin group:
         _this_pkg_name = self["schema"].Plugin._provided_by
         self.Plugin._provided_by = _this_pkg_name
 
+        # add itself afterwards, so its not part of the plugin loading loop
+        self._LOADED_PLUGINS[PG_GROUP_NAME] = PluginGroup
+
+    def post_load(self):
+        """Do something after all plugins of this group are initialized."""
+        if type(self) is not PluginGroup:
+            return
+
         # set up shared lookup for package metadata, shared by all plugin groups
         PluginGroup._PKG_META = {
             pkg: PluginPkgMeta.for_package(pkg) for pkg in plugin_pkgs
         }
-
-        # circularity hack (this package provides plugingroup as plugingroup)
-        this_pkg = PluginGroup._PKG_META[_this_pkg_name]
+        # fix up circularity (this package provides plugingroup as plugingroup)
+        this_pkg = PluginGroup._PKG_META[PluginGroup.Plugin._provided_by]
         this_pkg.plugins[PG_GROUP_NAME][PG_GROUP_NAME] = PluginGroup.Plugin.ref()
 
 
@@ -322,11 +305,15 @@ _loaded_plugin_groups: Dict[str, PluginGroup] = {}
 
 
 def create_pg(pg_cls):
-    # instantiate plugin group object
     pg_name = pg_cls.Plugin.name
-    pg = pg_cls(get_plugins(pg_name))
+
+    if pg_name in _loaded_plugin_groups:
+        return _loaded_plugin_groups[pg_name]
+
+    pg = pg_cls()
     _loaded_plugin_groups[pg_name] = pg
-    return pg
+    pg._LOADED_PLUGINS = get_plugins(pg_name)
+    pg.load()
 
 
 def load_plugins():
@@ -337,5 +324,4 @@ def load_plugins():
     from . import InstalledPlugins
 
     InstalledPlugins._installed = _loaded_plugin_groups
-
-    create_pg(PluginGroup)._add_plugin(PG_GROUP_NAME, PluginGroup)
+    create_pg(PluginGroup)

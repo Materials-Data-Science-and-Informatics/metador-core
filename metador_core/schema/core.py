@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Dict, Literal, Optional, Set, Type
+from typing import TYPE_CHECKING, ClassVar, Dict, List, Literal, Optional, Set, Type
 
 import isodate
-from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, Field, ValidationError
+from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, ValidationError
 from pydantic_yaml import YamlModelMixin
-from typing_extensions import Annotated
 
 from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 
@@ -123,6 +122,7 @@ class PluginBase:
     # for type checking (mirrors Fields)
     name: str
     version: SemVerTuple
+    requires: List[str] = []  # set default here (needed before actual checking is done)
 
     class Fields(BaseModel):
         """Minimal info to be declared by plugin author in a inner class called `Plugin`."""
@@ -130,11 +130,14 @@ class PluginBase:
         class Config:
             extra = Extra.forbid
 
-        name: Annotated[str, Field(alias="name")]
+        name: str
         """Name of plugin (must equal to listed entry point and unique per plugingroup)."""
 
-        version: Annotated[SemVerTuple, Field(alias="version")]
+        version: SemVerTuple
         """Semantic version of plugin."""
+
+        requires: List[str] = []
+        """List of plugin names of same kind that must be loaded before this one."""
 
     @classmethod
     def ref(cls, *, version=None):

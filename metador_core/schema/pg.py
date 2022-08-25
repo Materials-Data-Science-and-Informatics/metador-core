@@ -112,9 +112,12 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     class Plugin(pg.PGPlugin):
         name = SCHEMA_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups: List[str] = []
+        requires = [pg.PG_GROUP_NAME]
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
+
+    def pre_load(self):
+        ...
 
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
         """Sanity-checks for possibly defined parent schema."""

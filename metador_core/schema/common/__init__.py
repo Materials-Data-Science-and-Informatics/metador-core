@@ -97,6 +97,7 @@ class BibMeta(DirMeta):
     class Plugin(SchemaPlugin):
         name = "core.bib"
         version = (0, 1, 0)
+        requires = ["core.dir"]
         parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
 
     # id_: Annotated[Literal["./"], Field(alias="@id")] = "./"
@@ -120,6 +121,7 @@ class ImageFileMeta(FileMeta):
     class Plugin(SchemaPlugin):
         name = "core.imagefile"
         version = (0, 1, 0)
+        requires = ["core.file"]
         parent_schema = FileMeta.Plugin.ref(version=(0, 1, 0))
 
     width: Pixels

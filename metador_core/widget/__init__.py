@@ -109,7 +109,7 @@ class PGWidget(pg.PluginGroup[Widget]):
     class Plugin(pg.PGPlugin):
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
-        required_plugin_groups = [SCHEMA_GROUP_NAME]
+        requires = [SCHEMA_GROUP_NAME]
         plugin_class = Widget
         plugin_info_class = WidgetPlugin
 
