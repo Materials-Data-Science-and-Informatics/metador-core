@@ -35,7 +35,7 @@ class FileMeta(schemaorg.MediaObject):
     contentSize: int
     sha256: Text
     # NOTE: preferably MIME type or PRONOM or contextual entity
-    encodingFormat: Set[Union[URL, Text]]
+    encodingFormat: Union[URL, Text]
 
 
 @annotate_rocrate_type("Dataset")

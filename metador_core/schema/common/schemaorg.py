@@ -136,7 +136,7 @@ class MediaObject(CreativeWork):
     contentSize: Optional[int]
 
     sha256: Optional[Text]
-    encodingFormat: Optional[Set[Union[URL, Text]]]
+    encodingFormat: Optional[Union[URL, Text]]
 
     width: Optional[QuantitativeValue]
     height: Optional[QuantitativeValue]

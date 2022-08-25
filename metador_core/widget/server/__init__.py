@@ -96,13 +96,11 @@ class WidgetServer:
     def register_installed(self):
         # register installed widgets and the generic dashboard.
         # do imports here, otherwise circular imports.
-        from metador_core.plugin import installed
+        from metador_core.widget import widgets
 
-        from .. import PGWidget
         from ..dashboard import Dashboard
 
-        _WIDGETS = installed.group("widget", PGWidget)
-        for wname, wclass in _WIDGETS.items():
+        for wname, wclass in widgets.items():
             self.register_widget(wname, self.make_bokeh_app(wclass))
         self.register_dashboard("generic", self.make_bokeh_app(Dashboard))
 
@@ -192,7 +190,7 @@ class WidgetServer:
             filemeta = container[record_path].meta.get("core.file")
             def_name = f"{record_uuid}_{record_path.replace('/', '__')}"
             name = filemeta.id_ if filemeta else def_name
-            mime = filemeta.encodingFormat[0] if filemeta else None
+            mime = filemeta.encodingFormat if filemeta else None
             return send_file(
                 io.BytesIO(bs), download_name=name, mimetype=mime, as_attachment=dl
             )

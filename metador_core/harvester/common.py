@@ -29,7 +29,7 @@ class FileMetaHarvester(FileHarvester):
         hs = hashsum(open(path, "rb"), "sha256")
         mt = magic.from_file(path, mime=True)
         return self.schema(
-            filename=path.name, contentSize=sz, sha256=hs, encodingFormat=[mt]
+            filename=path.name, contentSize=sz, sha256=hs, encodingFormat=mt
         )
 
 
