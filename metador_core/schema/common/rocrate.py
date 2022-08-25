@@ -27,13 +27,15 @@ class FileMeta(schemaorg.MediaObject):
         version = (0, 1, 0)
 
     # required by RO-Crate to be relative to RO Crate root and be URL-encoded
-    # we keep just the actual filename in "name"
+    # we keep just the actual filename in "filename"
     # and set @id when assembling the crate.
+    # cannot use "name" because "name" is used for stuff like "title" as well
+    filename: str
 
+    contentSize: int
+    sha256: Text
     # NOTE: preferably MIME type or PRONOM or contextual entity
     encodingFormat: Set[Union[URL, Text]]
-    # we require hashsums
-    sha256: Text
 
 
 @annotate_rocrate_type("Dataset")

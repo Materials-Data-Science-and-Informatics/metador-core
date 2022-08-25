@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import urllib.parse
 from json.decoder import JSONDecodeError
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import h5py
 import numpy
 from pydantic import ValidationError
 
-from ..container import MetadorContainer, MetadorDataset
+from ..container import MetadorContainer, MetadorDataset, MetadorGroup
 from ..harvester import harvest, harvesters
 from ..schema import MetadataSchema, schemas
 from .types import DirValidationErrors
@@ -52,13 +53,15 @@ FileMeta = schemas["core.file"]
 
 
 def embed_file(
-    container: MetadorContainer,
-    container_path: str,
+    node: Union[MetadorContainer, MetadorGroup],
+    node_path: str,
     file_path: Path,
     *,
     metadata: Optional[MetadataSchema] = None,
 ) -> MetadorDataset:
     """Embed a file, adding minimal generic metadata to it.
+
+    Will also ensure that the attached metadata has RO-Crate compatible @id set correctly.
 
     Args:
         container: Container where to embed the file contents
@@ -70,15 +73,15 @@ def embed_file(
         Dataset of new embedded file.
     """
     # check container and file
-    if container_path in container:
-        raise ValueError(f"Path '{container_path}' already exists in container!")
+    if node_path in node:
+        raise ValueError(f"Path '{node}' already exists in given container or group!")
     if not file_path.is_file():
         raise ValueError(f"Path '{file_path}' does not look like an existing file!")
 
     if not metadata:
         # no metadata given -> harvest minimal information about a file
         hv_file = harvesters["core.file.generic"]
-        metadata = harvest(FileMeta, [hv_file(file_path)])
+        metadata = harvest(FileMeta, [hv_file(file_path=file_path)])
 
     # check metadata
     if not isinstance(metadata, FileMeta):
@@ -88,8 +91,12 @@ def embed_file(
         msg = f"Given metadata is a {type(metadata)}, which is not a schema plugin!"
         raise ValueError(msg)
 
-    # embed file and metadata in container:
     data = _h5_wrap_bytes(file_path.read_bytes())
-    ret = container.create_dataset(container_path, data=data)
+    ret = node.create_dataset(node_path, data=data)
+
+    # set file metadata @id to be relative to dataset root just like RO Crate wants
+    metadata.id_ = urllib.parse.quote(f".{ret.name}")
+
+    # embed file and metadata in container:
     ret.meta[metadata.Plugin.name] = metadata
     return ret
