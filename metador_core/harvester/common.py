@@ -23,7 +23,7 @@ class FileMetaHarvester(FileHarvester):
         returns = FileMeta.Plugin.ref(version=(0, 1, 0))
 
     def run(self):
-        path = self.args["filepath"]
+        path = self.args.filepath
 
         sz = path.stat().st_size
         hs = hashsum(open(path, "rb"), "sha256")
@@ -42,7 +42,7 @@ class ImageFileMetaHarvester(FileHarvester):
         returns = ImageFileMeta.Plugin.ref(version=(0, 1, 0))
 
     def run(self):
-        path = self.args["filepath"]
+        path = self.args.filepath
 
         with Image.open(path) as img:
             width, height = img.size

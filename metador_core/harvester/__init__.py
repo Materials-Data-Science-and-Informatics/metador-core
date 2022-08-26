@@ -1,16 +1,28 @@
 """Plugin group for metadata harvesters."""
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Literal, Set, Type, TypeVar, Union
+from typing import (
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    Literal,
+    Set,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from overrides import overrides
+from pydantic import BaseModel, Extra, ValidationError
 
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema, schemas
-from ..schema.partial import PartialSchema
+from ..schema.core import ModelConfig
+from ..schema.partial import PartialModel, PartialSchema
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
 
 HARVESTER_GROUP_NAME = "harvester"
@@ -28,15 +40,59 @@ class HarvesterPlugin(pg.PluginBase):
 S = TypeVar("S", bound=MetadataSchema)
 
 
-class Harvester(ABC):
+class HarvesterArgs(BaseModel):
+    """Base class for harvester arguments."""
+
+    class Config(ModelConfig):
+        extra = Extra.forbid
+
+
+class PartialArgs(PartialModel, BaseModel):
+    """Base class for partial harvester arguments."""
+
+    @classmethod
+    def _partial_name(cls, mcls):
+        return f"{mcls.__qualname__}.Partial"
+
+
+class HarvesterMetaMixin(type):
+    def __new__(cls, name, bases, dct):
+        # generate partial arguments model
+        ret = super().__new__(cls, name, bases, dct)
+        p_cls = PartialArgs._create_partial(ret.Args)
+        ret.Args.Partial = p_cls
+        return ret
+
+
+class HarvesterMeta(HarvesterMetaMixin, ABCMeta):
+    ...
+
+
+class Harvester(ABC, metaclass=HarvesterMeta):
     """Base class for metadata harvesters.
 
     A harvester is a class that can be instantiated to extract
-    metadata according to some schema plugin.
+    metadata according to some schema plugin (the returned schema
+    must be defined as the `Plugin.returns` attribute)
+
+    Override the inner `Args` class with a subclass to add arguments.
+    This works exactly like schema definition and is simply
+    another pydantic model, so you can use both field and root
+    validators to check whether the arguments are making sense.
+
+    If all you need is getting a file path, consider using
+    `FileHarvester`, which already defines a `filepath` argument.
+
+    Override the `run()` method to implement the metadata harvesting
+    based on a validated configuration located at `self.args`.
     """
 
-    Plugin: HarvesterPlugin
-    args: Dict[str, Any]
+    Plugin: ClassVar[HarvesterPlugin]
+
+    class Args(HarvesterArgs):
+        """Arguments to be passed to the harvester."""
+
+    args: Union[Args, PartialArgs]
 
     @property
     def schema(self):
@@ -51,37 +107,32 @@ class Harvester(ABC):
 
     def __init__(self, **kwargs):
         """Initialize harvester with (partial) configuration."""
-        self.args = kwargs
-
-    def __repr__(self):
-        return f"{type(self).__name__}(args={self.args})"
+        self.args = self.Args.Partial.parse_obj(kwargs)
 
     def __call__(self, **kwargs):
         """Return copy of harvester with updated configuration."""
-        args = dict(self.args)
-        args.update(kwargs)
-        return type(self)(**args)
+        args = self.Args.Partial.parse_obj(kwargs)
+        merged = self.args.merge_with(args)
+        return type(self)(**merged.dict())
 
-    def _check_conf_common(self, conf):
-        """Do common checks for all subclasses."""
+    def __repr__(self):
+        return f"{type(self).__name__}(args={repr(self.args)})"
 
     def harvest(self):
         """Check provided arguments and run the harvester.
 
         Call this when a harvester is configured and it should be executed.
         """
-        self._check_conf_common(self.args)
-        self.check_conf(self.args)
+        try:
+            self.args = self.args.from_partial()
+        except ValidationError as e:
+            hname = type(self).__name__
+            msg = f"{hname} configuration incomplete or invalid:\n{str(e)}"
+            raise ValueError(msg)
         return self.run()
 
     # ----
     # to be overridden
-
-    def check_conf(self, conf):
-        """Perform checks on passed arguments.
-
-        Override this to verify whether passed configuration arguments are valid,
-        """
 
     @abstractmethod
     def run(self):
@@ -113,28 +164,19 @@ class FileHarvester(Harvester):
     but instead is passed during harvest_file.
     """
 
-    def _check_args_common(self, **kwargs):
-        return super()._check_args_common(**kwargs)
-
-        if "filepath" not in self.args:
-            raise ValueError("FileHarvester needs a filepath argument!")
-        if not isinstance(self.args["filepath"], Path):
-            raise ValueError("given 'filepath' must be a Path object!")
+    class Args(Harvester.Args):
+        filepath: Path
 
 
 class MetadataLoader(FileHarvester):
     _partial_schema: PartialSchema
     _sidecar_func: Callable[[Path], Path]
 
-    @overrides
-    def check_conf(self, conf):
-        if set(conf.keys()) != {"filepath"}:
-            raise ValueError("Only 'filepath' is allowed as an argument!")
-
     def run(self):
-        path = self.args["filepath"]
-        path = type(self).__dict__.get("_sidecar_func")(path)
-        if not path.is_file():
+        path = self.args.filepath
+        func = type(self).__dict__.get("_sidecar_func")
+        used_path = func(path)
+        if not used_path.is_file():
             return self._partial_schema()
         return self._partial_schema.parse_file(path)
 

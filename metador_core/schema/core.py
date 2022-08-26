@@ -20,15 +20,34 @@ def _mod_def_dump_args(kwargs):
     return kwargs
 
 
+# Pydantic configuration
+class ModelConfig(BaseConfig):
+    underscore_attrs_are_private = True  # make PrivateAttr not needed
+    use_enum_values = True  # serialize enums properly
+
+    # when alias is set, still allow using field name
+    # (we use aliases for invalid attribute names in Python)
+    allow_population_by_field_name = True
+    # users should jump through hoops to add invalid stuff
+    validate_assignment = True
+
+    # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
+    json_encoders = {
+        PintUnit: lambda x: str(x),
+        PintQuantity: lambda x: str(x),
+        isodate.Duration: lambda x: isodate.duration_isoformat(x),
+    }
+
+
 class MetadataSchema(YamlModelMixin, BaseModel):
     """Extends Pydantic models with custom serializers and functions."""
 
     # important! breaks field hint inspection, if we add hints here without the guard!
     if TYPE_CHECKING:
-        # user-defined:
+        # user-defined (for schema plugins)
         Plugin: SchemaPlugin
         # auto-generated:
-        Schemas: Type  # used subschemas, for import-less access
+        Schemas: Type  # subschemas used in annotations, for import-less access
         Partial: MetadataSchema  # partial schemas for harvesters
 
     # These are fine (ClassVar is ignored by pydantic):
@@ -38,20 +57,7 @@ class MetadataSchema(YamlModelMixin, BaseModel):
     # fields with constant values added by add_annotations
     __constants__: ClassVar[Set[str]]
 
-    # Pydantic configuration
-    class Config(BaseConfig):
-        underscore_attrs_are_private = True  # avoid using PrivateAttr all the time
-        use_enum_values = True  # to serialize enums properly
-        allow_population_by_field_name = (
-            True  # when alias is set, still allow using field name
-        )
-        validate_assignment = True
-        # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
-        json_encoders = {
-            PintUnit: lambda x: str(x),
-            PintQuantity: lambda x: str(x),
-            isodate.Duration: lambda x: isodate.duration_isoformat(x),
-        }
+    Config = ModelConfig
 
     @classmethod
     def is_plugin(cls):

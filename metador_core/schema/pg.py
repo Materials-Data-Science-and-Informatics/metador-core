@@ -9,7 +9,7 @@ from overrides import overrides
 
 from ..plugin import interface as pg
 from .core import SCHEMA_GROUP_NAME, MetadataSchema, SchemaPlugin, SchemaPluginRef
-from .partial import PartialSchema, create_partial_schema, is_mergeable_type
+from .partial import PartialSchema
 from .utils import LiftedRODict, collect_model_types, get_annotations
 
 
@@ -157,7 +157,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         for field, hint in hints.items():
             if field[0] == "_":
                 continue  # private field
-            if not is_mergeable_type(hint):
+            if not PartialSchema._is_mergeable_type(hint):
                 raise TypeError(f"{name}: '{field}' contains a forbidden pattern!")
 
     @overrides
@@ -271,9 +271,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
         for schema in subschemas.keys():
             # create and collect partials
-            partial = create_partial_schema(schema)
+            partial = PartialSchema._create_partial(schema)
             partials[schema] = partial
-            refs[partial._forwardref_name] = partial
+            refs[PartialSchema._partial_forwardref_name(schema)] = partial
 
         for schema, partial in partials.items():
             partial.update_forward_refs(**refs)
