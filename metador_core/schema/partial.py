@@ -1,3 +1,18 @@
+"""Partial pydantic models.
+
+Partial models replicate another model with all fields made optional.
+However, they cannot be part of the inheritance chain of the original
+models, because semantically it does not make sense or leads to
+a diamond problem.
+
+Therefore they are independent models, unrelated to the original
+models, but convertable through methods.
+
+Partial models are implemented as a mixin class to be combined
+with the common base models that you are using in your model
+hierarchy.
+"""
+
 from functools import reduce
 from typing import ClassVar, ForwardRef, Optional, Type
 
@@ -7,46 +22,16 @@ from pydantic.fields import FieldInfo
 from typing_extensions import Annotated
 
 from . import utils
-from .core import MetadataSchema
-
-# type analysis helpers
-
-
-def is_list_or_set(hint):
-    return utils.is_list(hint) or utils.is_set(hint)
-
-
-def check_type_mergeable(hint, *, allow_none: bool = False):
-    args = utils.get_args(hint)
-
-    if is_list_or_set(hint):  # list or set -> dig deeper
-        return all(map(check_type_mergeable, args))
-
-    # not union, list or set?
-    if not utils.is_union(hint):
-        # will be either primitive or recursively merged -> ok
-        return True
-
-    # Union case:
-    if not allow_none and utils.is_optional(hint):
-        return False  # allows none, but should not!
-
-    # If a Union contains a set or list, it must be only combined with None
-    is_prim_union = not any(map(is_list_or_set, args))
-    is_opt_set_or_list = len(args) == 2 and utils.NoneType in args
-    if not (is_prim_union or is_opt_set_or_list):
-        return False
-
-    # everything looks fine on this level -> recurse down
-    return all(map(check_type_mergeable, args))
-
-
-# ----
-# partial model variants
 
 
 class PartialModel:
-    """Partial metadata model mixin."""
+    """Partial metadata model mixin.
+
+    Partial merging is done by simply overwriting old field values
+    with new values (if the new value is not `None`).
+
+    For more fancy merging, consider `DeepPartialModel`.
+    """
 
     # points to original model class, auto-generated
     _partial_of: ClassVar[Type[BaseModel]]
@@ -144,26 +129,13 @@ class PartialModel:
     # ----
 
     @classmethod
-    def _substitute_partial(cls, orig_type):
-        if not isinstance(orig_type, type):
-            return orig_type  # not a class (probably just a hint)
-        if not issubclass(orig_type, cls.__base__):
-            return orig_type  # not a suitable model
-        return ForwardRef(cls._partial_forwardref_name(orig_type))
-
-    @classmethod
     def _partial_type(cls, orig_type):
-        # assumes this contains no "Annotated" with pydantic stuff
-        # Annotated is simply "passed through" like a normal type!
-        return Optional[utils.map_typehint(orig_type, cls._substitute_partial)]
+        return Optional[orig_type]
 
     @classmethod
     def _partial_field(cls, orig_field):
-        if utils.get_origin(orig_field) is ClassVar:
-            return orig_field  # ignored by pydantic anyway
-
         th, fi = orig_field, None
-        # if pydantic Field is added in an Annotated[...] - unwrap
+        # if pydantic Field is added (in an Annotated[...]) - unwrap
         if utils.get_origin(orig_field) is Annotated:
             args = utils.get_args(orig_field)
             if not isinstance(args[1], FieldInfo):
@@ -196,7 +168,7 @@ class PartialModel:
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()
-            if k[0] != "_"  # ignore private ones
+            if k[0] != "_" and utils.get_origin(v) is not ClassVar
         }
 
         # WARNING: using the subclass as base semantically does not make sense!
@@ -204,7 +176,7 @@ class PartialModel:
         # in order to get correct behaviour including possible parsing mixins etc.
         # Take care that partials don't end up in containers!
         # TODO: try another idea how to not make it a subclass..
-        ret: Type[PartialSchema] = create_model(
+        ret: Type[PartialModel] = create_model(
             cls._partial_name(mcls),
             __base__=(cls, mcls),
             __module__=mcls.__module__,
@@ -222,6 +194,39 @@ class PartialModel:
         return ret
 
 
+# ----
+# Deep merging model
+
+
+def is_list_or_set(hint):
+    return utils.is_list(hint) or utils.is_set(hint)
+
+
+def check_type_mergeable(hint, *, allow_none: bool = False):
+    args = utils.get_args(hint)
+
+    if is_list_or_set(hint):  # list or set -> dig deeper
+        return all(map(check_type_mergeable, args))
+
+    # not union, list or set?
+    if not utils.is_union(hint):
+        # will be either primitive or recursively merged -> ok
+        return True
+
+    # Union case:
+    if not allow_none and utils.is_optional(hint):
+        return False  # allows none, but should not!
+
+    # If a Union contains a set or list, it must be only combined with None
+    is_prim_union = not any(map(is_list_or_set, args))
+    is_opt_set_or_list = len(args) == 2 and utils.NoneType in args
+    if not (is_prim_union or is_opt_set_or_list):
+        return False
+
+    # everything looks fine on this level -> recurse down
+    return all(map(check_type_mergeable, args))
+
+
 class DeepPartialModel(PartialModel):
     """Recursive partial model with smart updates."""
 
@@ -232,6 +237,20 @@ class DeepPartialModel(PartialModel):
         This imposes some constraints on the shape of valid hints.
         """
         return check_type_mergeable(hint, allow_none=True)
+
+    # make partial transformation recursive for the smart update to be useful:
+
+    @classmethod
+    def _substitute_partial(cls, orig_type):
+        if not isinstance(orig_type, type):
+            return orig_type  # not a class (probably just a hint)
+        if not issubclass(orig_type, cls.__base__):
+            return orig_type  # not a suitable model
+        return ForwardRef(cls._partial_forwardref_name(orig_type))
+
+    @classmethod
+    def _partial_type(cls, orig_type):
+        return Optional[utils.map_typehint(orig_type, cls._substitute_partial)]
 
     # smart update combining values:
 
@@ -260,27 +279,11 @@ class DeepPartialModel(PartialModel):
             return v_old.union(v_new)  # set union
 
         # another partial -> recursive merge of partial models
-        if isinstance(v_old, PartialSchema) and isinstance(v_new, PartialSchema):
+        if isinstance(v_old, cls) and isinstance(v_new, cls):
             return v_old.merge_with(v_new)
 
         # if we're here, treat it as an opaque value
         return v_new if v_new is not None else v_old  # replace
-
-    # make partial transformation recursive for the smart update to be useful:
-
-    @classmethod
-    def _substitute_partial(cls, orig_type):
-        if not isinstance(orig_type, type):
-            return orig_type  # not a class (probably just a hint)
-        if not issubclass(orig_type, cls.__base__):
-            return orig_type  # not a suitable model
-        return ForwardRef(cls._partial_forwardref_name(orig_type))
-
-    @classmethod
-    def _partial_type(cls, orig_type):
-        # assumes this contains no "Annotated" with pydantic stuff
-        # Annotated is simply "passed through" like a normal type!
-        return Optional[utils.map_typehint(orig_type, cls._substitute_partial)]
 
     # this also requires to recursively transform back:
 
@@ -301,27 +304,3 @@ class DeepPartialModel(PartialModel):
         """
         fs = {k: self._val_from_partial(v) for k, v in self._get_fields(self)}
         return self._partial_of.parse_obj(fs)
-
-
-class PartialSchema(DeepPartialModel, MetadataSchema):
-    """Partial model for MetadataSchema based model."""
-
-    # MetadataSchema-specific adaptations:
-    @classmethod
-    def _partial_name(cls, mcls):
-        return f"{mcls.__qualname__}.Partial"
-
-    @classmethod
-    def _get_fields(cls, obj):
-        # exclude the "annotated" fields that we support
-        constants = obj.__dict__.get("__constants__", set())
-        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
-
-    @classmethod
-    def _create_partial(cls, mcls):
-        ret = super()._create_partial(mcls)
-        # a partial is not a valid schema Plugin!
-        if hasattr(ret, "Plugin"):
-            # will make is_plugin() == False:
-            ret.Plugin = None
-        return ret

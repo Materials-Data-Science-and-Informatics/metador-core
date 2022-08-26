@@ -21,15 +21,14 @@ from pydantic import BaseModel, Extra, ValidationError
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema, schemas
-from ..schema.core import ModelConfig
-from ..schema.partial import PartialModel, PartialSchema
+from ..schema.core import BaseModelPlus, PartialSchema
+from ..schema.partial import PartialModel
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
 
 HARVESTER_GROUP_NAME = "harvester"
 
 
 class HarvesterPlugin(pg.PluginBase):
-    group = HARVESTER_GROUP_NAME
     returns: PGSchema.PluginRef
 
     class Fields(pg.PluginBase.Fields):
@@ -40,10 +39,10 @@ class HarvesterPlugin(pg.PluginBase):
 S = TypeVar("S", bound=MetadataSchema)
 
 
-class HarvesterArgs(BaseModel):
+class HarvesterArgs(BaseModelPlus):
     """Base class for harvester arguments."""
 
-    class Config(ModelConfig):
+    class Config(BaseModelPlus.Config):
         extra = Extra.forbid
 
 

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Dict, List, Literal, Optional, Set, Type
+from typing import ClassVar, Dict, List, Literal, Optional, Set, Type
 
 import isodate
-from pydantic import AnyHttpUrl, BaseConfig, BaseModel, Extra, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, Extra, ValidationError
+from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
+from .partial import DeepPartialModel
 from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
+
+SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
 
 def _mod_def_dump_args(kwargs):
@@ -20,49 +24,23 @@ def _mod_def_dump_args(kwargs):
     return kwargs
 
 
-# Pydantic configuration
-class ModelConfig(BaseConfig):
-    underscore_attrs_are_private = True  # make PrivateAttr not needed
-    use_enum_values = True  # serialize enums properly
+class BaseModelPlus(YamlModelMixin, BaseModel):
+    class Config:
+        underscore_attrs_are_private = True  # make PrivateAttr not needed
+        use_enum_values = True  # serialize enums properly
 
-    # when alias is set, still allow using field name
-    # (we use aliases for invalid attribute names in Python)
-    allow_population_by_field_name = True
-    # users should jump through hoops to add invalid stuff
-    validate_assignment = True
+        # when alias is set, still allow using field name
+        # (we use aliases for invalid attribute names in Python)
+        allow_population_by_field_name = True
+        # users should jump through hoops to add invalid stuff
+        validate_assignment = True
 
-    # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
-    json_encoders = {
-        PintUnit: lambda x: str(x),
-        PintQuantity: lambda x: str(x),
-        isodate.Duration: lambda x: isodate.duration_isoformat(x),
-    }
-
-
-class MetadataSchema(YamlModelMixin, BaseModel):
-    """Extends Pydantic models with custom serializers and functions."""
-
-    # important! breaks field hint inspection, if we add hints here without the guard!
-    if TYPE_CHECKING:
-        # user-defined (for schema plugins)
-        Plugin: SchemaPlugin
-        # auto-generated:
-        Schemas: Type  # subschemas used in annotations, for import-less access
-        Partial: MetadataSchema  # partial schemas for harvesters
-
-    # These are fine (ClassVar is ignored by pydantic):
-
-    # fields overriding immediate parent (for testing)
-    __overrides__: ClassVar[Set[str]]
-    # fields with constant values added by add_annotations
-    __constants__: ClassVar[Set[str]]
-
-    Config = ModelConfig
-
-    @classmethod
-    def is_plugin(cls):
-        """Return whether this schema is a registered plugin."""
-        return hasattr(cls, "Plugin") and issubclass(cls.Plugin, SchemaPlugin)
+        # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
+        json_encoders = {
+            PintUnit: lambda x: str(x),
+            PintQuantity: lambda x: str(x),
+            isodate.Duration: lambda x: isodate.duration_isoformat(x),
+        }
 
     def dict(self, *args, **kwargs):
         return super().dict(*args, **_mod_def_dump_args(kwargs))
@@ -79,6 +57,62 @@ class MetadataSchema(YamlModelMixin, BaseModel):
         # (e.g. vim automatically adds a trailing newline that it hides)
         # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
         return (self.json() + "\n").encode(encoding="utf-8")
+
+
+class PartialSchema(DeepPartialModel, BaseModelPlus):
+    """Partial model for MetadataSchema model."""
+
+    # MetadataSchema-specific adaptations:
+    @classmethod
+    def _partial_name(cls, mcls):
+        return f"{mcls.__qualname__}.Partial"
+
+    @classmethod
+    def _get_fields(cls, obj):
+        # exclude the "annotated" fields that we support
+        constants = obj.__dict__.get("__constants__", set())
+        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
+
+    @classmethod
+    def _create_partial(cls, mcls):
+        ret = super()._create_partial(mcls)
+        # a partial is not a valid schema Plugin!
+        if hasattr(ret, "Plugin"):
+            # will make is_plugin() == False:
+            ret.Plugin = None
+        return ret
+
+
+class ModelMetaPlus(ModelMetaclass):
+    """Metaclass for doing some magic."""
+
+    # NOTE: generating partial schemas here already is not good
+    # leads to problems with forward refs
+
+    def __init__(self, name, bases, dct):
+        ...
+
+
+class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
+    """Extends Pydantic models with custom serializers and functions."""
+
+    # user-defined (for schema plugins)
+    Plugin: ClassVar[SchemaPlugin]
+    # auto-generated:
+    Schemas: ClassVar[Type]  # subschemas used in annotations, for import-less access
+    Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
+
+    # These are fine (ClassVar is ignored by pydantic):
+
+    # fields overriding immediate parent (for testing)
+    __overrides__: ClassVar[Set[str]]
+    # fields with constant values added by add_annotations
+    __constants__: ClassVar[Set[str]]
+
+    @classmethod
+    def is_plugin(cls):
+        """Return whether this schema is a registered plugin."""
+        return hasattr(cls, "Plugin") and issubclass(cls.Plugin, SchemaPlugin)
 
 
 class PluginRef(MetadataSchema):
@@ -209,17 +243,11 @@ class PluginPkgMeta(MetadataSchema):
         )
 
 
-# ---- subclasses for schema plugin group ----
-
-SCHEMA_GROUP_NAME = "schema"
-
-
 class SchemaPluginRef(PluginRef):
     group: Literal["schema"]
 
 
 class SchemaPlugin(PluginBase):
-    group = SCHEMA_GROUP_NAME
     parent_schema: Optional[SchemaPluginRef]
 
     class Fields(PluginBase.Fields):

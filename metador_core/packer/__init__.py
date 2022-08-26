@@ -16,8 +16,8 @@ from ..harvester import HARVESTER_GROUP_NAME
 from ..hashutils import DirHashsums, dir_hashsums
 from ..plugin import interface as pg
 from ..plugin import plugingroups
-from ..schema import SchemaPlugin
-from ..schema.core import SCHEMA_GROUP_NAME, MetadataSchema, PluginPkgMeta, PluginRef
+from ..schema.core import SCHEMA_GROUP_NAME, MetadataSchema, PluginPkgMeta
+from ..schema.pg import SchemaPlugin
 from .diff import DirDiff
 from .types import DirValidationErrors
 
@@ -185,7 +185,7 @@ class PackerInfo(MetadataSchema):
         name = "core.packerinfo"
         version = (0, 1, 0)
 
-    packer: PluginRef
+    packer: PGPacker.PluginRef
     """Packer plugin used to pack the container."""
 
     pkg: PluginPkgMeta
@@ -223,7 +223,7 @@ PACKER_GROUP_NAME = "packer"
 
 
 class PackerPlugin(pg.PluginBase):
-    group = PACKER_GROUP_NAME
+    ...
 
 
 class PGPacker(pg.PluginGroup[Packer]):

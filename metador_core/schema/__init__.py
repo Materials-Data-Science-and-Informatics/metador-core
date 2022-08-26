@@ -3,12 +3,7 @@
 from typing import TYPE_CHECKING
 
 from ..plugin import plugingroups
-from .core import (  # noqa: F401
-    SCHEMA_GROUP_NAME,
-    MetadataSchema,
-    SchemaPlugin,
-    SchemaPluginRef,
-)
+from .core import SCHEMA_GROUP_NAME, MetadataSchema, SchemaPlugin  # noqa: F401
 
 if TYPE_CHECKING:
     from .pg import PGSchema

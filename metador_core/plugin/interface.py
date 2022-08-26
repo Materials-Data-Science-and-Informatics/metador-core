@@ -81,10 +81,6 @@ def is_plugin(p_cls, *, group: str = ""):
 PG_GROUP_NAME = "plugingroup"
 
 
-class PGPluginRef(PluginRef):
-    group: Literal["plugingroup"]
-
-
 class PGPlugin(PluginBase):
     group = PG_GROUP_NAME
 
@@ -99,7 +95,18 @@ class PGPlugin(PluginBase):
 T = TypeVar("T")
 
 
-class PluginGroup(Generic[T]):
+class PluginGroupMeta(type):
+    """Metaclass that will check a plugin group on creation."""
+
+    def __init__(self, name, bases, dct):
+        self.Plugin.plugin_info_class.group = self.Plugin.name
+
+
+class PGPluginRef(PluginRef):
+    group: Literal["plugingroup"]
+
+
+class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     """All pluggable entities in metador are subclasses of this class.
 
     The type parameter is the (parent) class of all loaded plugins.
@@ -108,15 +115,16 @@ class PluginGroup(Generic[T]):
     The name of their entrypoint defines the name of the plugin group.
     """
 
+    class PluginRef(PGPluginRef):
+        ...
+
     class Plugin(PGPlugin):
         """This is the plugin group plugin group, the first loaded group."""
 
         name = PG_GROUP_NAME
         version = (0, 1, 0)
         plugin_info_class = PGPlugin
-
-    class PluginRef(PGPluginRef):
-        """PluginRef where 'group' is fixed to this plugin group."""
+        # plugin_class = PluginGroup  # <- can't do that! -> check manually
 
     _PKG_META: Dict[str, PluginPkgMeta] = {}
     """Mapping from package name to metadata of the package.
@@ -213,7 +221,7 @@ class PluginGroup(Generic[T]):
         if not plugin.__dict__.get("Plugin"):
             raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
 
-        # check inner Plugin class checks (with possibly new Fields cls)
+        # run inner Plugin class checks (with possibly new Fields cls)
         pgi_cls = self.Plugin.plugin_info_class
         check_is_subclass(name, pgi_cls, PluginBase)
         check_is_subclass(name, plugin.Plugin, pgi_cls)
@@ -243,18 +251,19 @@ class PluginGroup(Generic[T]):
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             check_implements_method(name, plugin, PluginGroup.check_plugin)
 
-        # check attached subclass of PluginRef
         if not hasattr(plugin, "PluginRef"):
             raise TypeError(f"{name}: {plugin} is missing 'PluginRef' attribute!")
-        check_is_subclass(name, cast(Any, plugin).PluginRef, PluginRef)
-        group_type = cast(Any, plugin).PluginRef.__fields__["group"].type_
+        pgref = cast(Any, plugin).PluginRef
+        check_is_subclass(name, pgref, PluginRef)
+        group_type = pgref.__fields__["group"].type_
         t_const = get_origin(group_type)
         t_args = get_args(group_type)
         if t_const is not Literal or t_args != (name,):
-            msg = f"{name}: {plugin}.PluginRef.group type must be Literal['{name}']!"
+            print(group_type)
+            msg = f"{name}: PluginRef.group type must be Literal['{name}']!"
             raise TypeError(msg)
 
-        # make sure that the declared plugin_info_class for the group sets 'group',
+        # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
         ppgi_cls = cast(Any, plugin).Plugin.plugin_info_class

@@ -13,7 +13,7 @@ from ..container import MetadorNode
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema
-from ..schema.pg import PG_NAME as SCHEMA_GROUP_NAME
+from ..schema.core import SCHEMA_GROUP_NAME
 from ..schema.pg import PGSchema
 from .server import WidgetServer
 
@@ -92,7 +92,6 @@ WIDGET_GROUP_NAME = "widget"
 
 
 class WidgetPlugin(pg.PluginBase):
-    group = WIDGET_GROUP_NAME
     supports: List[PGSchema.PluginRef]
 
     class Fields(pg.PluginBase.Fields):

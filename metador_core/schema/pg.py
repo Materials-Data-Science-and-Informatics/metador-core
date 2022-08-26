@@ -8,8 +8,13 @@ from typing import Any, Dict, List, Set, Type, get_type_hints
 from overrides import overrides
 
 from ..plugin import interface as pg
-from .core import SCHEMA_GROUP_NAME, MetadataSchema, SchemaPlugin, SchemaPluginRef
-from .partial import PartialSchema
+from .core import (
+    SCHEMA_GROUP_NAME,
+    MetadataSchema,
+    PartialSchema,
+    SchemaPlugin,
+    SchemaPluginRef,
+)
 from .utils import LiftedRODict, collect_model_types, get_annotations
 
 
@@ -41,6 +46,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
       - valid schema classes (subclasses of `MetadataSchema`)
     * `Optional` is for values that are semantically *missing*,
       You must not assume that a `None` value represents anything else than that.
+    * Prefer `Set` over `List` when order is irrelevant and duplicates are not needed
     * Avoid using plain `Dict`, always define a schema instead if you know the keys,
       unless you really need to "pass through" whatever is given, which is usually
       not necessary for schemas that you design from scratch.
@@ -106,9 +112,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     """
 
-    class PluginRef(SchemaPluginRef):
-        ...
-
     class Plugin(pg.PGPlugin):
         name = SCHEMA_GROUP_NAME
         version = (0, 1, 0)
@@ -116,7 +119,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
 
-    def pre_load(self):
+    class PluginRef(SchemaPluginRef):
         ...
 
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
@@ -162,7 +165,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        for forbidden in ["Schemas", "Partial"]:
+        for forbidden in ["Schemas"]:  # , "Partial"]:
             # check that the auto-generated field names are not used
             if hasattr(plugin, forbidden):
                 raise TypeError(f"{name}: Schema has forbidden field '{forbidden}'!")
@@ -233,6 +236,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._parents = self._compute_parent_paths()
         self._children = self._compute_children()
 
+        for schema in self.values():
+            # update refs for all models we collected
+            # otherwise issues with forward references in same module etc.
+            schema.update_forward_refs()
+
         subschemas: Dict[Any, Set[Any]] = {}
         for schema in self.values():
             # collect immediate subschemas used in a schema
@@ -266,10 +274,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         refs: Dict[str, MetadataSchema] = {}
 
         for schema in subschemas.keys():
-            # update refs for all models we collected (just in case)
-            schema.update_forward_refs()
-
-        for schema in subschemas.keys():
             # create and collect partials
             partial = PartialSchema._create_partial(schema)
             partials[schema] = partial
@@ -292,8 +296,3 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     def children(self, schema_name: str) -> Set[str]:
         """Get set of names of registered (strict) child schemas."""
         return set(self._children[schema_name])
-
-
-PG_NAME = SCHEMA_GROUP_NAME
-
-__all__ = ["PG_NAME", "PGSchema"]
