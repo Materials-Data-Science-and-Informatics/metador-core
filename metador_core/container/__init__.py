@@ -109,11 +109,12 @@ from metador_core.ih5.protocols import (
     H5GroupLike,
     H5NodeLike,
 )
+from metador_core.schema.pg import PGSchema
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
 from ..schema import MetadataSchema, schemas
-from ..schema.core import PluginPkgMeta, PluginRef
+from ..schema.core import PluginPkgMeta
 from . import utils as M
 
 
@@ -1349,14 +1350,16 @@ class MetadorContainerTOC:
         """Like PluginGroup.provider, but with respect to container deps."""
         pkg_name = self._provider.get(schema_name)
         if pkg_name is None:
-            msg = f"Did not find metadata of package providing schema: {schema_name}"
+            msg = f"Did not find metadata of package providing schema: '{schema_name}'"
             raise KeyError(msg)
         return self._pkginfos[pkg_name]
 
-    def fullname(self, schema_name: str) -> PluginRef:
+    def fullname(self, schema_name: str) -> PGSchema.PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
         pkginfo = self.provider(schema_name)
-        return pkginfo.plugins[_SCHEMAS.Plugin.name][schema_name]
+        return PGSchema.PluginRef.construct(
+            **pkginfo.plugins[schemas.name][schema_name].dict()
+        )
 
     @overload
     def query(self, schema: str) -> Dict[MetadorNode, MetadataSchema]:

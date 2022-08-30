@@ -9,7 +9,6 @@ from typing import (
     Generic,
     ItemsView,
     KeysView,
-    Literal,
     Optional,
     Type,
     TypeVar,
@@ -19,9 +18,8 @@ from typing import (
     overload,
 )
 
-from typing_extensions import get_args, get_origin
-
-from ..schema.core import PluginBase, PluginPkgMeta, PluginRef
+from ..schema.core import PluginBase, PluginPkgMeta
+from ..schema.core import PluginRef as AnyPluginRef
 from .entrypoints import get_plugins, plugin_pkgs
 
 # helpers for checking plugins (also to be used in PluginGroup subclasses):
@@ -83,13 +81,8 @@ PG_GROUP_NAME = "plugingroup"
 
 class PGPlugin(PluginBase):
     group = PG_GROUP_NAME
-
-    plugin_class: Any = object
     plugin_info_class: Type[PluginBase]
-
-    class Fields(PluginBase.Fields):
-        plugin_class: Optional[Any]
-        plugin_info_class: Any
+    plugin_class: Optional[Any] = object
 
 
 T = TypeVar("T")
@@ -100,10 +93,7 @@ class PluginGroupMeta(type):
 
     def __init__(self, name, bases, dct):
         self.Plugin.plugin_info_class.group = self.Plugin.name
-
-
-class PGPluginRef(PluginRef):
-    group: Literal["plugingroup"]
+        self.PluginRef = AnyPluginRef.subclass_for(self.Plugin.name)
 
 
 class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
@@ -115,16 +105,16 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     The name of their entrypoint defines the name of the plugin group.
     """
 
-    class PluginRef(PGPluginRef):
-        ...
+    PluginRef: Any  # dynamic subclass of PluginRef
 
-    class Plugin(PGPlugin):
+    class Plugin:
         """This is the plugin group plugin group, the first loaded group."""
 
         name = PG_GROUP_NAME
         version = (0, 1, 0)
         plugin_info_class = PGPlugin
-        # plugin_class = PluginGroup  # <- can't do that! -> check manually
+        plugin_class: Type
+        # plugin_class = PluginGroup  # can't set that -> check manually
 
     _PKG_META: Dict[str, PluginPkgMeta] = {}
     """Mapping from package name to metadata of the package.
@@ -142,7 +132,10 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         self.pre_load()
 
         # load plugins in dependency-aligned order:
-        pg_deps = {name: cast(Any, grp).Plugin.requires for name, grp in self.items()}
+        def get_deps(plugin):
+            return getattr(cast(Any, plugin).Plugin, "requires", [])
+
+        pg_deps = {name: get_deps(plugin) for name, plugin in self.items()}
         for pg_name in TopologicalSorter(pg_deps).static_order():
             self._load_plugin(pg_name, self[pg_name])
 
@@ -191,7 +184,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             return None
 
     def fullname(self, ep_name: str) -> PluginRef:
-        return cast(Any, self[ep_name]).Plugin.ref()
+        plugin = self[ep_name]
+        return self.PluginRef(name=ep_name, version=cast(Any, plugin).Plugin.version)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:
         """Return package metadata of Python package providing this plugin."""
@@ -222,14 +216,12 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
 
         # run inner Plugin class checks (with possibly new Fields cls)
-        pgi_cls = self.Plugin.plugin_info_class
-        check_is_subclass(name, pgi_cls, PluginBase)
-        check_is_subclass(name, plugin.Plugin, pgi_cls)
-        plugin.Plugin._check(ep_name=name)
-
-        # check correct inheritance for plugin info
-        if pg_cls := self.Plugin.plugin_class:
-            check_is_subclass(name, plugin, pg_cls)
+        plugin.Plugin = self.Plugin.plugin_info_class.parse_info(
+            plugin.Plugin, ep_name=name
+        )
+        # check correct inheritance of plugin
+        if self.Plugin.plugin_class:
+            check_is_subclass(name, plugin, self.Plugin.plugin_class)
 
     def check_plugin(self, name: str, plugin: Type[T]):
         """Perform plugin group specific checks on a registered plugin.
@@ -248,26 +240,27 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         # these are the checks done for other plugin group plugins:
 
         check_is_subclass(name, plugin, PluginGroup)
+        check_is_subclass(name, self.Plugin.plugin_info_class, PluginBase)
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             check_implements_method(name, plugin, PluginGroup.check_plugin)
 
-        if not hasattr(plugin, "PluginRef"):
-            raise TypeError(f"{name}: {plugin} is missing 'PluginRef' attribute!")
-        pgref = cast(Any, plugin).PluginRef
-        check_is_subclass(name, pgref, PluginRef)
-        group_type = pgref.__fields__["group"].type_
-        t_const = get_origin(group_type)
-        t_args = get_args(group_type)
-        if t_const is not Literal or t_args != (name,):
-            print(group_type)
-            msg = f"{name}: PluginRef.group type must be Literal['{name}']!"
-            raise TypeError(msg)
+        # if not hasattr(plugin, "PluginRef"):
+        #     raise TypeError(f"{name}: {plugin} is missing 'PluginRef' attribute!")
+        # pgref = cast(Any, plugin).PluginRef
+        # check_is_subclass(name, pgref, PluginRef)
+        # group_type = pgref.__fields__["group"].type_
+        # t_const = get_origin(group_type)
+        # t_args = get_args(group_type)
+        # if t_const is not Literal or t_args != (name,):
+        #     print(group_type)
+        #     msg = f"{name}: PluginRef.group type must be Literal['{name}']!"
+        #     raise TypeError(msg)
 
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
         ppgi_cls = cast(Any, plugin).Plugin.plugin_info_class
-        if not hasattr(ppgi_cls, "group"):
+        if not ppgi_cls.group:
             raise TypeError(f"{name}: {ppgi_cls} is missing 'group' attribute!")
         if not ppgi_cls.group == cast(Any, plugin).Plugin.name:
             msg = f"{name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
@@ -305,7 +298,9 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         }
         # fix up circularity (this package provides plugingroup as plugingroup)
         this_pkg = PluginGroup._PKG_META[PluginGroup.Plugin._provided_by]
-        this_pkg.plugins[PG_GROUP_NAME][PG_GROUP_NAME] = PluginGroup.Plugin.ref()
+        this_pkg.plugins[PG_GROUP_NAME][PG_GROUP_NAME] = self.PluginRef(
+            name=PG_GROUP_NAME, version=self.Plugin.version
+        )
 
 
 # ----
@@ -314,6 +309,10 @@ _loaded_plugin_groups: Dict[str, PluginGroup] = {}
 
 
 def create_pg(pg_cls):
+    if not isinstance(pg_cls.Plugin, PluginBase):
+        # magic - substitute Plugin class with parsed plugin object
+        pg_cls.Plugin = PGPlugin.parse_info(pg_cls.Plugin)
+
     pg_name = pg_cls.Plugin.name
 
     if pg_name in _loaded_plugin_groups:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Literal, Optional, Set, Type
+from typing import List, Optional, Set, Type
 
 from overrides import EnforceOverrides, overrides
 from panel.viewable import Viewable
@@ -92,20 +92,14 @@ WIDGET_GROUP_NAME = "widget"
 
 
 class WidgetPlugin(pg.PluginBase):
-    supports: List[PGSchema.PluginRef]
-
-    class Fields(pg.PluginBase.Fields):
-        supports: Annotated[List[PGSchema.PluginRef], Field(min_items=1)]
-        """Return list of schemas supported by this widget."""
+    supports: Annotated[List[PGSchema.PluginRef], Field(min_items=1)]
+    """Return list of schemas supported by this widget."""
 
 
 class PGWidget(pg.PluginGroup[Widget]):
     """Widget plugin group interface."""
 
-    class PluginRef(pg.PluginRef):
-        group: Literal["widget"]
-
-    class Plugin(pg.PGPlugin):
+    class Plugin:
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
         requires = [SCHEMA_GROUP_NAME]

@@ -3,6 +3,8 @@ from typing import Dict, Optional, Union
 from uuid import UUID
 
 import numpy as np
+
+# import panel as pn
 from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from bokeh.embed import server_document
@@ -106,8 +108,12 @@ class WidgetServer:
 
     def run(self, **kwargs):
         """Run bokeh server with the registered apps (will block)."""
-        kwargs["io_loop"] = kwargs.get("io_loop") or IOLoop()
+        # kwargs["io_loop"] = kwargs.get("io_loop") or IOLoop()
+        # server = pn.io.server.get_server(self._bokeh_apps, **kwargs)
+
+        kwargs["loop"] = kwargs.get("io_loop") or IOLoop()
         server = Server(self._bokeh_apps, **kwargs)
+
         server.start()
         server.io_loop.start()
 

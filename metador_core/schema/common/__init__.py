@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import parse_obj_as
 
-from .. import MetadataSchema, SchemaPlugin
+from .. import MetadataSchema, schemas
 from ..types import ParserMixin, PintQuantity, PintUnit
 from .rocrate import DirMeta, FileMeta, Organization, Person
 from .schemaorg import Number, QuantitativeValue, Text
@@ -94,11 +94,11 @@ class Pixels(NumValue):
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.bib"
         version = (0, 1, 0)
         requires = ["core.dir"]
-        parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
+        parent_schema = schemas.PluginRef(name="core.dir", version=(0, 1, 0))
 
     # id_: Annotated[Literal["./"], Field(alias="@id")] = "./"
 
@@ -118,11 +118,11 @@ class ImageFileMeta(FileMeta):
     Also serves as marker schema for the imagefile widget.
     """
 
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.imagefile"
         version = (0, 1, 0)
         requires = ["core.file"]
-        parent_schema = FileMeta.Plugin.ref(version=(0, 1, 0))
+        parent_schema = schemas.PluginRef(name="core.file", version=(0, 1, 0))
 
     width: Pixels
     height: Pixels
@@ -136,7 +136,7 @@ class ColumnHeader(MetadataSchema):
 class TableMeta(MetadataSchema):
     """Metadata about a table."""
 
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.table"
         version = (0, 1, 0)
 

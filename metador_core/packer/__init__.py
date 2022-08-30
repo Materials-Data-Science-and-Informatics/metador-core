@@ -4,7 +4,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from io import UnsupportedOperation
 from pathlib import Path
-from typing import Literal, Tuple, Type
+from typing import Tuple, Type
 
 import wrapt
 from overrides import EnforceOverrides, overrides
@@ -17,7 +17,6 @@ from ..hashutils import DirHashsums, dir_hashsums
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema.core import SCHEMA_GROUP_NAME, MetadataSchema, PluginPkgMeta
-from ..schema.pg import SchemaPlugin
 from .diff import DirDiff
 from .types import DirValidationErrors
 
@@ -181,7 +180,7 @@ class Packer(ABC, EnforceOverrides):
 class PackerInfo(MetadataSchema):
     """Schema for info about the packer that was used to create a container."""
 
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.packerinfo"
         version = (0, 1, 0)
 
@@ -229,10 +228,7 @@ class PackerPlugin(pg.PluginBase):
 class PGPacker(pg.PluginGroup[Packer]):
     """Packer plugin group interface."""
 
-    class PluginRef(pg.PluginRef):
-        group: Literal["packer"]
-
-    class Plugin(pg.PGPlugin):
+    class Plugin:
         name = PACKER_GROUP_NAME
         version = (0, 1, 0)
         plugin_class = Packer

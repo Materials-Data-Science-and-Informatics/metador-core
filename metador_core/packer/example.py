@@ -16,7 +16,7 @@ from typing import Any, Union
 import pandas
 from overrides import overrides
 
-from . import MetadorContainer, Packer, PackerPlugin
+from . import MetadorContainer, Packer
 from .diff import DiffNode, DirDiff
 from .utils import DirValidationErrors, check_metadata_file, embed_file
 
@@ -41,7 +41,7 @@ class GenericPacker(Packer):
     Other packers may log their actions as they deem appropriate.
     """
 
-    class Plugin(PackerPlugin):
+    class Plugin:
         name = "core.generic"
         version = (0, 1, 0)
 

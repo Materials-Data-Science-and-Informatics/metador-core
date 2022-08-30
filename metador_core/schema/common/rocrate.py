@@ -8,7 +8,6 @@ from typing import Set, Union
 
 from pydantic import parse_obj_as, root_validator, validator
 
-from .. import SchemaPlugin
 from ..ld import LDIdRef, add_annotations, ld_type
 from . import schemaorg
 from .schemaorg import URL, Text
@@ -22,7 +21,7 @@ def annotate_rocrate_type(name: str):
 
 @annotate_rocrate_type("File")
 class FileMeta(schemaorg.MediaObject):
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.file"
         version = (0, 1, 0)
 
@@ -40,7 +39,7 @@ class FileMeta(schemaorg.MediaObject):
 
 @annotate_rocrate_type("Dataset")
 class DirMeta(schemaorg.Dataset):
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.dir"
         version = (0, 1, 0)
 

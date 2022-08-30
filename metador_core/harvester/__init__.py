@@ -3,17 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
 from pathlib import Path
-from typing import (
-    Callable,
-    ClassVar,
-    Dict,
-    Iterable,
-    Literal,
-    Set,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Callable, ClassVar, Dict, Iterable, Set, Type, TypeVar, Union
 
 from overrides import overrides
 from pydantic import BaseModel, Extra, ValidationError
@@ -30,10 +20,7 @@ HARVESTER_GROUP_NAME = "harvester"
 
 class HarvesterPlugin(pg.PluginBase):
     returns: PGSchema.PluginRef
-
-    class Fields(pg.PluginBase.Fields):
-        returns: PGSchema.PluginRef
-        """Schema returned by this harvester."""
+    """Schema returned by this harvester."""
 
 
 S = TypeVar("S", bound=MetadataSchema)
@@ -195,10 +182,7 @@ def _schema_arg(obj: Union[str, Type[MetadataSchema]]) -> Type[MetadataSchema]:
 class PGHarvester(pg.PluginGroup[Harvester]):
     """Harvester plugin group interface."""
 
-    class PluginRef(pg.PluginRef):
-        group: Literal["harvester"]
-
-    class Plugin(pg.PGPlugin):
+    class Plugin:
         name = HARVESTER_GROUP_NAME
         version = (0, 1, 0)
         requires = [SCHEMA_GROUP_NAME]
@@ -218,7 +202,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         if not schema:
             raise TypeError(f"{name}: Schema '{schema_name}' not installed!")
 
-        inst_ref = schema.Plugin.ref()
+        inst_ref = schemas.fullname(schema_name)
         if not inst_ref.supports(hv_ref):
             msg = f"{name}: Installed schema {inst_ref} incompatible with harvester schema {hv_ref}!"
             raise TypeError(msg)

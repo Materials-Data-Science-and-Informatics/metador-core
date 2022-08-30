@@ -6,7 +6,7 @@ import panel as pn
 from panel.viewable import Viewable
 
 from ..container import MetadorContainer, MetadorNode
-from ..schema import MetadataSchema, SchemaPlugin, schemas
+from ..schema import MetadataSchema, schemas
 from . import Widget, widgets
 
 _SCHEMAS = schemas
@@ -16,7 +16,7 @@ _WIDGETS = widgets
 class DashboardMeta(MetadataSchema):
     """Schema describing dashboard configuration for a node in a container."""
 
-    class Plugin(SchemaPlugin):
+    class Plugin:
         name = "core.dashboard"
         version = (0, 1, 0)
 
@@ -62,8 +62,9 @@ class Dashboard:
     ) -> Tuple[str, Type[Widget]]:
         """Try to instantiate a widget for a node based on its dashboard metadata."""
         assert dbmeta.show
+        schema_name: Optional[str]
         if dbmeta.metador_schema is not None:
-            schema_name: str = dbmeta.metador_schema
+            schema_name = dbmeta.metador_schema
             if _SCHEMAS.get(schema_name) is None:
                 msg = f"Dashboard metadata contains unknown schema: {schema_name}"
                 raise ValueError(msg)
@@ -74,7 +75,7 @@ class Dashboard:
                 msg = f"Dashboard metadata contains incompatible schema: {schema_name}"
                 raise ValueError(msg)
         else:
-            schema_name = ""
+            schema_name = None
             for attached_obj_schema in node.meta.find():
                 container_schema = self._container.toc.fullname(attached_obj_schema)
                 if container_schema in _WIDGETS.supported_schemas():
@@ -84,6 +85,7 @@ class Dashboard:
         if schema_name is None:
             msg = f"Cannot find schema suitable for known widgets for node: {node.name}"
             raise ValueError(msg)
+        assert isinstance(schema_name, str)
 
         container_schema_ref = self._container.toc.fullname(schema_name)
         widget_class: Optional[Type[Widget]]

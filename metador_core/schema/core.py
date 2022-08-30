@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import ClassVar, Dict, List, Literal, Optional, Set, Type
 
 import isodate
-from pydantic import AnyHttpUrl, BaseModel, Extra, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, ValidationError, create_model
 from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
@@ -97,7 +97,7 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
     """Extends Pydantic models with custom serializers and functions."""
 
     # user-defined (for schema plugins)
-    Plugin: ClassVar[SchemaPlugin]
+    Plugin: ClassVar[Type]
     # auto-generated:
     Schemas: ClassVar[Type]  # subschemas used in annotations, for import-less access
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
@@ -111,8 +111,8 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
 
     @classmethod
     def is_plugin(cls):
-        """Return whether this schema is a registered plugin."""
-        return hasattr(cls, "Plugin") and issubclass(cls.Plugin, SchemaPlugin)
+        """Return whether this schema is a plugin."""
+        return hasattr(cls, "Plugin")
 
 
 class PluginRef(MetadataSchema):
@@ -151,53 +151,42 @@ class PluginRef(MetadataSchema):
             return False
         return True
 
+    @classmethod
+    def subclass_for(cls, group: str):
+        # lit = Literal[group_name] # type: ignore
+        # class GroupPluginRef(cls):
+        #     group: lit = group_name # type: ignore
+        # return GroupPluginRef
+        return create_model(f"PG{group.capitalize()}.PluginRef", __base__=cls, group=(Literal[group], group))  # type: ignore
 
-class PluginBase:
+
+class PluginBase(BaseModelPlus):
     """All Plugin inner classes must be called `Plugin` and inherit from this class."""
 
-    # set during plugin bootstrap to providing python package
-    _provided_by: str = ""
-    group: str  # fixed in subclasses for specific plugin groups
+    _provided_by: str = ""  # set during plugin bootstrap based on source package
+    group: ClassVar[str] = ""  # auto-set during plugin group init
 
     # for type checking (mirrors Fields)
     name: str
     version: SemVerTuple
-    requires: List[str] = []  # set default here (needed before actual checking is done)
-
-    class Fields(BaseModel):
-        """Minimal info to be declared by plugin author in a inner class called `Plugin`."""
-
-        class Config:
-            extra = Extra.forbid
-
-        name: str
-        """Name of plugin (must equal to listed entry point and unique per plugingroup)."""
-
-        version: SemVerTuple
-        """Semantic version of plugin."""
-
-        requires: List[str] = []
-        """List of plugin names of same kind that must be loaded before this one."""
+    requires: List[str] = []
 
     @classmethod
     def ref(cls, *, version=None):
         return PluginRef(group=cls.group, name=cls.name, version=version or cls.version)
 
     @classmethod
-    def _check(cls, *, ep_name: str = ""):
-        ep_name = ep_name or cls.name
-        if ep_name != cls.name:
-            msg = f"{ep_name}: Plugin.name ('{cls.name}') != entry point ('{ep_name}')"
+    def parse_info(cls, info, *, ep_name: str = ""):
+        ep_name = ep_name or info.name
+        if ep_name != info.name:
+            msg = f"{ep_name}: Plugin.name ('{info.name}') != entry point ('{ep_name}')"
             raise TypeError(msg)
         try:
-            # validate and fill default values
-            public_attrs = {
-                k: v for k, v in cls.__dict__.items() if not k.startswith("_")
-            }
-            plugininfo = cls.Fields(**public_attrs)
-            for atrname, val in plugininfo.dict().items():
-                if not hasattr(cls, atrname):
-                    setattr(cls, atrname, val)
+            # validate
+            public_attrs = {k: v for k, v in info.__dict__.items() if k[0] != "_"}
+            validated = cls(**public_attrs)
+            validated._provided_by = getattr(info, "_provided_by", None)
+            return validated
         except ValidationError as e:
             raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")
 
@@ -234,27 +223,10 @@ class PluginPkgMeta(MetadataSchema):
         for group, names in dm.plugins.items():
             plugins[group] = {}
             for name in names:
-                plugins[group][name] = plugingroups[group][name].Plugin.ref()
+                plugins[group][name] = plugingroups[group].fullname(name)
         return cls(
             name=dm.name,
             version=dm.version,
             repository_url=dm.repository_url,
             plugins=plugins,
         )
-
-
-class SchemaPluginRef(PluginRef):
-    group: Literal["schema"]
-
-
-class SchemaPlugin(PluginBase):
-    parent_schema: Optional[SchemaPluginRef]
-
-    class Fields(PluginBase.Fields):
-        parent_schema: Optional[SchemaPluginRef]
-        """Declares a parent schema plugin.
-
-        By declaring a parent schema you agree to the following contract:
-        Any data that can be loaded using this schema MUST also be
-        loadable by the parent schema (with possible information loss).
-        """

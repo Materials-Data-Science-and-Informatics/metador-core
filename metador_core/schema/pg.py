@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 from queue import SimpleQueue
-from typing import Any, Dict, List, Set, Type, get_type_hints
+from typing import Any, Dict, List, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
 from ..plugin import interface as pg
-from .core import (
-    SCHEMA_GROUP_NAME,
-    MetadataSchema,
-    PartialSchema,
-    SchemaPlugin,
-    SchemaPluginRef,
-)
+from .core import SCHEMA_GROUP_NAME, MetadataSchema, PartialSchema, PluginBase
 from .utils import LiftedRODict, collect_model_types, get_annotations
+
+
+class SchemaPlugin(PluginBase):
+    parent_schema: Optional[PGSchema.PluginRef]
+    """Declares a parent schema plugin.
+
+    By declaring a parent schema you agree to the following contract:
+    Any data that can be loaded using this schema MUST also be
+    loadable by the parent schema (with possible information loss).
+    """
 
 
 class PGSchema(pg.PluginGroup[MetadataSchema]):
@@ -112,15 +116,12 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     """
 
-    class Plugin(pg.PGPlugin):
+    class Plugin:
         name = SCHEMA_GROUP_NAME
         version = (0, 1, 0)
         requires = [pg.PG_GROUP_NAME]
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
-
-    class PluginRef(SchemaPluginRef):
-        ...
 
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
         """Sanity-checks for possibly defined parent schema."""
@@ -296,3 +297,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     def children(self, schema_name: str) -> Set[str]:
         """Get set of names of registered (strict) child schemas."""
         return set(self._children[schema_name])
+
+
+SchemaPlugin.update_forward_refs()

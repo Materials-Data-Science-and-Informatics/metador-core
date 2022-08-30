@@ -6,18 +6,17 @@ from bokeh.plotting import figure
 from overrides import overrides
 from panel.viewable import Viewable
 
-from ..schema.common import ImageFileMeta
-from . import Widget, WidgetPlugin
+from ..schema import schemas
+from . import Widget
+
+ImageFileMeta = schemas["core.imagefile"]
 
 
 class ImageWidget(Widget):
-    class Plugin(WidgetPlugin):
+    class Plugin:
         name = "core.imagefile"
         version = (0, 1, 0)
-        supports = [ImageFileMeta.Plugin.ref(version=(0, 1, 0))]
-
-    # Declared type should be Union of schema classes that are listed as `supports`
-    _meta: ImageFileMeta
+        supports = [schemas.PluginRef(name="core.imagefile", version=(0, 1, 0))]
 
     @overrides
     def setup(self):

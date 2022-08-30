@@ -1,7 +1,7 @@
 import magic
 from PIL import Image
 
-from ..harvester import FileHarvester, HarvesterPlugin
+from ..harvester import FileHarvester
 from ..hashutils import hashsum
 from ..schema import schemas
 
@@ -17,10 +17,10 @@ class FileMetaHarvester(FileHarvester):
     Harvests file name, file size, mimetype and hashsum of the file.
     """
 
-    class Plugin(HarvesterPlugin):
+    class Plugin:
         name = "core.file.generic"
         version = (0, 1, 0)
-        returns = FileMeta.Plugin.ref(version=(0, 1, 0))
+        returns = schemas.PluginRef(name="core.file", version=(0, 1, 0))
 
     def run(self):
         path = self.args.filepath
@@ -36,10 +36,10 @@ class FileMetaHarvester(FileHarvester):
 class ImageFileMetaHarvester(FileHarvester):
     """Harvester to obtain dimensions (width and height) of an image file."""
 
-    class Plugin(HarvesterPlugin):
+    class Plugin:
         name = "core.imagefile.dim"
         version = (0, 1, 0)
-        returns = ImageFileMeta.Plugin.ref(version=(0, 1, 0))
+        returns = schemas.PluginRef(name="core.imagefile", version=(0, 1, 0))
 
     def run(self):
         path = self.args.filepath
