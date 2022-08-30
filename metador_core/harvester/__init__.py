@@ -177,7 +177,7 @@ class MetadataLoader(FileHarvester):
         used_path = func(path)
         if not used_path.is_file():
             return self._partial_schema()
-        return self._partial_schema.parse_file(path)
+        return self._partial_schema.parse_file(used_path)
 
 
 # ----
