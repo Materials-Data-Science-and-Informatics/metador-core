@@ -11,8 +11,8 @@ from .types import NonEmptyStr
 from .utils import make_literal
 
 
-def add_annotations(consts: Dict[str, Any], **kwargs):
-    """Decorate pydantic models to add constant annotation fields.
+def add_const(consts: Dict[str, Any], **kwargs):
+    """Add constant fields to pydantic models.
 
     Must be passed a dict of field names mapped to the default values (only default JSON types).
 
@@ -60,7 +60,7 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
         # if hasattr(mcls, "Plugin"):
         #     ret.Plugin = mcls.Plugin
 
-        # to later detect annotation fields:
+        # to later distinguish annotation fields:
         parent_consts = mcls.__dict__.get("__constants__", set())
         ret.__constants__ = parent_consts.union(set(consts.keys()))
         return ret
@@ -69,6 +69,7 @@ def add_annotations(consts: Dict[str, Any], **kwargs):
 
 
 def ld_type(name, *, context=None) -> Dict[str, Any]:
+    """Return a dict to use with `add_const` that has the given type name and context."""
     ret = {"@type": name}
     if context:
         ret["@context"] = context

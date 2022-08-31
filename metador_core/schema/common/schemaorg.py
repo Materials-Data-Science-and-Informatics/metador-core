@@ -13,7 +13,7 @@ from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
-from ..ld import LDSchema, add_annotations, ld_type
+from ..ld import LDSchema, add_const, ld_type
 from ..types import Duration, NonEmptyStr, Number
 
 URL = AnyHttpUrl
@@ -26,7 +26,7 @@ CTX_URL_SCHEMAORG = "https://schema.org"
 
 def annotate_schemaorg_type(name: str):
     # return add_annotations(ld_type(name, context=))
-    return add_annotations(ld_type(name, context=CTX_URL_SCHEMAORG))
+    return add_const(ld_type(name, context=CTX_URL_SCHEMAORG))
 
 
 @annotate_schemaorg_type("Thing")

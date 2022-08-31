@@ -151,6 +151,11 @@ class PluginRef(MetadataSchema):
             return False
         return True
 
+    def __hash__(self):
+        # needed because otherwise would differ in subclass,
+        # causing problems for equality based on __hash__
+        return hash((self.group, self.name, self.version))
+
     @classmethod
     def subclass_for(cls, group: str):
         # lit = Literal[group_name] # type: ignore

@@ -1357,9 +1357,7 @@ class MetadorContainerTOC:
     def fullname(self, schema_name: str) -> PGSchema.PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
         pkginfo = self.provider(schema_name)
-        return PGSchema.PluginRef.construct(
-            **pkginfo.plugins[schemas.name][schema_name].dict()
-        )
+        return pkginfo.plugins[schemas.name][schema_name]
 
     @overload
     def query(self, schema: str) -> Dict[MetadorNode, MetadataSchema]:

@@ -8,7 +8,7 @@ from typing import Set, Union
 
 from pydantic import parse_obj_as, root_validator, validator
 
-from ..ld import LDIdRef, add_annotations, ld_type
+from ..ld import LDIdRef, add_const, ld_type
 from . import schemaorg
 from .schemaorg import URL, Text
 
@@ -16,7 +16,7 @@ CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
 
 def annotate_rocrate_type(name: str):
-    return add_annotations(ld_type(name, context=CTX_URL_ROCRATE))
+    return add_const(ld_type(name, context=CTX_URL_ROCRATE))
 
 
 @annotate_rocrate_type("File")
