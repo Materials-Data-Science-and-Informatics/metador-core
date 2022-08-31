@@ -21,7 +21,8 @@ from pydantic import BaseModel, create_model, validate_model
 from pydantic.fields import FieldInfo
 from typing_extensions import Annotated
 
-from . import utils
+from ..schema import utils
+from ..schema.core import BaseModelPlus
 
 
 class PartialModel:
@@ -304,3 +305,27 @@ class DeepPartialModel(PartialModel):
         """
         fs = {k: self._val_from_partial(v) for k, v in self._get_fields(self)}
         return self._partial_of.parse_obj(fs)
+
+
+class PartialSchema(DeepPartialModel, BaseModelPlus):
+    """Partial model for MetadataSchema model."""
+
+    # MetadataSchema-specific adaptations:
+    @classmethod
+    def _partial_name(cls, mcls):
+        return f"{mcls.__qualname__}.Partial"
+
+    @classmethod
+    def _get_fields(cls, obj):
+        # exclude the "annotated" fields that we support
+        constants = obj.__dict__.get("__constants__", set())
+        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
+
+    @classmethod
+    def _create_partial(cls, mcls):
+        ret = super()._create_partial(mcls)
+        # a partial is not a valid schema Plugin!
+        if hasattr(ret, "Plugin"):
+            # will make is_plugin() == False:
+            ret.Plugin = None
+        return ret

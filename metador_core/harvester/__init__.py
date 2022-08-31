@@ -11,9 +11,9 @@ from pydantic import BaseModel, Extra, ValidationError
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema, schemas
-from ..schema.core import BaseModelPlus, PartialSchema
-from ..schema.partial import PartialModel
+from ..schema.core import BaseModelPlus
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
+from .partial import PartialModel, PartialSchema
 
 HARVESTER_GROUP_NAME = "harvester"
 

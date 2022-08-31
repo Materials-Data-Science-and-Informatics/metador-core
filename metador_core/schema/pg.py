@@ -7,8 +7,9 @@ from typing import Any, Dict, List, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
+from ..harvester.partial import PartialSchema
 from ..plugin import interface as pg
-from .core import SCHEMA_GROUP_NAME, MetadataSchema, PartialSchema, PluginBase
+from .core import SCHEMA_GROUP_NAME, MetadataSchema, PluginBase
 from .utils import LiftedRODict, collect_model_types, get_annotations
 
 

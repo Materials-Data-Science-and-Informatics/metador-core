@@ -9,7 +9,6 @@ from pydantic import AnyHttpUrl, BaseModel, ValidationError, create_model
 from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
-from .partial import DeepPartialModel
 from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
@@ -59,30 +58,6 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
         return (self.json() + "\n").encode(encoding="utf-8")
 
 
-class PartialSchema(DeepPartialModel, BaseModelPlus):
-    """Partial model for MetadataSchema model."""
-
-    # MetadataSchema-specific adaptations:
-    @classmethod
-    def _partial_name(cls, mcls):
-        return f"{mcls.__qualname__}.Partial"
-
-    @classmethod
-    def _get_fields(cls, obj):
-        # exclude the "annotated" fields that we support
-        constants = obj.__dict__.get("__constants__", set())
-        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
-
-    @classmethod
-    def _create_partial(cls, mcls):
-        ret = super()._create_partial(mcls)
-        # a partial is not a valid schema Plugin!
-        if hasattr(ret, "Plugin"):
-            # will make is_plugin() == False:
-            ret.Plugin = None
-        return ret
-
-
 class ModelMetaPlus(ModelMetaclass):
     """Metaclass for doing some magic."""
 
@@ -98,6 +73,7 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
 
     # user-defined (for schema plugins)
     Plugin: ClassVar[Type]
+
     # auto-generated:
     Schemas: ClassVar[Type]  # subschemas used in annotations, for import-less access
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
