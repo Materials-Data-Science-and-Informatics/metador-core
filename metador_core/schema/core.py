@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Literal, Optional, Protocol, Set, Type
 
 import isodate
@@ -89,6 +90,14 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
     def is_plugin(cls):
         """Return whether this schema is a plugin."""
         return hasattr(cls, "Plugin")
+
+
+@dataclass
+class FieldInspector:
+    name: str
+    description: str
+    schemas: Type
+    types: Type
 
 
 class PluginRef(MetadataSchema):

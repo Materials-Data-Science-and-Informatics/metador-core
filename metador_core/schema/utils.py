@@ -1,4 +1,5 @@
 from collections import ChainMap
+from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import (  # type: ignore
     Any,
@@ -212,22 +213,20 @@ def make_tree_mapper(node_constructor, succ_func):
 map_typehint = make_tree_mapper(make_typehint, get_args)
 
 
-def field_types(mf: ModelField, *, bound=object) -> Iterable:
+def field_types(mf: ModelField, *, bound=object) -> Iterable[Type]:
     return filter(
         is_subclass_of(bound), filter(is_instance_of(type), traverse_typehint(mf.type_))
     )
 
 
-def collect_model_types(m: BaseModel, *, bound=object) -> Set:
+def collect_model_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
     """Return set of classes referenced in the definition of a pydantic model.
 
     Args:
         bound: If provided, will be used to filter results to
           contain only subclasses of the bound.
     """
-    return set.union(
-        set(), *map(lambda mf: set(field_types(mf, bound=bound)), m.__fields__.values())
-    )
+    return {k: set(field_types(v, bound=bound)) for k, v in m.__fields__.items()}
 
 
 # ----
@@ -240,19 +239,19 @@ class LiftedDict(type):
     where the dict is actually a fixed lookup table.
     """
 
-    _schemas: Dict[str, Any]
+    _dict: Dict[str, Any]
     _repr: str = ""
 
     def __repr__(self):
         if self._repr:
             return self._repr
-        return repr(self)
+        return repr(list(self._dict.keys()))
 
     def __dir__(self):
-        return dir(super()) + list(self._schemas.keys())
+        return list(self._dict.keys())
 
     def __getattr__(self, key):
-        if s := self._schemas.get(key):
+        if s := self._dict.get(key):
             return s
         raise AttributeError(key)
 
@@ -262,3 +261,43 @@ class LiftedRODict(LiftedDict):
 
     def __setattr__(self, key, value):
         raise UnsupportedOperation
+
+
+@dataclass
+class FieldInspector:
+    origin: Type
+
+    name: str
+    # description: str  # TODO: can be done with simple_parsing.docstring.get_attribute_docstring !!!
+    type: Type
+    schemas: Type
+
+    def __init__(self, model, name, description, hint, schemas):
+        self.origin = model
+        self.name = name
+        self.type = hint
+
+        class Schemas(metaclass=LiftedRODict):
+            _dict = {s.__name__: s for s in schemas}
+
+        self.schemas = Schemas
+
+
+def attach_field_inspector(model: BaseModel, *, bound=BaseModel):
+    """Attach inner class to a model for sub-model lookup.
+
+    This enables users to access subschemas without extra imports,
+    improving decoupling of plugins and packages.
+
+    Also can be used for introspection about fields.
+    """
+    field_schemas = collect_model_types(model, bound=bound)
+    field_hint = {k: v for k, v in get_type_hints(model).items() if k in field_schemas}
+
+    class FieldInspectors(metaclass=LiftedRODict):
+        _dict = {
+            n: FieldInspector(model, n, "", field_hint[n], field_schemas[n])
+            for n in field_schemas
+        }
+
+    setattr(model, "Fields", FieldInspectors)

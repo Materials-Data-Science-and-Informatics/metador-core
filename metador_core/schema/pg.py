@@ -10,7 +10,7 @@ from overrides import overrides
 from ..plugin import interface as pg
 from .core import SCHEMA_GROUP_NAME, MetadataSchema, PluginBase
 from .partial import PartialSchema
-from .utils import LiftedRODict, collect_model_types, get_annotations
+from .utils import attach_field_inspector, collect_model_types, get_annotations
 
 
 class SchemaPlugin(PluginBase):
@@ -128,9 +128,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._parents: Dict[str, List[str]] = {}  # base plugins
         self._children: Dict[str, Set[str]] = {}  # subclass plugins
 
-        self._subschemas: Dict[
-            MetadataSchema, Set[MetadataSchema]
-        ] = {}  # inner used models
+        # used schemas inside schemas
+        self._field_types: Dict[MetadataSchema, Dict[str, Set[MetadataSchema]]] = {}
+        self._subschemas: Dict[MetadataSchema, Set[MetadataSchema]] = {}
+
+        # partial schema classes
         self._partials: Dict[MetadataSchema, PartialSchema] = {}
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
@@ -208,23 +210,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         if p := plugin.Plugin.parent_schema:
             return {(self.name, p.name)}
 
-    @classmethod
-    def _attach_subschemas(cls, schema: MetadataSchema, subschemas):
-        """Attach inner class to a schema for subschema lookup.
-
-        This enables users to access subschemas without extra imports
-        that bypass the plugin system and improves decoupling.
-        """
-        # custom repr string to make it look like the class was there all along
-        rep = f'<class \'{".".join([schema.__module__, schema.__name__, "Schemas"])}\'>'
-
-        class Schemas(metaclass=LiftedRODict):
-            _repr = rep
-            _schemas = {t.__name__: t for t in subschemas}
-
-        setattr(schema, "Schemas", Schemas)
-
-    def _derive_partial(self, name, plugin):
+    def _derive_partial(self, plugin):
+        # take union of all subschemas that we already have
+        self._subschemas[plugin] = set.union(set(), *self._field_types[plugin].values())
         # collect possibly unregistered schemas (non-plugins)
         missed = set()
         for dep in self._subschemas[plugin]:
@@ -239,7 +227,10 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             s = q.get()
             if s in self._subschemas:
                 continue
-            self._subschemas[s] = collect_model_types(s, bound=MetadataSchema)
+            model_types = set.union(
+                set(), *collect_model_types(s, bound=MetadataSchema).values()
+            )
+            self._subschemas[s] = model_types
             if s in self._subschemas[s]:
                 self._subschemas[s].remove(s)  # recursive model
             for dep in self._subschemas[s]:
@@ -276,13 +267,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin.update_forward_refs()
 
         # collect immediate subschemas used in a schema
-        self._subschemas[plugin] = collect_model_types(plugin, bound=MetadataSchema)
-
+        self._field_types[plugin] = collect_model_types(plugin, bound=MetadataSchema)
         # attach the subschemas helper inner class to registered schemas
-        self._attach_subschemas(plugin, self._subschemas[plugin])
-
+        attach_field_inspector(plugin, bound=MetadataSchema)
         # derive recursive partial schema
-        self._derive_partial(name, plugin)
+        self._derive_partial(plugin)
 
     # ----
 
