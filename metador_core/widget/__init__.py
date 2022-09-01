@@ -102,7 +102,9 @@ class PGWidget(pg.PluginGroup[Widget]):
     class Plugin:
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
+
         requires = [SCHEMA_GROUP_NAME]
+
         plugin_class = Widget
         plugin_info_class = WidgetPlugin
 
@@ -110,13 +112,16 @@ class PGWidget(pg.PluginGroup[Widget]):
     def check_plugin(self, name: str, plugin: Type[Widget]):
         pg.check_implements_method(name, plugin, Widget.show)
 
+    def plugin_deps(self, plugin):
+        return set(map(lambda r: (SCHEMA_GROUP_NAME, r.name), plugin.Plugin.supports))
+
     def supported_schemas(self) -> Set[PGSchema.PluginRef]:
         """Return union of all schemas supported by all installed widgets."""
         return set.union(*(set(w.Plugin.supports) for w in self.values()))
 
-    def widgets_for(self, schema: PGSchema.PluginRef) -> List[Type[Widget]]:
+    def widgets_for(self, schema: PGSchema.PluginRef) -> List[str]:
         """Return widgets that support the given schema."""
-        return [wclass for wclass in self.values() if wclass.supports(schema)]
+        return [w_name for w_name, w_cls in self.items() if w_cls.supports(schema)]
 
 
 widgets: PGWidget

@@ -1,27 +1,39 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, Type
+from itertools import chain, groupby
+from typing import Iterable, List, Optional, Tuple
 
 import panel as pn
 from panel.viewable import Viewable
+from phantom.interval import Open
 
 from ..container import MetadorContainer, MetadorNode
 from ..schema import MetadataSchema, schemas
-from . import Widget, widgets
-
-_SCHEMAS = schemas
-_WIDGETS = widgets
+from . import widgets
 
 
-class DashboardMeta(MetadataSchema):
-    """Schema describing dashboard configuration for a node in a container."""
+class DashboardPriority(int, Open, low=1, high=10):
+    ...
 
-    class Plugin:
-        name = "core.dashboard"
-        version = (0, 1, 0)
 
-    show: bool
-    """If true, the dashboard will try to instantiate a widget for this node."""
+class DashboardGroup(int, Open, low=1):
+    ...
+
+
+class DashboardWidgetMeta(MetadataSchema):
+    """Configuration for a widget in the dashboard."""
+
+    priority: Optional[DashboardPriority] = DashboardPriority(1)
+    """Priority of the widget (1-10), higher priority nodes are shown first."""
+
+    group: Optional[DashboardGroup] = None
+    """Dashboard group of the widget.
+
+    Groups are presented in ascending order.
+    Widgets are ordered by priority within a group.
+
+    Widgets without an assigned group come last.
+    """
 
     metador_schema: Optional[str] = None
     """Name of schema of an metadata object at the current node to be visualized.
@@ -36,6 +48,24 @@ class DashboardMeta(MetadataSchema):
     """
 
 
+class DashboardMeta(MetadataSchema):
+    """Schema describing dashboard configuration for a node in a container."""
+
+    class Plugin:
+        name = "core.dashboard"
+        version = (0, 1, 0)
+
+    widgets: List[DashboardWidgetMeta] = [DashboardWidgetMeta()]
+    """Widgets to present for this node in the dashboard.
+
+    If empty, will try present any widget usable for this node.
+    """
+
+
+NodeWidgetPair = Tuple[MetadorNode, DashboardWidgetMeta]
+"""A container node paired up with a widget configuration."""
+
+
 class Dashboard:
     """The dashboard presents a view of all marked nodes in a container.
 
@@ -43,75 +73,97 @@ class Dashboard:
     object that has show=True and contains possibly additional directives.
     """
 
-    def __init__(self, container: MetadorContainer, server=None):
+    def __init__(self, container: MetadorContainer, *, server=None):
         self._container: MetadorContainer = container
         self._server = server
 
-        # get nodes that are marked to be shown in dashboard
-        self._to_show: Dict[MetadorNode, DashboardMeta] = {
-            k: v for k, v in self._container.toc.query(DashboardMeta).items() if v.show
-        }
-        # figure out what schemas to show and what widgets to use
-        self._resolved: Dict[MetadorNode, Tuple[str, Type[Widget]]] = {}
-        for node, dbmeta in self._to_show.items():
+        # figure out what schemas to show and what widgets to use and collect
+        self._widgets: List[NodeWidgetPair] = []
+        for node, dbmeta in self._container.toc.query(DashboardMeta).items():
             localized_node = node.restrict(local_only=True)
-            self._resolved[localized_node] = self._resolve_node(node, dbmeta)
+            for wmeta in dbmeta.widgets:
+                self._widgets.append((localized_node, self._resolve_node(node, wmeta)))
+
+        # order widgets by group, priority and node
+        def group(tup: NodeWidgetPair) -> DashboardGroup:
+            return tup[1].group
+
+        def sorted_widgets(ws: Iterable[NodeWidgetPair]) -> List[NodeWidgetPair]:
+            """Sort first on priority, and for same priority on container node."""
+            return list(
+                sorted(sorted(ws, key=lambda x: x[0]), key=lambda x: x[1].priority)
+            )
+
+        # dict, sorted in ascending group order
+        self._groups = dict(
+            sorted(
+                {
+                    k: sorted_widgets(v)
+                    for k, v in groupby(sorted(self._widgets, key=group), key=group)
+                }.items()
+            )
+        )
+        # separate out the ungrouped widgets
+        self._ungrouped = self._groups[None]
+        del self._groups[None]
 
     def _resolve_node(
-        self, node: MetadorNode, dbmeta: DashboardMeta
-    ) -> Tuple[str, Type[Widget]]:
+        self, node: MetadorNode, wmeta: DashboardWidgetMeta
+    ) -> DashboardWidgetMeta:
         """Try to instantiate a widget for a node based on its dashboard metadata."""
-        assert dbmeta.show
-        schema_name: Optional[str]
-        if dbmeta.metador_schema is not None:
-            schema_name = dbmeta.metador_schema
-            if _SCHEMAS.get(schema_name) is None:
-                msg = f"Dashboard metadata contains unknown schema: {schema_name}"
+        ret = wmeta.copy()
+        if ret.metador_schema is not None:
+            if schemas.get(ret.metador_schema) is None:
+                msg = (
+                    f"Dashboard metadata contains unknown schema: {ret.metador_schema}"
+                )
                 raise ValueError(msg)
 
-            installed_schema = _SCHEMAS.fullname(schema_name)
-            container_schema = self._container.toc.fullname(schema_name)
+            installed_schema = schemas.fullname(ret.metador_schema)
+            container_schema = self._container.toc.fullname(ret.metador_schema)
             if not installed_schema.supports(container_schema):
-                msg = f"Dashboard metadata contains incompatible schema: {schema_name}"
+                msg = f"Dashboard metadata contains incompatible schema: {container_schema}"
                 raise ValueError(msg)
         else:
-            schema_name = None
             for attached_obj_schema in node.meta.find():
                 container_schema = self._container.toc.fullname(attached_obj_schema)
-                if container_schema in _WIDGETS.supported_schemas():
-                    schema_name = attached_obj_schema
+                if container_schema in widgets.supported_schemas():
+                    ret.metador_schema = attached_obj_schema
                     break
 
-        if schema_name is None:
+        if ret.metador_schema is None:
             msg = f"Cannot find schema suitable for known widgets for node: {node.name}"
             raise ValueError(msg)
-        assert isinstance(schema_name, str)
 
-        container_schema_ref = self._container.toc.fullname(schema_name)
-        widget_class: Optional[Type[Widget]]
-        if dbmeta.metador_widget is not None:
-            widget_class = _WIDGETS.get(dbmeta.metador_widget)
+        container_schema_ref = self._container.toc.fullname(ret.metador_schema)
+        if ret.metador_widget is not None:
+            widget_class = widgets.get(ret.metador_widget)
             if widget_class is None:
-                raise ValueError(f"Could not find widget: {dbmeta.metador_widget}")
+                raise ValueError(f"Could not find widget: {ret.metador_widget}")
             if not widget_class.supports(container_schema_ref):
-                msg = f"Desired widget {dbmeta.metador_widget} does not "
+                msg = f"Desired widget {ret.metador_widget} does not "
                 msg += f"support {container_schema_ref}"
                 raise ValueError(msg)
         else:
-            widgets = _WIDGETS.widgets_for(container_schema_ref)
-            widget_class = next(iter(widgets), None)
-            if widget_class is None:
-                raise ValueError(f"Could not find suitable widget for {schema_name}")
+            cand_widgets = widgets.widgets_for(container_schema_ref)
+            ret.metador_widget = next(iter(cand_widgets), None)
 
-        assert schema_name and widget_class
-        return (schema_name, widget_class)
+        if ret.metador_widget is None:
+            msg = f"Could not find suitable widget for {ret.metador_schema} at node {node.name}"
+            raise ValueError(msg)
+
+        return ret
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        db = pn.FlexBox(
+        flexbox_conf = dict(
             align_content="center", align_items="center", justify_content="center"
         )
-        for node, tup in self._resolved.items():
-            schema_name, widget_class = tup
-            db.append(widget_class(node, schema_name, self._server).show())
+        db = pn.FlexBox(**flexbox_conf)
+        for widget_group in chain(self._groups.values(), (self._ungrouped,)):
+            grp = pn.FlexBox(**flexbox_conf)
+            for node, wmeta in widget_group:
+                w_cls = widgets[wmeta.metador_widget]
+                grp.append(w_cls(node, wmeta.metador_schema, self._server).show())
+            db.append(grp)
         return db
