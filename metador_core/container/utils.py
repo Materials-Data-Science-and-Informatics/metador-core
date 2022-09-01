@@ -27,8 +27,11 @@ METADOR_UUID_PATH: Final[str] = f"/{METADOR_PREF}container_uuid"
 METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}container_toc"
 """Path of group with the Metador metadata index structure of the container."""
 
-METADOR_DEPS_PATH: Final[str] = f"/{METADOR_PREF}container_deps"
+METADOR_PKGS_PATH: Final[str] = f"/{METADOR_PREF}container_pkgs"
 """Path of group with package info of packages providing used schemas in the container."""
+
+METADOR_SCHEMAS_PATH: Final[str] = f"/{METADOR_PREF}container_schemas"
+"""Path of group with schema plugin refs of used schemas in the container."""
 
 
 def is_internal_path(path: str, pref: str = METADOR_PREF) -> bool:

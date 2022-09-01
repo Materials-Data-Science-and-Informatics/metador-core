@@ -770,8 +770,6 @@ class MetadorContainer(wrapt.ObjectProxy):
 # --------
 
 
-_SCHEMAS = schemas
-
 S = TypeVar("S", bound=MetadataSchema)
 
 
@@ -814,7 +812,7 @@ class MetadorMeta:
 
     def _is_unknown_schema(self, schema_name: str) -> bool:
         # we have no such schema in our plugin environment
-        unknown_nonexisting: bool = schema_name not in _SCHEMAS.keys()
+        unknown_nonexisting: bool = schema_name not in schemas.keys()
         # we may have such a schema with that name, but its not the right one!
         unknown_but_existing: bool = schema_name in self._mc.toc.unknown_schemas
         return unknown_nonexisting or unknown_but_existing
@@ -946,7 +944,7 @@ class MetadorMeta:
             raise ValueError(f"Metadata object for schema {schema_name} exists!")
 
         # get the correct installed plugin class (don't trust the user class!)
-        schema_class: Type[MetadataSchema] = _SCHEMAS[schema_name]
+        schema_class: Type[MetadataSchema] = schemas[schema_name]
 
         # handle and check the passed metadata
         if isinstance(value, schema_class):
@@ -1003,7 +1001,7 @@ class MetadorMeta:
         dat: Optional[bytes] = self.get_bytes(next(iter(sorted(candidates))))
         assert dat is not None  # getting bytes of a found candidate!
         # parse with the correct schema and return the instance object
-        return cast(S, _SCHEMAS[schema_name].parse_raw(dat))
+        return cast(S, schemas[schema_name].parse_raw(dat))
 
     @overload
     def __getitem__(self, schema: str) -> MetadataSchema:
@@ -1110,8 +1108,8 @@ class MetadorContainerTOC:
         Only used for internal plumbing.
         """
         pp: Optional[str] = self._parent_paths.get(schema_name)
-        if pp is None and schema_name in _SCHEMAS.keys():
-            pp = "/".join(_SCHEMAS.parent_path(schema_name))
+        if pp is None and schema_name in schemas.keys():
+            pp = "/".join(schemas.parent_path(schema_name))
         return pp
 
     def _fresh_uuid(self) -> str:
@@ -1187,7 +1185,10 @@ class MetadorContainerTOC:
 
     @classmethod
     def _dep_node_path(cls, pkg_name: str) -> str:
-        return f"{M.METADOR_DEPS_PATH}/{pkg_name}"
+        return f"{M.METADOR_PKGS_PATH}/{pkg_name}"
+
+    def _ref_node_path(cls, schema_name: str) -> str:
+        return f"{M.METADOR_SCHEMAS_PATH}/{schema_name}"
 
     def _notify_used_schema(self, schema_name: str):
         """Notify that a schema is used in the container (metadata object is created/updated).
@@ -1197,10 +1198,15 @@ class MetadorContainerTOC:
 
         This assumes that the already existing schemas and the new one are compatible!
         """
-        env_pkg_info: PluginPkgMeta = _SCHEMAS.provider(schema_name)
+        # store plugin ref
+        schema_ref = schemas.fullname(schema_name)
+        ref_node_path = self._ref_node_path(schema_name)
+        self._container.__wrapped__[ref_node_path] = bytes(schema_ref)
+
+        # update/create providing package
+        env_pkg_info: PluginPkgMeta = schemas.provider(schema_name)
         pkg_name = str(env_pkg_info.name)
 
-        # update/create metadata entry in container
         curr_info = self._pkginfos.get(pkg_name)
 
         if curr_info != env_pkg_info:
@@ -1219,9 +1225,8 @@ class MetadorContainerTOC:
         if curr_info is None:
             self._used[pkg_name] = set()
         self._used[pkg_name].add(schema_name)
-        self._used_schemas.add(schema_name)
         if schema_name not in self._parent_paths:
-            ppath = "/".join(_SCHEMAS.parent_path(schema_name))
+            ppath = "/".join(schemas.parent_path(schema_name))
             self._parent_paths[schema_name] = ppath
 
     def _notify_unused_schema(self, schema_name: str):
@@ -1230,6 +1235,7 @@ class MetadorContainerTOC:
         If after that no schema of a listed dep package is used,
         this dependency will be removed from the container.
         """
+        rawcont = self._container.__wrapped__
         pkg_name = self._provider.get(schema_name)
         if pkg_name is None:
             # apparently container has no package info for that schema
@@ -1240,52 +1246,57 @@ class MetadorContainerTOC:
         del self._provider[schema_name]
         self._used[pkg_name].remove(schema_name)
         if schema_name in self._used_schemas:
-            self._used_schemas.remove(schema_name)
+            del self._used_schemas[schema_name]
+            del rawcont[self._ref_node_path(schema_name)]
 
         if not self._used[pkg_name]:
             # no schemas of its providing package are used anymore.
             # -> kill this dep in cache and in container
             del self._used[pkg_name]
             del self._pkginfos[pkg_name]
-            del self._container.__wrapped__[self._dep_node_path(pkg_name)]
+            del rawcont[self._dep_node_path(pkg_name)]
 
-        rawcont = self._container.__wrapped__
-        deps_grp = cast(H5GroupLike, rawcont[M.METADOR_DEPS_PATH])
+        deps_grp = cast(H5GroupLike, rawcont[M.METADOR_PKGS_PATH])
         if not len(deps_grp):  # RAW
             # no package metadata -> can kill dir
-            del rawcont[M.METADOR_DEPS_PATH]  # RAW
+            del rawcont[M.METADOR_PKGS_PATH]  # RAW
 
     # ---- public API ----
 
     def __init__(self, container: MetadorContainer):
         self._container = container
+        rawcont = self._container.__wrapped__
 
         # 1. compute parent paths based on present TOC structure
         # (we need it to efficiently traverse possibly unknown schemas/objects)
         # 2. collect metadata object uuids
 
+        # refs for actually embedded schema instances
+        self._used_schemas: Dict[str, PGSchema.PluginRef] = {}
+
+        if M.METADOR_SCHEMAS_PATH in rawcont:  # RAW
+            refs_grp = rawcont.require_group(M.METADOR_SCHEMAS_PATH)  # RAW
+            for name, node in refs_grp.items():  # RAW
+                ref = schemas.PluginRef.parse_raw(cast(H5DatasetLike, node)[()])  # RAW
+                self._used_schemas[name] = ref
+
         # schema name -> full/registered/parent/sequence
         self._parent_paths: Dict[str, str] = {}
         # uuid -> path in dataset
         self._toc_path_from_uuid: Dict[str, str] = {}
-        # actually embedded objects
-        self._used_schemas: Set[str] = set()
 
-        def collect_schemas(path):
+        def scan_schemas(path):
             path_segs = path.split("/")
             schema_name = path_segs[-1]
             if schema_name[0] == "=":  # links/metadata entries start with =
-                self._toc_path_from_uuid[
-                    schema_name[1:]
-                ] = f"{M.METADOR_TOC_PATH}/{path}"
-                self._used_schemas.add(path_segs[-2])
-            else:
+                uuid_str = schema_name[1:]
+                self._toc_path_from_uuid[uuid_str] = f"{M.METADOR_TOC_PATH}/{path}"
+            else:  # a schema name -> infer parent relationship
                 self._parent_paths[schema_name] = path
 
-        rawcont = self._container.__wrapped__
         if M.METADOR_TOC_PATH in rawcont:  # RAW
             toc_grp = rawcont.require_group(M.METADOR_TOC_PATH)  # RAW
-            toc_grp.visit(collect_schemas)  # RAW
+            toc_grp.visit(scan_schemas)  # RAW
 
         # 3. init structure tracking schema dependencies
 
@@ -1293,19 +1304,18 @@ class MetadorContainerTOC:
         self._pkginfos: Dict[str, PluginPkgMeta] = {}
         # schema name -> package name:
         self._provider: Dict[str, str] = {}
-        # package name -> schemas used in container
+        # package name -> names of its schemas used in container
         self._used: Dict[str, Set[str]] = {}
 
         # parse package infos if they exist
-        rawcont = self._container.__wrapped__
-        if M.METADOR_DEPS_PATH in rawcont:  # RAW
-            deps_grp = rawcont.require_group(M.METADOR_DEPS_PATH)  # RAW
+        if M.METADOR_PKGS_PATH in rawcont:  # RAW
+            deps_grp = rawcont.require_group(M.METADOR_PKGS_PATH)  # RAW
             for name, node in deps_grp.items():  # RAW
                 info = PluginPkgMeta.parse_raw(cast(H5DatasetLike, node)[()])  # RAW
                 self._pkginfos[name] = info
                 self._used[name] = set()
                 # lookup for schema -> used package
-                for schema in info.plugins[_SCHEMAS.name]:
+                for schema in info.plugins[schemas.name]:
                     self._provider[schema] = name
 
         # initialize tracking of used schemas
@@ -1316,12 +1326,7 @@ class MetadorContainerTOC:
             self._used[pkg_name].add(schema_name)
 
         # 3. collect the schemas that we don't know already
-        self._unknown_schemas = set(self._parent_paths.keys()) - set(_SCHEMAS.keys())
-
-        # TODO: what about plugin name collisions?
-        # should check package info and correct deps!
-        # for that, the container env entry must be implemented and enforced!
-        # also must be careful with parsing - need to mark colliding but wrong as unknown
+        self._unknown_schemas = set(self._parent_paths.keys()) - set(schemas.keys())
 
     def schemas(self, *, include_parents: bool = True) -> Set[str]:
         """Return names of all schemas used in the container."""
@@ -1329,7 +1334,7 @@ class MetadorContainerTOC:
             schemas = map(lambda p: set(p.split("/")), self._parent_paths.values())
             return set.union(set(), *schemas)
         else:
-            return self._used_schemas
+            return set(self._used_schemas.keys())
 
     @property
     def deps(self) -> Set[str]:
@@ -1356,8 +1361,7 @@ class MetadorContainerTOC:
 
     def fullname(self, schema_name: str) -> PGSchema.PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
-        pkginfo = self.provider(schema_name)
-        return pkginfo.plugins[schemas.name][schema_name]
+        return self._used_schemas[schema_name]
 
     @overload
     def query(self, schema: str) -> Dict[MetadorNode, MetadataSchema]:

@@ -21,7 +21,9 @@ class InstalledPlugins:
     # will be filled by plugins.bootstrap module
 
     def keys(self):
-        return self._installed.keys()
+        from .interface import PG_GROUP_NAME
+
+        return self._installed[PG_GROUP_NAME].keys()
 
     def __getitem__(self, key: str) -> _PluginGroup:
         return self.get(key)
@@ -59,7 +61,14 @@ class InstalledPlugins:
         """
         # wrap in lazy_object_proxy because at initialization time might not exist yet
         key = key if isinstance(key, str) else key.Plugin.name
-        return cast(S, lazy_object_proxy.Proxy(lambda: self._installed[key]))
+
+        def get_group():
+            from .interface import PG_GROUP_NAME
+
+            self._installed[PG_GROUP_NAME][key]  # force initializing the group
+            return self._installed[key]
+
+        return cast(S, lazy_object_proxy.Proxy(get_group))
 
 
 # To be imported for access to installed plugins

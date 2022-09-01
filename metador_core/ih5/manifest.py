@@ -8,7 +8,7 @@ from uuid import UUID, uuid1
 from pydantic import BaseModel
 
 from ..hashutils import qualified_hashsum
-from ..schema.types import QualHashsum
+from ..schema.types import QualHashsumStr
 from .record import IH5Record, IH5UserBlock, hashsum_file
 from .skeleton import IH5Skeleton, init_stub_base
 
@@ -67,7 +67,7 @@ class IH5UBExtManifest(BaseModel):
     manifest_uuid: UUID
     """UUID of the manifest file that belongs to this IH5 file."""
 
-    manifest_hashsum: QualHashsum
+    manifest_hashsum: QualHashsumStr
     """Hashsum of the manifest file that belongs to this IH5 file."""
 
     @classmethod

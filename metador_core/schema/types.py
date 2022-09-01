@@ -26,10 +26,14 @@ class MimeType(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
     """String that looks like a mime-type."""
 
 
+class HashsumStr(NonEmptyStr, pattern="[0-9a-fA-F]+"):
+    """String that looks like a hashsum."""
+
+
 _hashalg_regex = f"(?:{'|'.join(_hash_alg.keys())})"
 
 
-class QualHashsum(NonEmptyStr, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):
+class QualHashsumStr(HashsumStr, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):
     """Hashsum string, prepended by the used algorithm."""
 
 

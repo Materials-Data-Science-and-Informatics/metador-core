@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Dict, List, Literal, Optional, Set, Type
+from typing import ClassVar, Dict, List, Literal, Optional, Protocol, Set, Type
 
 import isodate
 from pydantic import AnyHttpUrl, BaseModel, ValidationError, create_model
@@ -144,7 +144,6 @@ class PluginRef(MetadataSchema):
 class PluginBase(BaseModelPlus):
     """All Plugin inner classes must be called `Plugin` and inherit from this class."""
 
-    _provided_by: str = ""  # set during plugin bootstrap based on source package
     group: ClassVar[str] = ""  # auto-set during plugin group init
 
     # for type checking (mirrors Fields)
@@ -152,9 +151,12 @@ class PluginBase(BaseModelPlus):
     version: SemVerTuple
     requires: List[str] = []
 
-    @classmethod
-    def ref(cls, *, version=None):
-        return PluginRef(group=cls.group, name=cls.name, version=version or cls.version)
+    def ref(self, *, version=None):
+        from ..plugin import plugingroups
+
+        return plugingroups[self.group].PluginRef(
+            name=self.name, version=version or self.version
+        )
 
     @classmethod
     def parse_info(cls, info, *, ep_name: str = ""):
@@ -165,14 +167,22 @@ class PluginBase(BaseModelPlus):
         try:
             # validate
             public_attrs = {k: v for k, v in info.__dict__.items() if k[0] != "_"}
-            validated = cls(**public_attrs)
-            validated._provided_by = getattr(info, "_provided_by", None)
-            return validated
+            return cls(**public_attrs)
         except ValidationError as e:
             raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")
 
 
-Plugins = Dict[str, Dict[str, PluginRef]]
+class PluginLike(Protocol):
+    Plugin: PluginBase
+
+
+# NOTE: if we would like pluginrefs with versions, this would force loading all plugins
+# and as this sucks we just don't do it and only list entry points
+# Plugins = Dict[str, Dict[str, PluginRef]]
+# """Dict from metador plugin groups to list of entrypoint names (provided plugins)."""
+
+Plugins = Dict[str, Set[str]]
+"""Dict from group name to entry point names."""
 
 
 class PluginPkgMeta(MetadataSchema):
@@ -188,7 +198,6 @@ class PluginPkgMeta(MetadataSchema):
     """Python package source location (pip-installable / git-clonable)."""
 
     plugins: Plugins = {}
-    """Dict from metador plugin groups to list of entrypoint names (provided plugins)."""
 
     @classmethod
     def for_package(cls, package_name: str) -> PluginPkgMeta:
@@ -196,15 +205,17 @@ class PluginPkgMeta(MetadataSchema):
         # avoid circular import by importing here
         from importlib_metadata import distribution
 
-        from ..plugin import plugingroups
-        from ..plugin.utils import DistMeta, distmeta_for
+        from ..plugin.entrypoints import DistMeta, distmeta_for
 
         dm: DistMeta = distmeta_for(distribution(package_name))
+        # from ..plugin import plugingroups
+
         plugins: Plugins = {}
         for group, names in dm.plugins.items():
-            plugins[group] = {}
-            for name in names:
-                plugins[group][name] = plugingroups[group].fullname(name)
+            plugins[group] = set(names)
+            # for name in names:
+            #     plugins[group][name] = plugingroups[group].fullname(name)
+
         return cls(
             name=dm.name,
             version=dm.version,

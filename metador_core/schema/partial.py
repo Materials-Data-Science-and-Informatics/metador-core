@@ -21,8 +21,8 @@ from pydantic import BaseModel, create_model, validate_model
 from pydantic.fields import FieldInfo
 from typing_extensions import Annotated
 
-from ..schema import utils
-from ..schema.core import BaseModelPlus
+from . import utils
+from .core import BaseModelPlus
 
 
 class PartialModel:

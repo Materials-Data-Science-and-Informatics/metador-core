@@ -2,25 +2,25 @@
 from __future__ import annotations
 
 import re
-from graphlib import TopologicalSorter
+from importlib.metadata import EntryPoint
 from typing import (
     Any,
     Dict,
     Generic,
-    ItemsView,
+    Iterable,
     KeysView,
     Optional,
+    Tuple,
     Type,
     TypeVar,
     Union,
-    ValuesView,
     cast,
     overload,
 )
 
 from ..schema.core import PluginBase, PluginPkgMeta
 from ..schema.core import PluginRef as AnyPluginRef
-from .entrypoints import get_plugins, plugin_pkgs
+from .entrypoints import get_group
 
 # helpers for checking plugins (also to be used in PluginGroup subclasses):
 
@@ -68,8 +68,6 @@ def is_plugin(p_cls, *, group: str = ""):
     """
     if not hasattr(p_cls, "Plugin") or not issubclass(p_cls.Plugin, PluginBase):
         return False  # not suitable
-    if not hasattr(p_cls.Plugin, "_provided_by"):
-        return False  # not loaded
     g = p_cls.Plugin.group
     return bool(g and (not group or group == g))
 
@@ -93,7 +91,7 @@ class PluginGroupMeta(type):
 
     def __init__(self, name, bases, dct):
         self.Plugin.plugin_info_class.group = self.Plugin.name
-        self.PluginRef = AnyPluginRef.subclass_for(self.Plugin.name)
+        self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
 
 
 class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
@@ -105,7 +103,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     The name of their entrypoint defines the name of the plugin group.
     """
 
-    PluginRef: Any  # dynamic subclass of PluginRef
+    class PluginRef(AnyPluginRef):
+        """Auto-generated subclass of PluginRef (defined here for metaclass)."""
 
     class Plugin:
         """This is the plugin group plugin group, the first loaded group."""
@@ -122,24 +121,27 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     Class attribute, shared with subclasses.
     """
 
-    _LOADED_PLUGINS: Dict[str, Type[T]] = {}
+    _ENTRY_POINTS: Dict[str, Any]
+    """Dict of entry points (not loaded)."""
+
+    _LOADED_PLUGINS: Dict[str, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
 
     PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
-    def load(self):
-        assert self._LOADED_PLUGINS
-        self.pre_load()
+    def __init__(self, entrypoints):
+        self._LOADED_PLUGINS = {}
+        self._ENTRY_POINTS = entrypoints
+        self.__post_init__()
 
-        # load plugins in dependency-aligned order:
-        def get_deps(plugin):
-            return getattr(cast(Any, plugin).Plugin, "requires", [])
-
-        pg_deps = {name: get_deps(plugin) for name, plugin in self.items()}
-        for pg_name in TopologicalSorter(pg_deps).static_order():
-            self._load_plugin(pg_name, self[pg_name])
-
-        self.post_load()
+    def __post_init__(self):
+        if type(self) is PluginGroup:
+            self._ENTRY_POINTS[PG_GROUP_NAME] = EntryPoint(
+                PG_GROUP_NAME,
+                f"{type(self).__module__}:{type(self).__name__}",
+                PG_GROUP_NAME,
+            )
+            self._LOADED_PLUGINS[PG_GROUP_NAME] = self
 
     @property
     def name(self) -> str:
@@ -150,19 +152,34 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         """Return metadata of all packages providing metador plugins."""
         return dict(self._PKG_META)
 
+    def fullname(self, ep_name: str) -> PluginRef:
+        plugin = self[ep_name]
+        return self.PluginRef(name=ep_name, version=cast(Any, plugin).Plugin.version)
+
+    def provider(self, ep_name: str) -> PluginPkgMeta:
+        """Return package metadata of Python package providing this plugin."""
+        if type(self) is PluginGroup and ep_name == PG_GROUP_NAME:
+            return self.provider("schema")
+
+        ep = self._ENTRY_POINTS[ep_name]
+        return self._PKG_META[ep.dist.name]
+
     def keys(self) -> KeysView[str]:
-        return self._LOADED_PLUGINS.keys()
+        """Return all names of all plugins."""
+        return self._ENTRY_POINTS.keys()
 
-    def values(self) -> ValuesView[Type[T]]:
-        return self._LOADED_PLUGINS.values()
+    def values(self) -> Iterable[Type[T]]:
+        """Return all plugins (THIS LOADS ALL PLUGINS!)."""
+        return map(self.__getitem__, self.keys())
 
-    def items(self) -> ItemsView[str, Type[T]]:
-        return self._LOADED_PLUGINS.items()
+    def items(self) -> Iterable[Tuple[str, Type[T]]]:
+        """Return pairs of names and plugins (THIS LOADS ALL PLUGINS!)."""
+        return map(lambda k: (k, self[k]), self.keys())
 
     def __getitem__(self, key: str) -> Type[T]:
-        if ret := self._LOADED_PLUGINS.get(key):
-            return ret
-        raise KeyError(f"{self.name} not found: {key}")
+        if key not in self._ENTRY_POINTS:
+            raise KeyError(f"{self.name} not found: {key}")
+        return self.get(key)
 
     @overload
     def get(self, key: str) -> Optional[Type[T]]:
@@ -174,34 +191,54 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
     def get(self, key: Union[str, PRX]) -> Union[Type[T], PRX, None]:
         passed_str = isinstance(key, str)
+
         key_: str = key if passed_str else key.Plugin.name  # type: ignore
-        if ret := self._LOADED_PLUGINS.get(key_):
-            if passed_str:
-                return cast(Type[T], ret)
-            else:
-                return ret  # type: ignore
+        if key_ not in self._ENTRY_POINTS:
+            return None  # so such schema installed
+
+        self._ensure_is_loaded(key_)
+        ret = self._LOADED_PLUGINS[key_]
+
+        if passed_str:
+            return cast(Type[T], ret)
         else:
-            return None
 
-    def fullname(self, ep_name: str) -> PluginRef:
-        plugin = self[ep_name]
-        return self.PluginRef(name=ep_name, version=cast(Any, plugin).Plugin.version)
+            return ret  # type: ignore
 
-    def provider(self, ep_name: str) -> PluginPkgMeta:
-        """Return package metadata of Python package providing this plugin."""
-        pkg = cast(Any, self[ep_name]).Plugin._provided_by
-        if pkg is None:
-            msg = f"No package found providing this {self.name} plugin: {ep_name}"
-            raise KeyError(msg)
-        return self._PKG_META[pkg]
+    def _ensure_is_loaded(self, key: str):
+        """Load plugin from entrypoint if it is not loaded yet."""
+        if key in self._LOADED_PLUGINS:
+            return  # already loaded, all good
+        ret = self._ENTRY_POINTS[key].load()
+        self._LOADED_PLUGINS[key] = ret
+        self._load_plugin(key, ret)
 
-    # ----
+    def _explicit_plugin_deps(self, plugin):
+        """Return all plugin dependencies that must be taken into account."""
+        def_deps = set(map(lambda n: (self.name, n), plugin.Plugin.requires))
+        extra_deps = self.plugin_deps(plugin) or set()
+        if not isinstance(extra_deps, set):
+            extra_deps = set(extra_deps)
+        return def_deps.union(extra_deps)
+
+    def plugin_deps(self, plugin):
+        """Return additional automatically inferred dependencies for a plugin."""
 
     def _load_plugin(self, name: str, plugin):
         """Run checks and finalize loaded plugin."""
+        # print("load", self.name, name, plugin)
+        from . import plugingroups
+
+        # do general checks first, if they fail no need to continue loading
         self._check_common(name, plugin)
         self.check_plugin(name, plugin)
-        self.init_plugin(plugin)
+
+        for depgroup, depname in self._explicit_plugin_deps(plugin):
+            # print("check dep", depgroup, depname)
+            plugingroups[depgroup]._ensure_is_loaded(depname)
+
+        # print("init", self.name, name)
+        self.init_plugin(name, plugin)
 
     def _check_common(self, name: str, plugin):
         """Perform both the common and specific checks a registered plugin.
@@ -244,18 +281,6 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             check_implements_method(name, plugin, PluginGroup.check_plugin)
 
-        # if not hasattr(plugin, "PluginRef"):
-        #     raise TypeError(f"{name}: {plugin} is missing 'PluginRef' attribute!")
-        # pgref = cast(Any, plugin).PluginRef
-        # check_is_subclass(name, pgref, PluginRef)
-        # group_type = pgref.__fields__["group"].type_
-        # t_const = get_origin(group_type)
-        # t_args = get_args(group_type)
-        # if t_const is not Literal or t_args != (name,):
-        #     print(group_type)
-        #     msg = f"{name}: PluginRef.group type must be Literal['{name}']!"
-        #     raise TypeError(msg)
-
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
@@ -266,70 +291,40 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             msg = f"{name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
             raise TypeError(msg)
 
-    def init_plugin(self, plugin: Type[T]):
+    def init_plugin(self, name: str, plugin: Type[T]):
         """Do something after plugin has been checked."""
         if type(self) is not PluginGroup:
             return  # is not the "plugingroup" group itself
-
-        if plugin is not PluginGroup:
-            create_pg(plugin)
-
-    def pre_load(self):
-        """Do something before all plugins of this group are initialized."""
-        if type(self) is not PluginGroup:
-            return
-
-        # the core package is also the one registering the "schema" plugin group.
-        # Use that to hack in that it also provides the "plugingroup" plugin group:
-        _this_pkg_name = self["schema"].Plugin._provided_by
-        self.Plugin._provided_by = _this_pkg_name
-
-        # add itself afterwards, so its not part of the plugin loading loop
-        self._LOADED_PLUGINS[PG_GROUP_NAME] = PluginGroup
-
-    def post_load(self):
-        """Do something after all plugins of this group are initialized."""
-        if type(self) is not PluginGroup:
-            return
-
-        # set up shared lookup for package metadata, shared by all plugin groups
-        PluginGroup._PKG_META = {
-            pkg: PluginPkgMeta.for_package(pkg) for pkg in plugin_pkgs
-        }
-        # fix up circularity (this package provides plugingroup as plugingroup)
-        this_pkg = PluginGroup._PKG_META[PluginGroup.Plugin._provided_by]
-        this_pkg.plugins[PG_GROUP_NAME][PG_GROUP_NAME] = self.PluginRef(
-            name=PG_GROUP_NAME, version=self.Plugin.version
-        )
+        create_pg(plugin)  # create plugin group if it does not exist
 
 
 # ----
 
-_loaded_plugin_groups: Dict[str, PluginGroup] = {}
+_plugin_groups: Dict[str, PluginGroup] = {}
 
 
 def create_pg(pg_cls):
+    """Create plugin group instance if it does not exist."""
+    pg_name = pg_cls.Plugin.name
+    if pg_name in _plugin_groups:
+        return _plugin_groups[pg_name]
+
     if not isinstance(pg_cls.Plugin, PluginBase):
         # magic - substitute Plugin class with parsed plugin object
         pg_cls.Plugin = PGPlugin.parse_info(pg_cls.Plugin)
 
-    pg_name = pg_cls.Plugin.name
-
-    if pg_name in _loaded_plugin_groups:
-        return _loaded_plugin_groups[pg_name]
-
-    pg = pg_cls()
-    _loaded_plugin_groups[pg_name] = pg
-    pg._LOADED_PLUGINS = get_plugins(pg_name)
-    pg.load()
+    pg = pg_cls(get_group(pg_name))
+    _plugin_groups[pg_name] = pg
 
 
 def load_plugins():
     """Initialize plugin system from currently available entry points."""
-    if _loaded_plugin_groups:
+    if _plugin_groups:
         raise RuntimeError("Plugins have already been loaded and initialized!")
 
     from . import InstalledPlugins
+    from .entrypoints import pkg_meta
 
-    InstalledPlugins._installed = _loaded_plugin_groups
+    InstalledPlugins._installed = _plugin_groups
+    PluginGroup._PKG_META = pkg_meta
     create_pg(PluginGroup)

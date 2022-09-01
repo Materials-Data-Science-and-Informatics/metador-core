@@ -4,13 +4,14 @@ Here we do impose certain constraints (make fields mandatory).
 
 See https://www.researchobject.org/ro-crate/1.1/
 """
-from typing import Set, Union
+from typing import Set
 
 from pydantic import parse_obj_as, root_validator, validator
 
 from ..ld import LDIdRef, add_const, ld_type
+from ..types import MimeType
 from . import schemaorg
-from .schemaorg import URL, Text
+from .schemaorg import Text
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
@@ -33,8 +34,7 @@ class FileMeta(schemaorg.MediaObject):
 
     contentSize: int
     sha256: Text
-    # NOTE: preferably MIME type or PRONOM or contextual entity
-    encodingFormat: Union[URL, Text]
+    encodingFormat: MimeType
 
 
 @annotate_rocrate_type("Dataset")

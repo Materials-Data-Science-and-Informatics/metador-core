@@ -12,8 +12,8 @@ from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema, schemas
 from ..schema.core import BaseModelPlus
+from ..schema.partial import PartialModel, PartialSchema
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
-from .partial import PartialModel, PartialSchema
 
 HARVESTER_GROUP_NAME = "harvester"
 
@@ -189,9 +189,12 @@ class PGHarvester(pg.PluginGroup[Harvester]):
         plugin_class = Harvester
         plugin_info_class = HarvesterPlugin
 
-    @overrides
-    def pre_load(self):
+    def __post_init__(self):
         self._harvesters_for: Dict[str, Set[str]] = {}
+
+    def plugin_deps(self, plugin):
+        if p := plugin.Plugin.returns:
+            return {(schemas.name, p.name)}
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[Harvester]):
@@ -208,7 +211,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
             raise TypeError(msg)
 
     @overrides
-    def init_plugin(self, plugin):
+    def init_plugin(self, name, plugin):
         """Add harvester to harvester lookup table."""
         h_name = plugin.Plugin.name
         schema = plugin.Plugin.returns

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from queue import SimpleQueue
-from typing import Any, Dict, List, Optional, Set, Type, get_type_hints
+from typing import Dict, List, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
-from ..harvester.partial import PartialSchema
 from ..plugin import interface as pg
 from .core import SCHEMA_GROUP_NAME, MetadataSchema, PluginBase
+from .partial import PartialSchema
 from .utils import LiftedRODict, collect_model_types, get_annotations
 
 
@@ -124,6 +124,16 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
 
+    def __post_init__(self):
+        self._parents: Dict[str, List[str]] = {}  # base plugins
+        self._children: Dict[str, Set[str]] = {}  # subclass plugins
+
+        self._subschemas: Dict[
+            MetadataSchema, Set[MetadataSchema]
+        ] = {}  # inner used models
+        self._partials: Dict[MetadataSchema, PartialSchema] = {}
+        self._forwardrefs: Dict[str, MetadataSchema] = {}
+
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
         """Sanity-checks for possibly defined parent schema."""
         parent_ref = plugin.Plugin.parent_schema
@@ -139,8 +149,8 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
         inst_parent_ref = self.fullname(parent_ref.name)
         if not inst_parent_ref.supports(parent_ref):
-            msg = f"{name}: Installed parent schema version ({inst_parent_ref}) "
-            msg += "is incompatible with required version ({parent_ref})!"
+            msg = f"{name}: Installed parent schema '{parent_ref.name}' version incompatible "
+            msg += f"(has: {inst_parent_ref.version}, needs: {parent_ref.version})!"
             raise TypeError(msg)
 
         if not issubclass(plugin, parent):
@@ -167,11 +177,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        for forbidden in ["Schemas"]:  # , "Partial"]:
-            # check that the auto-generated field names are not used
-            if hasattr(plugin, forbidden):
-                raise TypeError(f"{name}: Schema has forbidden field '{forbidden}'!")
-
         self._check_parent(name, plugin)
         self._check_types(name, plugin)
 
@@ -185,11 +190,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
         #         raise TypeError(msg)
 
-    def _compute_parent_path(self, schema_name: str) -> List[str]:
+    def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
         # NOTE: schemas must be already loaded
+        schema_name = plugin.Plugin.name
         ret = [schema_name]
-
-        curr = self[schema_name]
+        curr = plugin
         parent = curr.Plugin.parent_schema
         while parent is not None:
             ret.append(parent.name)
@@ -199,24 +204,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         ret.reverse()
         return ret
 
-    def _compute_parent_paths(self) -> Dict[str, List[str]]:
-        parents: Dict[str, List[str]] = {}
-        for name in self.keys():
-            parents[name] = self._compute_parent_path(name)
-        return parents
-
-    def _compute_children(self) -> Dict[str, Set[str]]:
-        # NOTE: parent paths must be already initialized
-        children: Dict[str, Set[str]] = {}
-        for schema in self.keys():
-            if schema not in children:  # need that for childless
-                children[schema] = set()
-            parents = self.parent_path(schema)[:-1]
-            for parent in parents:
-                if parent not in children:
-                    children[parent] = set()
-                children[parent].add(schema)
-        return children
+    def plugin_deps(self, plugin):
+        if p := plugin.Plugin.parent_schema:
+            return {(self.name, p.name)}
 
     @classmethod
     def _attach_subschemas(cls, schema: MetadataSchema, subschemas):
@@ -234,28 +224,12 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
         setattr(schema, "Schemas", Schemas)
 
-    def post_load(self):
-        self._parents = self._compute_parent_paths()
-        self._children = self._compute_children()
-
-        for schema in self.values():
-            # update refs for all models we collected
-            # otherwise issues with forward references in same module etc.
-            schema.update_forward_refs()
-
-        subschemas: Dict[Any, Set[Any]] = {}
-        for schema in self.values():
-            # collect immediate subschemas used in a schema
-            subschemas[schema] = collect_model_types(schema, bound=MetadataSchema)
-            # attach the subschemas helper inner class to registered schemas
-            self._attach_subschemas(schema, subschemas[schema])
-
-        # now collect possibly unregistered schemas (non-plugins)
+    def _derive_partial(self, name, plugin):
+        # collect possibly unregistered schemas (non-plugins)
         missed = set()
-        for deps in subschemas.values():
-            for dep in deps:
-                if dep not in subschemas:
-                    missed.add(dep)
+        for dep in self._subschemas[plugin]:
+            if dep not in self._subschemas:
+                missed.add(dep)
 
         # explore the hierarchy of unregistered schemas
         q = SimpleQueue()
@@ -263,27 +237,52 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             q.put(s)
         while not q.empty():
             s = q.get()
-            if s in subschemas:
+            if s in self._subschemas:
                 continue
-            subschemas[s] = collect_model_types(s, bound=MetadataSchema)
-            if s in subschemas[s]:
-                subschemas[s].remove(s)  # recursive model
-            for dep in subschemas[s]:
-                if dep not in subschemas:
+            self._subschemas[s] = collect_model_types(s, bound=MetadataSchema)
+            if s in self._subschemas[s]:
+                self._subschemas[s].remove(s)  # recursive model
+            for dep in self._subschemas[s]:
+                if dep not in self._subschemas:
                     q.put(dep)
 
-        partials: Dict[MetadataSchema, PartialSchema] = {}
-        refs: Dict[str, MetadataSchema] = {}
-
-        for schema in subschemas.keys():
+        new_subschemas = set(self._subschemas.keys()) - set(self._partials.keys())
+        for schema in new_subschemas:
             # create and collect partials
             partial = PartialSchema._create_partial(schema)
-            partials[schema] = partial
-            refs[PartialSchema._partial_forwardref_name(schema)] = partial
+            partial_ref = PartialSchema._partial_forwardref_name(schema)
+            self._partials[schema] = partial
+            self._forwardrefs[partial_ref] = partial
 
-        for schema, partial in partials.items():
-            partial.update_forward_refs(**refs)
+        for schema in new_subschemas:
+            partial = self._partials[schema]
+            partial.update_forward_refs(**self._forwardrefs)
             setattr(schema, "Partial", partial)
+
+    def init_plugin(self, name, plugin):
+        # pre-compute parent schema path
+        self._parents[name] = self._compute_parent_path(plugin)
+        if name not in self._children:
+            self._children[name] = set()
+
+        # collect children schema set
+        parents = self._parents[name][:-1]
+        for parent in parents:
+            if parent not in self._children:
+                self._children[parent] = set()
+            self._children[parent].add(name)
+
+        # update refs, otherwise issues with forward references in same module etc.
+        plugin.update_forward_refs()
+
+        # collect immediate subschemas used in a schema
+        self._subschemas[plugin] = collect_model_types(plugin, bound=MetadataSchema)
+
+        # attach the subschemas helper inner class to registered schemas
+        self._attach_subschemas(plugin, self._subschemas[plugin])
+
+        # derive recursive partial schema
+        self._derive_partial(name, plugin)
 
     # ----
 
@@ -293,10 +292,12 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         This sequence can be a subset of the parent sequences in the actual class
         hierarchy (not every subclass must be registered as a plugin).
         """
+        self._ensure_is_loaded(schema_name)
         return list(self._parents[schema_name])
 
     def children(self, schema_name: str) -> Set[str]:
         """Get set of names of registered (strict) child schemas."""
+        self._ensure_is_loaded(schema_name)
         return set(self._children[schema_name])
 
 

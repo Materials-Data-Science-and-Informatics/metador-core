@@ -8,7 +8,7 @@ from pydantic import parse_obj_as
 
 from .. import MetadataSchema, schemas
 from ..types import ParserMixin, PintQuantity, PintUnit
-from .rocrate import DirMeta, FileMeta, Organization, Person
+from .rocrate import Organization, Person
 from .schemaorg import Number, QuantitativeValue, Text
 
 # ----
@@ -90,6 +90,9 @@ class Pixels(NumValue):
 
 # ----
 
+FileMeta: Any = schemas["core.file"]
+DirMeta: Any = schemas["core.dir"]
+
 
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
@@ -97,8 +100,7 @@ class BibMeta(DirMeta):
     class Plugin:
         name = "core.bib"
         version = (0, 1, 0)
-        requires = ["core.dir"]
-        parent_schema = schemas.PluginRef(name="core.dir", version=(0, 1, 0))
+        parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
 
     # id_: Annotated[Literal["./"], Field(alias="@id")] = "./"
 
@@ -121,8 +123,7 @@ class ImageFileMeta(FileMeta):
     class Plugin:
         name = "core.imagefile"
         version = (0, 1, 0)
-        requires = ["core.file"]
-        parent_schema = schemas.PluginRef(name="core.file", version=(0, 1, 0))
+        parent_schema = FileMeta.Plugin.ref(version=(0, 1, 0))
 
     width: Pixels
     height: Pixels

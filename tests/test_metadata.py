@@ -15,21 +15,21 @@ def test_str_types():
     with pytest.raises(ValidationError):
         parse_obj_as(t.MimeType, "invalidMime")
 
-    # QualHashsum
-    parse_obj_as(t.QualHashsum, "sha256:aebf")
-    parse_obj_as(t.QualHashsum, "sha512:aebf")
+    # QualHashsumStr
+    parse_obj_as(t.QualHashsumStr, "sha256:aebf")
+    parse_obj_as(t.QualHashsumStr, "sha512:aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, "wrong:aebf")
+        parse_obj_as(t.QualHashsumStr, "wrong:aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, "sha512:invalid")
+        parse_obj_as(t.QualHashsumStr, "sha512:invalid")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, "sha256")
+        parse_obj_as(t.QualHashsumStr, "sha256")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, "sha256:")
+        parse_obj_as(t.QualHashsumStr, "sha256:")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, "aebf")
+        parse_obj_as(t.QualHashsumStr, "aebf")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.QualHashsum, ":aebf")
+        parse_obj_as(t.QualHashsumStr, ":aebf")
 
     # PintUnit
     parse_obj_as(t.PintUnit, "meter / (second * kg) ** 2")
