@@ -48,4 +48,6 @@ class ImageWidget(Widget):
         self.plot.grid.grid_line_color = None
         self.plot.xaxis.visible = False
         self.plot.yaxis.visible = False
+        # Hide the Bokeh logo, in the future there could be a metador logo instead
+        self.plot.toolbar.logo = None
         return pn.panel(self.plot)
