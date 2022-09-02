@@ -246,7 +246,11 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin.update_forward_refs()
 
         # attach the subschemas helper inner class to registered schemas
-        attach_field_inspector(plugin, bound=MetadataSchema)
+        attach_field_inspector(
+            plugin,
+            bound=MetadataSchema,
+            key_filter=lambda k: k not in plugin.__constants__,
+        )
         # derive recursive partial schema
         self._derive_partial(plugin)
 

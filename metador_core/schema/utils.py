@@ -289,7 +289,7 @@ class FieldInspector:
         self.schemas = Schemas
 
 
-def attach_field_inspector(model: BaseModel, *, bound=BaseModel):
+def attach_field_inspector(model: BaseModel, *, bound=BaseModel, key_filter=None):
     """Attach inner class to a model for sub-model lookup.
 
     This enables users to access subschemas without extra imports,
@@ -297,7 +297,12 @@ def attach_field_inspector(model: BaseModel, *, bound=BaseModel):
 
     Also can be used for introspection about fields.
     """
-    field_schemas = collect_model_types(model, bound=bound)
+    key_filter = key_filter or (lambda _: True)
+    field_schemas = {
+        k: v
+        for k, v in collect_model_types(model, bound=bound).items()
+        if key_filter(k)
+    }
     field_hint = {k: v for k, v in get_type_hints(model).items() if k in field_schemas}
 
     class FieldInspectors(metaclass=LiftedRODict):
