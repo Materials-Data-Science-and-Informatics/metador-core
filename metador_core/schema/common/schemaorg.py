@@ -25,7 +25,6 @@ CTX_URL_SCHEMAORG = "https://schema.org"
 
 
 def annotate_schemaorg_type(name: str):
-    # return add_annotations(ld_type(name, context=))
     return add_const(ld_type(name, context=CTX_URL_SCHEMAORG))
 
 
@@ -44,6 +43,7 @@ class Thing(LDSchema):
     disambiguatingDescription: Optional[Text]
 
     # linking:
+
     additionalType: Optional[Set[URL]]
     sameAs: Optional[Set[URL]]
     alternateName: Optional[Set[Text]]
@@ -90,10 +90,12 @@ class CreativeWork(Thing):
     citation: Optional[Set[Union[CreativeWork, Text]]]
 
     # search
+
     abstract: Optional[Text]
     keywords: Optional[Set[Text]]
 
     # people
+
     author: Optional[List[OrgOrPerson]]
     contributor: Optional[List[OrgOrPerson]]
     maintainer: Optional[List[OrgOrPerson]]
@@ -104,17 +106,20 @@ class CreativeWork(Thing):
     editor: Optional[List[Person]]
 
     # date
+
     dateCreated: Optional[DateOrDatetime]
     dateModified: Optional[DateOrDatetime]
     datePublished: Optional[DateOrDatetime]
 
     # legal
+
     copyrightHolder: Optional[OrgOrPerson]
     copyrightYear: Optional[int]
     copyrightNotice: Optional[Text]
     license: Optional[Union[URL, CreativeWork]]
 
     # provenance
+
     about: Optional[Set[Thing]]
     subjectOf: Optional[Set[CreativeWork]]
     hasPart: Optional[Set[CreativeWork]]

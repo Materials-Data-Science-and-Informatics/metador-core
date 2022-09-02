@@ -268,9 +268,15 @@ class FieldInspector:
     origin: Type
 
     name: str
-    # description: str  # TODO: can be done with simple_parsing.docstring.get_attribute_docstring !!!
     type: Type
     schemas: Type
+
+    @property
+    def description(self) -> str:
+        from simple_parsing.docstring import get_attribute_docstring
+
+        docs = get_attribute_docstring(self.origin, self.name)
+        return docs.docstring_below or docs.comment_above or docs.comment_inline
 
     def __init__(self, model, name, description, hint, schemas):
         self.origin = model
