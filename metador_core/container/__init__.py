@@ -113,7 +113,8 @@ from metador_core.schema.pg import PGSchema
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
-from ..schema import MetadataSchema, schemas
+from ..plugins import schemas
+from ..schema import MetadataSchema
 from ..schema.core import PluginPkgMeta
 from . import utils as M
 

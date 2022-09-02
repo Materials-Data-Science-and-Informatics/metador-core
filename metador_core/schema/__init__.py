@@ -1,14 +1,3 @@
 """Metador schemas."""
 
-from typing import TYPE_CHECKING
-
-from ..plugin import plugingroups
-from .core import SCHEMA_GROUP_NAME, MetadataSchema  # noqa: F401
-
-if TYPE_CHECKING:
-    from .pg import PGSchema
-
-    schemas: PGSchema
-    schemas = plugingroups.get(PGSchema)
-else:
-    schemas = plugingroups[SCHEMA_GROUP_NAME]
+from .core import MetadataSchema  # noqa: F401

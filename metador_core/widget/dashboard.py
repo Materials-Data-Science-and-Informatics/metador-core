@@ -8,8 +8,8 @@ from panel.viewable import Viewable
 from phantom.interval import Open
 
 from ..container import MetadorContainer, MetadorNode
-from ..schema import MetadataSchema, schemas
-from . import widgets
+from ..plugins import schemas, widgets
+from ..schema import MetadataSchema
 
 
 class DashboardPriority(int, Open, low=1, high=10):

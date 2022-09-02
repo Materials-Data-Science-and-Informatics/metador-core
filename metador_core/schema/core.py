@@ -16,16 +16,14 @@ from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
 
-def _mod_def_dump_args(kwargs):
-    """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
-    if "by_alias" not in kwargs:
-        kwargs["by_alias"] = True  # e.g. so we get correct @id, etc fields
-    if "exclude_none" not in kwargs:
-        kwargs["exclude_none"] = True  # we treat None as "missing" so leave it out
-    return kwargs
-
-
 class BaseModelPlus(YamlModelMixin, BaseModel):
+    """Extended pydantic BaseModel with some good defaults.
+
+    Used as basis for various entities, including:
+    * Metadata schemas
+    * Harvester arguments
+    """
+
     class Config:
         underscore_attrs_are_private = True  # make PrivateAttr not needed
         use_enum_values = True  # serialize enums properly
@@ -60,7 +58,7 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
         return (self.json() + "\n").encode(encoding="utf-8")
 
 
-class ModelMetaPlus(ModelMetaclass):
+class SchemaMeta(ModelMetaclass):
     """Metaclass for doing some magic."""
 
     # NOTE: generating partial schemas here already is not good,
@@ -81,7 +79,16 @@ class ModelMetaPlus(ModelMetaclass):
             self.Plugin = None
 
 
-class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
+def _mod_def_dump_args(kwargs):
+    """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
+    if "by_alias" not in kwargs:
+        kwargs["by_alias"] = True  # e.g. so we get correct @id, etc fields
+    if "exclude_none" not in kwargs:
+        kwargs["exclude_none"] = True  # we treat None as "missing" so leave it out
+    return kwargs
+
+
+class MetadataSchema(BaseModelPlus, metaclass=SchemaMeta):
     """Extends Pydantic models with custom serializers and functions."""
 
     # user-defined (for schema plugins)
@@ -177,7 +184,7 @@ class PluginBase(BaseModelPlus):
     requires: List[str] = []
 
     def ref(self, *, version=None):
-        from ..plugin import plugingroups
+        from ..plugins import plugingroups
 
         return plugingroups[self.group].PluginRef(
             name=self.name, version=version or self.version
@@ -230,7 +237,7 @@ class PluginPkgMeta(MetadataSchema):
         # avoid circular import by importing here
         from importlib_metadata import distribution
 
-        from ..plugin.entrypoints import DistMeta, distmeta_for
+        from ..plugins.entrypoints import DistMeta, distmeta_for
 
         dm: DistMeta = distmeta_for(distribution(package_name))
         # from ..plugin import plugingroups

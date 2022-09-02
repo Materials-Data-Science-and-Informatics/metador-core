@@ -8,9 +8,9 @@ from typing import Callable, ClassVar, Dict, Iterable, Set, Type, TypeVar, Union
 from overrides import overrides
 from pydantic import Extra, ValidationError
 
-from ..plugin import interface as pg
-from ..plugin import plugingroups
-from ..schema import MetadataSchema, schemas
+from ..plugins import interface as pg
+from ..plugins import schemas
+from ..schema import MetadataSchema
 from ..schema.core import BaseModelPlus, PartialSchema
 from ..schema.partial import PartialModel
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
@@ -392,6 +392,3 @@ def harvest(
 
     # retrieve (completed) metadata model
     return merged if return_partial else merged.from_partial()
-
-
-harvesters: PGHarvester = plugingroups.get(PGHarvester)

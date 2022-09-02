@@ -12,8 +12,9 @@ import numpy
 from pydantic import ValidationError
 
 from ..container import MetadorContainer, MetadorDataset, MetadorGroup
-from ..harvester import harvest, harvesters
-from ..schema import MetadataSchema, schemas
+from ..harvester import harvest
+from ..plugins import harvesters, schemas
+from ..schema import MetadataSchema
 from .types import DirValidationErrors
 
 

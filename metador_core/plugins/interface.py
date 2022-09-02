@@ -22,7 +22,9 @@ from typing_extensions import TypeAlias
 
 from ..schema.core import PluginBase, PluginPkgMeta
 from ..schema.core import PluginRef as AnyPluginRef
-from .entrypoints import get_group
+from .entrypoints import get_group, pkg_meta
+
+PG_GROUP_NAME = "plugingroup"
 
 # helpers for checking plugins (also to be used in PluginGroup subclasses):
 
@@ -76,8 +78,6 @@ def is_plugin(p_cls, *, group: str = ""):
 
 # ----
 
-PG_GROUP_NAME = "plugingroup"
-
 
 class PGPlugin(PluginBase):
     group = PG_GROUP_NAME
@@ -116,7 +116,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         plugin_class: Type
         # plugin_class = PluginGroup  # can't set that -> check manually
 
-    _PKG_META: Dict[str, PluginPkgMeta] = {}
+    _PKG_META: Dict[str, PluginPkgMeta] = pkg_meta
     """Mapping from package name to metadata of the package.
 
     Class attribute, shared with subclasses.
@@ -185,6 +185,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             raise KeyError(f"{self.name} not found: {key}")
         return self.get(key)
 
+    # inspired by this nice trick: https://stackoverflow.com/a/60362860
+
     @overload
     def get(self, key: str) -> Optional[Type[T]]:
         ...
@@ -195,10 +197,9 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
     def get(self, key: Union[str, PRX]) -> Union[Type[T], PRX, None]:
         passed_str = isinstance(key, str)
-
         key_: str = key if passed_str else key.Plugin.name  # type: ignore
         if key_ not in self:
-            return None  # so such schema installed
+            return None  # no such plugin installed
 
         self._ensure_is_loaded(key_)
         ret = self._LOADED_PLUGINS[key_]
@@ -206,8 +207,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if passed_str:
             return cast(Type[T], ret)
         else:
-
-            return ret  # type: ignore
+            return ret
 
     def _ensure_is_loaded(self, key: str):
         """Load plugin from entrypoint if it is not loaded yet."""
@@ -319,15 +319,3 @@ def create_pg(pg_cls):
 
     pg = pg_cls(get_group(pg_name))
     _plugin_groups[pg_name] = pg
-
-
-def load_plugin_groups():
-    """Initialize plugin system from currently available entry points."""
-    if _plugin_groups:
-        raise RuntimeError("Plugins have already been loaded and initialized!")
-
-    from .entrypoints import pkg_meta
-
-    PluginGroup._PKG_META = pkg_meta
-    create_pg(PluginGroup)
-    return _plugin_groups

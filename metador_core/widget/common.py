@@ -6,7 +6,7 @@ from bokeh.plotting import figure
 from overrides import overrides
 from panel.viewable import Viewable
 
-from ..schema import schemas
+from ..plugins import schemas
 from . import Widget
 
 ImageFileMeta = schemas["core.imagefile"]

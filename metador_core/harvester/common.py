@@ -3,7 +3,7 @@ from PIL import Image
 
 from ..harvester import FileHarvester
 from ..hashutils import hashsum
-from ..schema import schemas
+from ..plugins import schemas
 
 FileMeta = schemas["core.file"]
 ImageFileMeta = schemas["core.imagefile"]

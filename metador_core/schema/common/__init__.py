@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import parse_obj_as
 
-from .. import MetadataSchema, schemas
+from ...plugins import schemas
+from .. import MetadataSchema
 from ..types import ParserMixin, PintQuantity, PintUnit
 from .rocrate import Organization, Person
 from .schemaorg import Number, QuantitativeValue, Text

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
-from ..plugin import interface as pg
+from ..plugins import interface as pg
 from .core import SCHEMA_GROUP_NAME, MetadataSchema, PartialSchema, PluginBase
 from .utils import attach_field_inspector, collect_model_types, get_annotations
 

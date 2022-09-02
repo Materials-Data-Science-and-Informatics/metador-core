@@ -14,8 +14,7 @@ from metador_core.ih5.manifest import IH5MFRecord
 from ..container import MetadorContainer
 from ..harvester import HARVESTER_GROUP_NAME
 from ..hashutils import DirHashsums, dir_hashsums
-from ..plugin import interface as pg
-from ..plugin import plugingroups
+from ..plugins import interface as pg
 from ..schema.core import SCHEMA_GROUP_NAME, MetadataSchema, PluginPkgMeta
 from .diff import DirDiff
 from .types import DirValidationErrors
@@ -195,6 +194,8 @@ class PackerInfo(MetadataSchema):
 
     @classmethod
     def for_packer(cls, packer_name: str) -> PackerInfo:
+        from ..plugins import packers
+
         return PackerInfo(
             packer=packers.fullname(packer_name),
             pkg=packers.provider(packer_name),
@@ -330,6 +331,3 @@ class PGPacker(pg.PluginGroup[Packer]):
             cont.manifest.manifest_exts[self.name] = pinfo.dict()
 
         cont.close()
-
-
-packers: PGPacker = plugingroups.get(PGPacker)
