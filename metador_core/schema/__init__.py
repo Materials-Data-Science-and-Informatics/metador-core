@@ -9,6 +9,6 @@ if TYPE_CHECKING:
     from .pg import PGSchema
 
     schemas: PGSchema
-    schemas = plugingroups.get(SCHEMA_GROUP_NAME, PGSchema)
+    schemas = plugingroups.get(PGSchema)
 else:
     schemas = plugingroups[SCHEMA_GROUP_NAME]

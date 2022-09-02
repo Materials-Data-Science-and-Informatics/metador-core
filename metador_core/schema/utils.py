@@ -213,20 +213,20 @@ def make_tree_mapper(node_constructor, succ_func):
 map_typehint = make_tree_mapper(make_typehint, get_args)
 
 
-def field_types(mf: ModelField, *, bound=object) -> Iterable[Type]:
+def field_model_types(mf: ModelField, *, bound=object) -> Iterable[Type]:
     return filter(
         is_subclass_of(bound), filter(is_instance_of(type), traverse_typehint(mf.type_))
     )
 
 
 def collect_model_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
-    """Return set of classes referenced in the definition of a pydantic model.
+    """Return dict from field name to model classes referenced in the field definition.
 
     Args:
         bound: If provided, will be used to filter results to
           contain only subclasses of the bound.
     """
-    return {k: set(field_types(v, bound=bound)) for k, v in m.__fields__.items()}
+    return {k: set(field_model_types(v, bound=bound)) for k, v in m.__fields__.items()}
 
 
 # ----

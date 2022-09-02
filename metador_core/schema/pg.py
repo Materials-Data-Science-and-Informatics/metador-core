@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from queue import SimpleQueue
+from itertools import chain
 from typing import Dict, List, Optional, Set, Type, get_type_hints
 
 from overrides import overrides
 
 from ..plugin import interface as pg
-from .core import SCHEMA_GROUP_NAME, MetadataSchema, PluginBase
-from .partial import PartialSchema
+from .core import SCHEMA_GROUP_NAME, MetadataSchema, PartialSchema, PluginBase
 from .utils import attach_field_inspector, collect_model_types, get_annotations
 
 
@@ -210,45 +209,25 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         if p := plugin.Plugin.parent_schema:
             return {(self.name, p.name)}
 
+    def _needs_partial(self, plugin):
+        if plugin is MetadataSchema or not issubclass(plugin, MetadataSchema):
+            return False
+        return plugin not in self._partials
+
     def _derive_partial(self, plugin):
-        # take union of all subschemas that we already have
-        self._subschemas[plugin] = set.union(set(), *self._field_types[plugin].values())
-        # collect possibly unregistered schemas (non-plugins)
-        missed = set()
-        for dep in self._subschemas[plugin]:
-            if dep not in self._subschemas:
-                missed.add(dep)
+        # print("derive", plugin)
+        # ensure all suitable base classes and sub-models have partial
+        subschemas = collect_model_types(plugin, bound=MetadataSchema)
+        for dep in chain(reversed(plugin.__bases__), *subschemas.values()):
+            if dep is not plugin and self._needs_partial(dep):
+                self._derive_partial(dep)
 
-        # explore the hierarchy of unregistered schemas
-        q = SimpleQueue()
-        for s in missed:
-            q.put(s)
-        while not q.empty():
-            s = q.get()
-            if s in self._subschemas:
-                continue
-            model_types = set.union(
-                set(), *collect_model_types(s, bound=MetadataSchema).values()
-            )
-            self._subschemas[s] = model_types
-            if s in self._subschemas[s]:
-                self._subschemas[s].remove(s)  # recursive model
-            for dep in self._subschemas[s]:
-                if dep not in self._subschemas:
-                    q.put(dep)
-
-        new_subschemas = set(self._subschemas.keys()) - set(self._partials.keys())
-        for schema in new_subschemas:
-            # create and collect partials
-            partial = PartialSchema._create_partial(schema)
-            partial_ref = PartialSchema._partial_forwardref_name(schema)
-            self._partials[schema] = partial
-            self._forwardrefs[partial_ref] = partial
-
-        for schema in new_subschemas:
-            partial = self._partials[schema]
-            partial.update_forward_refs(**self._forwardrefs)
-            setattr(schema, "Partial", partial)
+        partial = PartialSchema._create_partial(plugin, partials=self._partials)
+        partial_ref = PartialSchema._partial_forwardref_name(plugin)
+        self._partials[plugin] = partial
+        self._forwardrefs[partial_ref] = partial
+        partial.update_forward_refs(**self._forwardrefs)
+        setattr(plugin, "Partial", partial)
 
     def init_plugin(self, name, plugin):
         # pre-compute parent schema path
@@ -266,8 +245,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # update refs, otherwise issues with forward references in same module etc.
         plugin.update_forward_refs()
 
-        # collect immediate subschemas used in a schema
-        self._field_types[plugin] = collect_model_types(plugin, bound=MetadataSchema)
         # attach the subschemas helper inner class to registered schemas
         attach_field_inspector(plugin, bound=MetadataSchema)
         # derive recursive partial schema

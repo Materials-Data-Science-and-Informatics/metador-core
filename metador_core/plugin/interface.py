@@ -18,6 +18,8 @@ from typing import (
     overload,
 )
 
+from typing_extensions import TypeAlias
+
 from ..schema.core import PluginBase, PluginPkgMeta
 from ..schema.core import PluginRef as AnyPluginRef
 from .entrypoints import get_group
@@ -103,8 +105,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     The name of their entrypoint defines the name of the plugin group.
     """
 
-    class PluginRef(AnyPluginRef):
-        """Auto-generated subclass of PluginRef (defined here for metaclass)."""
+    PluginRef: TypeAlias = AnyPluginRef
 
     class Plugin:
         """This is the plugin group plugin group, the first loaded group."""
@@ -164,6 +165,9 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         ep = self._ENTRY_POINTS[ep_name]
         return self._PKG_META[ep.dist.name]
 
+    def __contains__(self, key: str) -> bool:
+        return key in self._ENTRY_POINTS
+
     def keys(self) -> KeysView[str]:
         """Return all names of all plugins."""
         return self._ENTRY_POINTS.keys()
@@ -177,7 +181,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         return map(lambda k: (k, self[k]), self.keys())
 
     def __getitem__(self, key: str) -> Type[T]:
-        if key not in self._ENTRY_POINTS:
+        if key not in self:
             raise KeyError(f"{self.name} not found: {key}")
         return self.get(key)
 
@@ -193,7 +197,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         passed_str = isinstance(key, str)
 
         key_: str = key if passed_str else key.Plugin.name  # type: ignore
-        if key_ not in self._ENTRY_POINTS:
+        if key_ not in self:
             return None  # so such schema installed
 
         self._ensure_is_loaded(key_)
@@ -317,14 +321,13 @@ def create_pg(pg_cls):
     _plugin_groups[pg_name] = pg
 
 
-def load_plugins():
+def load_plugin_groups():
     """Initialize plugin system from currently available entry points."""
     if _plugin_groups:
         raise RuntimeError("Plugins have already been loaded and initialized!")
 
-    from . import InstalledPlugins
     from .entrypoints import pkg_meta
 
-    InstalledPlugins._installed = _plugin_groups
     PluginGroup._PKG_META = pkg_meta
     create_pg(PluginGroup)
+    return _plugin_groups

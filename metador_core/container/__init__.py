@@ -941,25 +941,21 @@ class MetadorMeta:
         schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
         self._guard_unknown_schema(schema_name)
         if self._get_raw(schema_name):
-            raise ValueError(f"Metadata object for schema {schema_name} exists!")
+            raise ValueError(
+                f"Metadata object for schema {schema_name} already exists!"
+            )
 
         # get the correct installed plugin class (don't trust the user class!)
         schema_class: Type[MetadataSchema] = schemas[schema_name]
 
         # handle and check the passed metadata
         if isinstance(value, schema_class):
-            validated = value  # skip validation, already suitable model
+            validated = value  # skip validation, already correct model
         else:
-            # try to convert/parse it -> make sure we have a dict
-            if isinstance(value, dict):
-                val_dict = value
-            elif isinstance(value, MetadataSchema):
-                val_dict = value.dict()
-            else:
-                msg = f"Cannot process metadata object of type {type(value)}!"
-                raise ValueError(msg)
-            # parse/validate. let ValidationError be raised (if it happens)
-            validated = schema_class.parse_obj(val_dict)
+            # try to convert/parse it:
+            val = value.dict() if isinstance(value, MetadataSchema) else value
+            # let ValidationError be raised (if it happens)
+            validated = schema_class.parse_obj(val)
 
         # all good -> store it
         obj_path = self._mc.toc._register_link(self._base_dir, schema_name)

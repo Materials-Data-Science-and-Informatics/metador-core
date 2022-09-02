@@ -332,5 +332,4 @@ class PGPacker(pg.PluginGroup[Packer]):
         cont.close()
 
 
-packers: PGPacker
-packers = plugingroups.get(PACKER_GROUP_NAME, PGPacker)
+packers: PGPacker = plugingroups.get(PGPacker)

@@ -26,7 +26,6 @@ pandas = "^1.4.1"
 # widgets/dashboard:
 panel = "^0.13.1"
 Flask = "^2.1.3"
-lazy-object-proxy = "^1.7.1"
 overrides = "^6.1.0"
 phantom-types = "^0.17.1"
 simple-parsing = "^0.0.20"

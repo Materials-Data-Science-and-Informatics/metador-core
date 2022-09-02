@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Callable, ClassVar, Dict, Iterable, Set, Type, TypeVar, Union
 
 from overrides import overrides
-from pydantic import BaseModel, Extra, ValidationError
+from pydantic import Extra, ValidationError
 
 from ..plugin import interface as pg
 from ..plugin import plugingroups
 from ..schema import MetadataSchema, schemas
-from ..schema.core import BaseModelPlus
-from ..schema.partial import PartialModel, PartialSchema
+from ..schema.core import BaseModelPlus, PartialSchema
+from ..schema.partial import PartialModel
 from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
 
 HARVESTER_GROUP_NAME = "harvester"
@@ -33,7 +33,7 @@ class HarvesterArgs(BaseModelPlus):
         extra = Extra.forbid
 
 
-class PartialArgs(PartialModel, BaseModel):
+class PartialArgs(PartialModel, HarvesterArgs):
     """Base class for partial harvester arguments."""
 
     @classmethod
@@ -42,11 +42,14 @@ class PartialArgs(PartialModel, BaseModel):
 
 
 class HarvesterMetaMixin(type):
+    _args_partials: Dict[Type, Type] = {}
+
     def __new__(cls, name, bases, dct):
         # generate partial arguments model
         ret = super().__new__(cls, name, bases, dct)
-        p_cls = PartialArgs._create_partial(ret.Args)
+        p_cls = PartialArgs._create_partial(ret.Args, partials=cls._args_partials)
         ret.Args.Partial = p_cls
+        cls._args_partials[ret.Args] = p_cls
         return ret
 
 
@@ -391,5 +394,4 @@ def harvest(
     return merged if return_partial else merged.from_partial()
 
 
-harvesters: PGHarvester
-harvesters = plugingroups.get(HARVESTER_GROUP_NAME, PGHarvester)
+harvesters: PGHarvester = plugingroups.get(PGHarvester)

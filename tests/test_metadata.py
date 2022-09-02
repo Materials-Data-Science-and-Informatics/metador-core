@@ -6,14 +6,14 @@ import metador_core.schema.types as t
 
 def test_str_types():
     # mimetype_str
-    parse_obj_as(t.MimeType, "application/json")
-    parse_obj_as(t.MimeType, "application/JSON;q=0.9;v=abc")
+    parse_obj_as(t.MimeTypeStr, "application/json")
+    parse_obj_as(t.MimeTypeStr, "application/JSON;q=0.9;v=abc")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.MimeType, "invalid/mime/type")
+        parse_obj_as(t.MimeTypeStr, "invalid/mime/type")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.MimeType, "invalid mime")
+        parse_obj_as(t.MimeTypeStr, "invalid mime")
     with pytest.raises(ValidationError):
-        parse_obj_as(t.MimeType, "invalidMime")
+        parse_obj_as(t.MimeTypeStr, "invalidMime")
 
     # QualHashsumStr
     parse_obj_as(t.QualHashsumStr, "sha256:aebf")

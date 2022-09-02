@@ -9,9 +9,8 @@ from typing import Set
 from pydantic import parse_obj_as, root_validator, validator
 
 from ..ld import LDIdRef, add_const, ld_type
-from ..types import MimeType
+from ..types import HashsumStr, MimeTypeStr
 from . import schemaorg
-from .schemaorg import Text
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
@@ -33,8 +32,8 @@ class FileMeta(schemaorg.MediaObject):
     filename: str
 
     contentSize: int
-    sha256: Text
-    encodingFormat: MimeType
+    sha256: HashsumStr
+    encodingFormat: MimeTypeStr
 
 
 @annotate_rocrate_type("Dataset")

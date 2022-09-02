@@ -22,7 +22,7 @@ class NonEmptyStr(FullMatch, pattern=".+"):
     # use that instead of NonEmpty[str] so we can subclass more flexibly
 
 
-class MimeType(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
+class MimeTypeStr(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
     """String that looks like a mime-type."""
 
 

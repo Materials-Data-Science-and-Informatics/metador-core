@@ -124,5 +124,4 @@ class PGWidget(pg.PluginGroup[Widget]):
         return [w_name for w_name, w_cls in self.items() if w_cls.supports(schema)]
 
 
-widgets: PGWidget
-widgets = plugingroups.get(WIDGET_GROUP_NAME, PGWidget)
+widgets: PGWidget = plugingroups.get(PGWidget)

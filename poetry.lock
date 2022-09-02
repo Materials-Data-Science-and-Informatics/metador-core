@@ -313,14 +313,6 @@ format = ["fqdn", "idna", "isoduration", "jsonpointer (>1.13)", "rfc3339-validat
 format-nongpl = ["fqdn", "idna", "isoduration", "jsonpointer (>1.13)", "rfc3339-validator", "rfc3986-validator (>0.1.0)", "uri-template", "webcolors (>=1.11)"]
 
 [[package]]
-name = "lazy-object-proxy"
-version = "1.7.1"
-description = "A fast and thorough lazy object proxy."
-category = "main"
-optional = false
-python-versions = ">=3.6"
-
-[[package]]
 name = "markdown"
 version = "3.4.1"
 description = "Python implementation of Markdown."
@@ -974,7 +966,7 @@ docs = ["jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "jaraco.packaging (>=9)
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "824d253ef83da731486c2b6bc75f1c9b507ffe97a9603051863f29d1ef7cda0b"
+content-hash = "d6e450e4ba9c340ce64393aa62a27a53cfe2e6fd1203a815be273fab3aedc28f"
 
 [metadata.files]
 astunparse = []
@@ -1003,7 +995,6 @@ isodate = []
 itsdangerous = []
 jinja2 = []
 jsonschema = []
-lazy-object-proxy = []
 markdown = []
 markupsafe = []
 mypy-extensions = []

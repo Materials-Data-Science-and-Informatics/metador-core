@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import ClassVar, Dict, List, Literal, Optional, Protocol, Set, Type
 
 import isodate
+from overrides import overrides
 from pydantic import AnyHttpUrl, BaseModel, ValidationError, create_model
 from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
+from .partial import DeepPartialModel
 from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
@@ -62,11 +63,22 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
 class ModelMetaPlus(ModelMetaclass):
     """Metaclass for doing some magic."""
 
-    # NOTE: generating partial schemas here already is not good
-    # leads to problems with forward refs
+    # NOTE: generating partial schemas here already is not good,
+    # leads to problems with forward refs, so we do it afterwards
+
+    @property
+    def is_plugin(self):
+        """Return whether this schema is a installed schema plugin."""
+        from . import schemas
+
+        if info := self.__dict__.get("Plugin"):
+            return self == schemas.get(info.name)
+        return False
 
     def __init__(self, name, bases, dct):
-        ...
+        # prevent implicit inheritance of Plugin inner class
+        if hasattr(self, "Plugin") and "Plugin" not in self.__dict__:
+            self.Plugin = None
 
 
 class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
@@ -76,7 +88,7 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
     Plugin: ClassVar[Type]
 
     # auto-generated:
-    Schemas: ClassVar[Type]  # subschemas used in annotations, for import-less access
+    Fields: ClassVar[Type]  # introspection of fields
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
 
     # These are fine (ClassVar is ignored by pydantic):
@@ -86,18 +98,22 @@ class MetadataSchema(BaseModelPlus, metaclass=ModelMetaPlus):
     # fields with constant values added by add_annotations
     __constants__: ClassVar[Set[str]]
 
+
+class PartialSchema(DeepPartialModel, MetadataSchema):
+    """Partial model for MetadataSchema model."""
+
+    # MetadataSchema-specific adaptations:
     @classmethod
-    def is_plugin(cls):
-        """Return whether this schema is a plugin."""
-        return hasattr(cls, "Plugin")
+    @overrides
+    def _partial_name(cls, mcls):
+        return f"{mcls.__qualname__}.Partial"
 
-
-@dataclass
-class FieldInspector:
-    name: str
-    description: str
-    schemas: Type
-    types: Type
+    @classmethod
+    @overrides
+    def _get_fields(cls, obj):
+        # exclude the "annotated" fields that we support
+        constants = obj.__dict__.get("__constants__", set())
+        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
 
 
 class PluginRef(MetadataSchema):
