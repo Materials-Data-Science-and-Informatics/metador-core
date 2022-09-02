@@ -1,10 +1,11 @@
-"""Meta-interface for pluggable entities."""
+"""Interface for plugin groups."""
 from __future__ import annotations
 
 import re
 from importlib.metadata import EntryPoint
 from typing import (
     Any,
+    ClassVar,
     Dict,
     Generic,
     Iterable,
@@ -106,6 +107,10 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     """
 
     PluginRef: TypeAlias = AnyPluginRef
+    """Plugin reference class for this plugin group."""
+
+    _PKG_META: ClassVar[Dict[str, PluginPkgMeta]] = pkg_meta
+    """Package name -> package metadata."""
 
     class Plugin:
         """This is the plugin group plugin group, the first loaded group."""
@@ -116,19 +121,11 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         plugin_class: Type
         # plugin_class = PluginGroup  # can't set that -> check manually
 
-    _PKG_META: Dict[str, PluginPkgMeta] = pkg_meta
-    """Mapping from package name to metadata of the package.
-
-    Class attribute, shared with subclasses.
-    """
-
     _ENTRY_POINTS: Dict[str, Any]
     """Dict of entry points (not loaded)."""
 
     _LOADED_PLUGINS: Dict[str, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
-
-    PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
     def __init__(self, entrypoints):
         self._LOADED_PLUGINS = {}
@@ -143,6 +140,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
                 PG_GROUP_NAME,
             )
             self._LOADED_PLUGINS[PG_GROUP_NAME] = self
+            self.provider(PG_GROUP_NAME).plugins[PG_GROUP_NAME].add(PG_GROUP_NAME)
 
     @property
     def name(self) -> str:
@@ -186,6 +184,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         return self.get(key)
 
     # inspired by this nice trick: https://stackoverflow.com/a/60362860
+    PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
     @overload
     def get(self, key: str) -> Optional[Type[T]]:
@@ -305,6 +304,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 # ----
 
 _plugin_groups: Dict[str, PluginGroup] = {}
+"""Instances of initialized plugin groups."""
 
 
 def create_pg(pg_cls):

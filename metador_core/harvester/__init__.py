@@ -3,23 +3,38 @@ from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Callable, ClassVar, Dict, Iterable, Set, Type, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    Set,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from overrides import overrides
 from pydantic import Extra, ValidationError
+from typing_extensions import TypeAlias
 
 from ..plugins import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import BaseModelPlus, PartialSchema
+from ..schema.core import BaseModelPlus, PartialSchema, PluginRef
 from ..schema.partial import PartialModel
-from ..schema.pg import SCHEMA_GROUP_NAME, PGSchema
 
 HARVESTER_GROUP_NAME = "harvester"
 
 
 class HarvesterPlugin(pg.PluginBase):
-    returns: PGSchema.PluginRef
+    if TYPE_CHECKING:
+        SchemaPluginRef: TypeAlias = PluginRef
+    else:
+        SchemaPluginRef: TypeAlias = schemas.PluginRef
+
+    returns: SchemaPluginRef
     """Schema returned by this harvester."""
 
 
@@ -188,7 +203,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
     class Plugin:
         name = HARVESTER_GROUP_NAME
         version = (0, 1, 0)
-        requires = [SCHEMA_GROUP_NAME]
+        requires = [schemas.name]
         plugin_class = Harvester
         plugin_info_class = HarvesterPlugin
 

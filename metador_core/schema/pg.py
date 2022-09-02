@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 from itertools import chain
-from typing import Dict, List, Optional, Set, Type, get_type_hints
+from typing import Dict, List, Optional, Set, Type
 
 from overrides import overrides
 
 from ..plugins import interface as pg
-from .core import SCHEMA_GROUP_NAME, MetadataSchema, PartialSchema, PluginBase
-from .utils import attach_field_inspector, collect_model_types, get_annotations
+from .core import MetadataSchema, PartialSchema, PluginBase
+from .utils import (
+    attach_field_inspector,
+    collect_model_types,
+    get_annotations,
+    get_type_hints,
+)
+
+SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
 
 class SchemaPlugin(PluginBase):

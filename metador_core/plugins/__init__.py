@@ -1,5 +1,5 @@
 """Central place to access all plugin groups."""
-from typing import Dict, List, TypeVar, cast
+from typing import TYPE_CHECKING, Dict, List, TypeVar, cast
 
 import wrapt
 
@@ -33,12 +33,7 @@ class PGPluginGroup(wrapt.ObjectProxy):
         return self.get(key)
 
     def get(self, key):
-        """Get plugin group interface of a registered plugin group by name.
-
-        The optional pg_class can be used for type checking purposes as follows:
-        Instead of using `group("schema")`, use `group("schema", PGSchema)` and
-        then the object can be properly type checked by static analyzers.
-        """
+        """Get a registered plugin group by name."""
         if key == PG_GROUP_NAME:
             return self
         if grp_cls := self.__wrapped__.get(key):
@@ -50,10 +45,20 @@ class PGPluginGroup(wrapt.ObjectProxy):
 
 plugingroups: PGPluginGroup = PGPluginGroup()
 
-# some magic to lift all other groups to module level
-# this allows to import like: from metador_core.plugins import schemas
+# help mypy (obviously only for groups in this package):
+if TYPE_CHECKING:
+    from ..harvester import PGHarvester
+    from ..packer import PGPacker
+    from ..schema.pg import PGSchema
+    from ..widget import PGWidget
 
-__annotations__ = {}  # dynamically create annotations, maybe it helps?
+    schemas: PGSchema
+    harvesters: PGHarvester
+    widgets: PGWidget
+    packers: PGPacker
+
+# some magic to lift all other groups to module level,
+# this allows to import like: from metador_core.plugins import schemas
 
 # define what to import with *
 __all__ = list(map(lambda n: f"{n}s", plugingroups.keys()))

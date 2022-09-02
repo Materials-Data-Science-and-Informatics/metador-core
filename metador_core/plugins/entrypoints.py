@@ -1,4 +1,4 @@
-"""Metador plugin loading from entry points."""
+"""Processing of entry points for Metador plugins."""
 from __future__ import annotations
 
 import re
@@ -9,18 +9,18 @@ from importlib_metadata import entry_points
 
 from ..schema.core import PluginPkgMeta, SemVerTuple
 
-# group prefix for metador plugin entry point groups.
 PG_PREFIX: str = "metador_"
+"""Group prefix for metador plugin entry point groups."""
 
-# get all entrypoints
 _eps = entry_points()
+"""All entry points."""
 
-# Collected package names that provide plugins (filled by get_plugins)
 pkg_meta = {}
+"""Collected infos about packages that provide plugins (filled by get_group)."""
 
 
 def get_group(group_name: str) -> Dict[str, Any]:
-    """Get dict of all available entrypoints for a Metador plugin group."""
+    """Get a dict of all available entrypoints for a Metador plugin group."""
     ep_grp = f"{PG_PREFIX}{group_name}"
     plugins: Dict[str, Any] = {}
 
@@ -35,6 +35,9 @@ def get_group(group_name: str) -> Dict[str, Any]:
             pkg_meta[ep.dist.name] = PluginPkgMeta.for_package(ep.dist.name)
 
     return plugins
+
+
+# ----
 
 
 @dataclass

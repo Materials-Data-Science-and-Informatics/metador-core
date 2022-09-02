@@ -109,13 +109,12 @@ from metador_core.ih5.protocols import (
     H5GroupLike,
     H5NodeLike,
 )
-from metador_core.schema.pg import PGSchema
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import PluginPkgMeta
+from ..schema.core import PluginPkgMeta, PluginRef
 from . import utils as M
 
 
@@ -1269,7 +1268,7 @@ class MetadorContainerTOC:
         # 2. collect metadata object uuids
 
         # refs for actually embedded schema instances
-        self._used_schemas: Dict[str, PGSchema.PluginRef] = {}
+        self._used_schemas: Dict[str, PluginRef] = {}
 
         if M.METADOR_SCHEMAS_PATH in rawcont:  # RAW
             refs_grp = rawcont.require_group(M.METADOR_SCHEMAS_PATH)  # RAW
@@ -1356,7 +1355,7 @@ class MetadorContainerTOC:
             raise KeyError(msg)
         return self._pkginfos[pkg_name]
 
-    def fullname(self, schema_name: str) -> PGSchema.PluginRef:
+    def fullname(self, schema_name: str) -> PluginRef:
         """Like PluginGroup.fullname, but with respect to container deps."""
         return self._used_schemas[schema_name]
 
