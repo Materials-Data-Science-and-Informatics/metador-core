@@ -21,8 +21,8 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
-from ..schema.core import PluginBase, PluginPkgMeta
-from ..schema.core import PluginRef as AnyPluginRef
+from ..schema.plugins import PluginBase, PluginPkgMeta
+from ..schema.plugins import PluginRef as AnyPluginRef
 from .entrypoints import get_group, pkg_meta
 
 PG_GROUP_NAME = "plugingroup"
@@ -232,7 +232,14 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         # print("load", self.name, name, plugin)
         from . import plugingroups
 
-        # do general checks first, if they fail no need to continue loading
+        # run inner Plugin class checks (with possibly new Fields cls)
+        if not plugin.__dict__.get("Plugin"):
+            raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
+        plugin.Plugin = self.Plugin.plugin_info_class.parse_info(
+            plugin.Plugin, ep_name=name
+        )
+
+        # do general checks first, if they fail no need to continue
         self._check_common(name, plugin)
         self.check_plugin(name, plugin)
 
@@ -252,14 +259,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if type(self) is not PluginGroup:
             _check_plugin_name_prefix(name)
 
-        if not plugin.__dict__.get("Plugin"):
-            raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
-
-        # run inner Plugin class checks (with possibly new Fields cls)
-        plugin.Plugin = self.Plugin.plugin_info_class.parse_info(
-            plugin.Plugin, ep_name=name
-        )
-        # check correct inheritance of plugin
+        # check correct base class of plugin, if stated
         if self.Plugin.plugin_class:
             check_is_subclass(name, plugin, self.Plugin.plugin_class)
 

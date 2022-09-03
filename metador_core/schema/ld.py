@@ -2,78 +2,30 @@
 
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Extra, Field
-from pydantic.fields import FieldInfo, ModelField
+from pydantic import Extra, Field
 from typing_extensions import Annotated
 
 from .core import MetadataSchema
+from .decorators import const
 from .types import NonEmptyStr
-from .utils import make_literal
 
 
-def add_const(consts: Dict[str, Any], **kwargs):
-    """Add constant fields to pydantic models.
-
-    Must be passed a dict of field names mapped to the default values (only default JSON types).
-
-    Annotated fields are optional during parsing and are added to a parsed instance.
-    If is present during parsing, they must have exactly the passed annotated value.
-
-    Annotation fields are included in serialization, unless exclude_defaults is set.
-
-    This can be used e.g. to make JSON data models semantic by attaching JSON-LD annotations.
-    """
-    allow_override = kwargs.pop("allow_override", True)
-    if kwargs:
-        raise ValueError(f"Unknown keyword arguments: {kwargs}")
-
-    def add_fields(mcls):
-        if not issubclass(mcls, BaseModel):
-            raise ValueError("This is a decorator for pydantic models!")
-
-        if not allow_override:
-            if shadowed := set.intersection(
-                set(consts.keys()), set(mcls.__fields__.keys())
-            ):
-                msg = f"Attached const fields {shadowed} override defined fields in {mcls}!"
-                raise ValueError(msg)
-
-        # hacking it in-place approach:
-        for name, value in consts.items():
-            val = value.default if isinstance(value, FieldInfo) else value
-            ctype = Optional[make_literal(val)]  # type: ignore
-            field = ModelField.infer(
-                name=name,
-                value=value,
-                annotation=ctype,
-                class_validators=None,
-                config=mcls.__config__,
-            )
-            mcls.__fields__[name] = field
-            mcls.__annotations__[name] = field.type_
-        ret = mcls
-
-        # dynamic subclass approach:
-        # ret = create_model(
-        #     mcls.__name__, __base__=mcls, __module__=mcls.__module__, **consts
-        # )
-        # if hasattr(mcls, "Plugin"):
-        #     ret.Plugin = mcls.Plugin
-
-        # to later distinguish annotation fields:
-        parent_consts = mcls.__dict__.get("__constants__", set())
-        ret.__constants__ = parent_consts.union(set(consts.keys()))
-        return ret
-
-    return add_fields
+def ld(**kwargs) -> Dict[str, Any]:
+    """Return dict where all passed argument names are prefixed with @."""
+    return {f"@{k}": v for k, v in kwargs.items() if v}
 
 
-def ld_type(name, *, context=None) -> Dict[str, Any]:
-    """Return a dict to use with `add_const` that has the given type name and context."""
-    ret = {"@type": name}
-    if context:
-        ret["@context"] = context
-    return ret
+def ld_type_decorator(context=None):
+    """Return LD schema decorator for given context."""
+
+    def decorator(name: str, *, override: bool = False):
+        return const(ld(type=name, context=context), override=override)
+
+    return decorator
+
+
+ld_type = ld_type_decorator()
+"""Decorator to set @type without providing a context."""
 
 
 class LDIdRef(MetadataSchema):

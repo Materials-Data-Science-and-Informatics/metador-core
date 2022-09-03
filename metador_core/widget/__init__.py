@@ -13,7 +13,7 @@ from ..container import MetadorNode
 from ..plugins import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import PluginRef
+from ..schema.plugins import PluginRef
 from .server import WidgetServer
 
 

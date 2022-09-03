@@ -16,7 +16,8 @@ from ..hashutils import DirHashsums, dir_hashsums
 from ..plugins import harvesters
 from ..plugins import interface as pg
 from ..plugins import schemas
-from ..schema.core import MetadataSchema, PluginPkgMeta
+from ..schema.core import MetadataSchema
+from ..schema.plugins import PluginPkgMeta
 from .diff import DirDiff
 from .types import DirValidationErrors
 

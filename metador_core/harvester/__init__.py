@@ -22,8 +22,9 @@ from typing_extensions import TypeAlias
 from ..plugins import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import BaseModelPlus, PartialSchema, PluginRef
+from ..schema.core import BaseModelPlus, PartialSchema
 from ..schema.partial import PartialModel
+from ..schema.plugins import PluginRef
 
 HARVESTER_GROUP_NAME = "harvester"
 
@@ -32,7 +33,7 @@ class HarvesterPlugin(pg.PluginBase):
     if TYPE_CHECKING:
         SchemaPluginRef: TypeAlias = PluginRef
     else:
-        SchemaPluginRef: TypeAlias = schemas.PluginRef
+        SchemaPluginRef = schemas.PluginRef
 
     returns: SchemaPluginRef
     """Schema returned by this harvester."""

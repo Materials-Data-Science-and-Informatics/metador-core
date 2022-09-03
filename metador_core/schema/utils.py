@@ -18,7 +18,7 @@ from typing import (  # type: ignore
 import typing_extensions
 from pydantic import BaseModel
 from pydantic.fields import ModelField
-from typing_extensions import Annotated, Literal, TypedDict, get_args
+from typing_extensions import Annotated, ClassVar, Literal, TypedDict, get_args
 
 
 def is_instance_of(t: Any) -> Callable[[Any], bool]:
@@ -29,6 +29,10 @@ def is_instance_of(t: Any) -> Callable[[Any], bool]:
 def is_subclass_of(t: Any) -> Callable[[Any], bool]:
     """Return a predicate to check issubclass for a given type."""
     return lambda obj: issubclass(obj, t)
+
+
+def is_public_name(n: str):
+    return n[0] != "_"
 
 
 to38hint: Dict[Type, Any] = {
@@ -56,6 +60,10 @@ def is_set(hint):
 
 def is_union(hint):
     return get_origin(hint) is Union
+
+
+def is_classvar(hint):
+    return get_origin(hint) is ClassVar
 
 
 NoneType = type(None)
@@ -278,13 +286,13 @@ class FieldInspector:
         docs = get_attribute_docstring(self.origin, self.name)
         return docs.docstring_below or docs.comment_above or docs.comment_inline
 
-    def __init__(self, model, name, description, hint, schemas):
+    def __init__(self, model, name, description, hint, subschemas):
         self.origin = model
         self.name = name
         self.type = hint
 
         class Schemas(metaclass=LiftedRODict):
-            _dict = {s.__name__: s for s in schemas}
+            _dict = {s.__name__: s for s in subschemas}
 
         self.schemas = Schemas
 

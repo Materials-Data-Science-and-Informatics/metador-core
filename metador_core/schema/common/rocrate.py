@@ -8,18 +8,19 @@ from typing import Set
 
 from pydantic import parse_obj_as, root_validator, validator
 
-from ..ld import LDIdRef, add_const, ld_type
+from ..decorators import override, specialize
+from ..ld import LDIdRef, ld_type_decorator
 from ..types import HashsumStr, MimeTypeStr
 from . import schemaorg
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
 
-def annotate_rocrate_type(name: str):
-    return add_const(ld_type(name, context=CTX_URL_ROCRATE))
+rocrate_type = ld_type_decorator(CTX_URL_ROCRATE)
 
 
-@annotate_rocrate_type("File")
+@specialize("contentSize", "sha256", "encodingFormat")
+@rocrate_type("File", override=True)
 class FileMeta(schemaorg.MediaObject):
     class Plugin:
         name = "core.file"
@@ -36,7 +37,8 @@ class FileMeta(schemaorg.MediaObject):
     encodingFormat: MimeTypeStr
 
 
-@annotate_rocrate_type("Dataset")
+@rocrate_type("Dataset", override=True)
+@override("hasPart")
 class DirMeta(schemaorg.Dataset):
     class Plugin:
         name = "core.dir"
@@ -50,7 +52,7 @@ class DirMeta(schemaorg.Dataset):
     hasPart: Set[LDIdRef] = set()
 
 
-@annotate_rocrate_type("Organization")
+@rocrate_type("Organization")
 class Organization(schemaorg.Organization):
     @validator("id_")
     def check_id(cls, v):
@@ -61,7 +63,7 @@ class Organization(schemaorg.Organization):
         return parse_obj_as(schemaorg.URL, v)
 
 
-@annotate_rocrate_type("Person")
+@rocrate_type("Person")
 class Person(schemaorg.Person):
     @validator("id_")
     def check_id(cls, v):

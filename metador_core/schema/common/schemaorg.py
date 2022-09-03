@@ -13,7 +13,7 @@ from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
-from ..ld import LDSchema, add_const, ld_type
+from ..ld import LDSchema, ld_type_decorator
 from ..types import Duration, NonEmptyStr, Number
 
 URL = AnyHttpUrl
@@ -23,12 +23,10 @@ TimeOrDatetime = Union[time, datetime]
 
 CTX_URL_SCHEMAORG = "https://schema.org"
 
-
-def annotate_schemaorg_type(name: str):
-    return add_const(ld_type(name, context=CTX_URL_SCHEMAORG))
+schemaorg_type = ld_type_decorator(CTX_URL_SCHEMAORG)
 
 
-@annotate_schemaorg_type("Thing")
+@schemaorg_type("Thing")
 class Thing(LDSchema):
     """See http://schema.org/Thing for field documentation."""
 
@@ -49,7 +47,7 @@ class Thing(LDSchema):
     alternateName: Optional[Set[Text]]
 
 
-@annotate_schemaorg_type("QuantitativeValue")
+@schemaorg_type("QuantitativeValue")
 class QuantitativeValue(Thing):
     """See http://schema.org/QuantitativeValue for field documentation."""
 
@@ -60,14 +58,14 @@ class QuantitativeValue(Thing):
     unitText: Optional[Text]
 
 
-@annotate_schemaorg_type("Organization")
+@schemaorg_type("Organization")
 class Organization(Thing):
     """See http://schema.org/Organization for field documentation."""
 
     address: Optional[Text]
 
 
-@annotate_schemaorg_type("Person")
+@schemaorg_type("Person")
 class Person(Thing):
     """See http://schema.org/Person for field documentation."""
 
@@ -82,7 +80,7 @@ class Person(Thing):
 OrgOrPerson = Union[Person, Organization]
 
 
-@annotate_schemaorg_type("CreativeWork")
+@schemaorg_type("CreativeWork")
 class CreativeWork(Thing):
     """See http://schema.org/CreativeWork for field documentation."""
 
@@ -127,7 +125,7 @@ class CreativeWork(Thing):
     isBasedOn: Optional[Set[Union[URL, CreativeWork]]]
 
 
-@annotate_schemaorg_type("MediaObject")
+@schemaorg_type("MediaObject")
 class MediaObject(CreativeWork):
     """See http://schema.org/MediaObject for field documentation."""
 
@@ -152,7 +150,7 @@ class MediaObject(CreativeWork):
     endTime: Optional[TimeOrDatetime]
 
 
-@annotate_schemaorg_type("Dataset")
+@schemaorg_type("Dataset")
 class Dataset(CreativeWork):
     """See http://schema.org/Dataset for field documentation."""
 

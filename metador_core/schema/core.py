@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Dict, List, Literal, Optional, Protocol, Set, Type
+from typing import Any, ClassVar, Dict, Set, Type
 
 import isodate
 from overrides import overrides
-from pydantic import AnyHttpUrl, BaseModel, ValidationError, create_model
+from pydantic import BaseModel
 from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
 from .partial import DeepPartialModel
-from .types import NonEmptyStr, PintQuantity, PintUnit, SemVerTuple
+from .types import PintQuantity, PintUnit
 
-SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
+
+def _mod_def_dump_args(kwargs):
+    """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
+    if "by_alias" not in kwargs:
+        kwargs["by_alias"] = True  # e.g. so we get correct @id, etc fields
+    if "exclude_none" not in kwargs:
+        kwargs["exclude_none"] = True  # we treat None as "missing" so leave it out
+    return kwargs
 
 
 class BaseModelPlus(YamlModelMixin, BaseModel):
@@ -58,6 +65,20 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
         return (self.json() + "\n").encode(encoding="utf-8")
 
 
+class SchemaBase(BaseModelPlus):
+    # auto-generated:
+    Fields: ClassVar[Type]  # introspection of fields
+    Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
+
+    __typehints__: ClassVar[Dict[str, Any]]  # type hints computed on plugin load
+
+    # decorator markers (checked on plugin load)
+
+    __overrides__: ClassVar[Set[str]]  # fields overriding immediate parent
+    __specialized__: ClassVar[Set[str]]  # fields overriding + claimed to be narrower
+    __constants__: ClassVar[Set[str]]  # constant fields (added with `const` decorator)
+
+
 class SchemaMeta(ModelMetaclass):
     """Metaclass for doing some magic."""
 
@@ -67,46 +88,45 @@ class SchemaMeta(ModelMetaclass):
     @property
     def is_plugin(self):
         """Return whether this schema is a installed schema plugin."""
-        from . import schemas
+        from ..plugins import schemas
 
         if info := self.__dict__.get("Plugin"):
             return self == schemas.get(info.name)
         return False
 
+    def __new__(cls, name, bases, dct):
+        # only allow inheriting from other schemas
+        # TODO: fix parser mixin first!
+        # for b in bases:
+        #    if not issubclass(b, SchemaBase):
+        #        raise TypeError(f"Base class {b} is not a MetadataSchema!")
+
+        # prevent user from defining special names by hand
+        for atr in SchemaBase.__annotations__.keys():
+            if atr in dct:
+                raise TypeError(f"{name}: Invalid attribute '{atr}'")
+        return super().__new__(cls, name, bases, dct)
+
     def __init__(self, name, bases, dct):
-        # prevent implicit inheritance of Plugin inner class
-        if hasattr(self, "Plugin") and "Plugin" not in self.__dict__:
+        # prevent implicit inheritance of class-specific stuff
+        if "Plugin" not in dct:
             self.Plugin = None
 
-
-def _mod_def_dump_args(kwargs):
-    """Set `by_alias=True` in given kwargs dict, if not set explicitly."""
-    if "by_alias" not in kwargs:
-        kwargs["by_alias"] = True  # e.g. so we get correct @id, etc fields
-    if "exclude_none" not in kwargs:
-        kwargs["exclude_none"] = True  # we treat None as "missing" so leave it out
-    return kwargs
+        self.__typehints__ = {}
+        self.__overrides__ = set()
+        self.__specialized__ = set()
+        self.__constants__ = set.union(
+            set(), *(getattr(b, "__constants__", set()) for b in bases)
+        )
 
 
-class MetadataSchema(BaseModelPlus, metaclass=SchemaMeta):
+class MetadataSchema(SchemaBase, metaclass=SchemaMeta):
     """Extends Pydantic models with custom serializers and functions."""
 
-    # user-defined (for schema plugins)
-    Plugin: ClassVar[Type]
-
-    # auto-generated:
-    Fields: ClassVar[Type]  # introspection of fields
-    Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
-
-    # These are fine (ClassVar is ignored by pydantic):
-
-    # fields overriding immediate parent (for testing)
-    __overrides__: ClassVar[Set[str]]
-    # fields with constant values added by add_annotations
-    __constants__: ClassVar[Set[str]]
+    Plugin: ClassVar[Type]  # user-defined (for schema plugins)
 
 
-class PartialSchema(DeepPartialModel, MetadataSchema):
+class PartialSchema(DeepPartialModel, SchemaBase):
     """Partial model for MetadataSchema model."""
 
     # MetadataSchema-specific adaptations:
@@ -121,136 +141,3 @@ class PartialSchema(DeepPartialModel, MetadataSchema):
         # exclude the "annotated" fields that we support
         constants = obj.__dict__.get("__constants__", set())
         return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
-
-
-class PluginRef(MetadataSchema):
-    """Reference to a metador plugin.
-
-    This class can be subclassed for specific "marker schemas".
-
-    It is not registered as a schema plugin, because it is too general on its own.
-    """
-
-    class Config:
-        frozen = True
-
-    group: str
-    """Metador pluggable group name, i.e. name of the entry point group."""
-
-    name: NonEmptyStr
-    """Registered entry point name inside an entry point group."""
-
-    version: SemVerTuple
-    """Version of the Python package."""
-
-    def supports(self, other: PluginRef) -> bool:
-        """Return whether this plugin supports objects marked by given reference.
-
-        True iff the package name, plugin group and plugin name agree,
-        and the package of this reference has equal or larger minor version.
-        """
-        if self.group != other.group:
-            return False
-        if self.name != other.name:
-            return False
-        if self.version[0] != other.version[0]:  # major
-            return False
-        if self.version[1] < other.version[1]:  # minor
-            return False
-        return True
-
-    def __hash__(self):
-        # needed because otherwise would differ in subclass,
-        # causing problems for equality based on __hash__
-        return hash((self.group, self.name, self.version))
-
-    @classmethod
-    def subclass_for(cls, group: str):
-        # lit = Literal[group_name] # type: ignore
-        # class GroupPluginRef(cls):
-        #     group: lit = group_name # type: ignore
-        # return GroupPluginRef
-        return create_model(f"PG{group.capitalize()}.PluginRef", __base__=cls, group=(Literal[group], group))  # type: ignore
-
-
-class PluginBase(BaseModelPlus):
-    """All Plugin inner classes must be called `Plugin` and inherit from this class."""
-
-    group: ClassVar[str] = ""  # auto-set during plugin group init
-
-    # for type checking (mirrors Fields)
-    name: str
-    version: SemVerTuple
-    requires: List[str] = []
-
-    def ref(self, *, version=None):
-        from ..plugins import plugingroups
-
-        return plugingroups[self.group].PluginRef(
-            name=self.name, version=version or self.version
-        )
-
-    @classmethod
-    def parse_info(cls, info, *, ep_name: str = ""):
-        ep_name = ep_name or info.name
-        if ep_name != info.name:
-            msg = f"{ep_name}: Plugin.name ('{info.name}') != entry point ('{ep_name}')"
-            raise TypeError(msg)
-        try:
-            # validate
-            public_attrs = {k: v for k, v in info.__dict__.items() if k[0] != "_"}
-            return cls(**public_attrs)
-        except ValidationError as e:
-            raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")
-
-
-class PluginLike(Protocol):
-    Plugin: PluginBase
-
-
-# NOTE: if we would like pluginrefs with versions, this would force loading all plugins
-# and as this sucks we just don't do it and only list entry points
-# Plugins = Dict[str, Dict[str, PluginRef]]
-# """Dict from metador plugin groups to list of entrypoint names (provided plugins)."""
-
-Plugins = Dict[str, Set[str]]
-"""Dict from group name to entry point names."""
-
-
-class PluginPkgMeta(MetadataSchema):
-    """Metadata of a Python package containing Metador plugins."""
-
-    name: NonEmptyStr
-    """Name of the Python package."""
-
-    version: SemVerTuple
-    """Version of the Python package."""
-
-    repository_url: Optional[AnyHttpUrl] = None
-    """Python package source location (pip-installable / git-clonable)."""
-
-    plugins: Plugins = {}
-
-    @classmethod
-    def for_package(cls, package_name: str) -> PluginPkgMeta:
-        """Extract metadata about a Metador plugin providing Python package."""
-        # avoid circular import by importing here
-        from importlib_metadata import distribution
-
-        from ..plugins.entrypoints import DistMeta, distmeta_for
-
-        dm: DistMeta = distmeta_for(distribution(package_name))
-        # from ..plugin import plugingroups
-
-        plugins: Plugins = {}
-        for group, names in dm.plugins.items():
-            plugins[group] = set(names)
-            # for name in names:
-            #     plugins[group][name] = plugingroups[group].fullname(name)
-
-        return cls(
-            name=dm.name,
-            version=dm.version,
-            repository_url=dm.repository_url,
-            plugins=plugins,
-        )

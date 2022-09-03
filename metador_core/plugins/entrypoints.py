@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from importlib_metadata import entry_points
 
-from ..schema.core import PluginPkgMeta, SemVerTuple
+from ..schema.plugins import PluginPkgMeta, SemVerTuple
 
 PG_PREFIX: str = "metador_"
 """Group prefix for metador plugin entry point groups."""

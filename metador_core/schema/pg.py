@@ -8,12 +8,14 @@ from typing import Dict, List, Optional, Set, Type
 from overrides import overrides
 
 from ..plugins import interface as pg
-from .core import MetadataSchema, PartialSchema, PluginBase
+from .core import MetadataSchema, PartialSchema, SchemaBase
+from .plugins import PluginBase
 from .utils import (
     attach_field_inspector,
     collect_model_types,
-    get_annotations,
     get_type_hints,
+    is_classvar,
+    is_public_name,
 )
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
@@ -27,6 +29,10 @@ class SchemaPlugin(PluginBase):
     Any data that can be loaded using this schema MUST also be
     loadable by the parent schema (with possible information loss).
     """
+
+
+def _is_public_instance_field(name, hint):
+    return is_public_name(name) and not is_classvar(hint)
 
 
 class PGSchema(pg.PluginGroup[MetadataSchema]):
@@ -142,11 +148,46 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._partials: Dict[MetadataSchema, PartialSchema] = {}
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
+    def _check_types(self, name: str, plugin: Type[MetadataSchema]):
+        """Check shape of defined fields."""
+        hints = plugin.__typehints__
+        for field, hint in hints.items():
+            if field[0] == "_":
+                continue  # private field
+            if not PartialSchema._is_mergeable_type(hint):
+                raise TypeError(f"{name}: '{field}' contains a forbidden pattern!")
+
+    def _check_overrides(self, name, plugin):
+        base_hints = set.union(
+            set(),
+            *(
+                get_type_hints(b, include_inherited=True).keys()
+                for b in plugin.__bases__
+                if issubclass(b, MetadataSchema)
+            ),
+        )
+        new_hints = {
+            n
+            for n, h in plugin.__typehints__.items()
+            if _is_public_instance_field(n, h)
+            and n in getattr(plugin, "__annotations__", {})
+        }
+
+        actual_overrides = base_hints.intersection(new_hints)
+        miss_override = plugin.__overrides__ - actual_overrides
+        extra_override = actual_overrides - plugin.__overrides__
+        if miss_override:
+            raise TypeError(f"{name}: Missing field overrides: {miss_override}")
+        if extra_override:
+            # TODO: show base which is overridden for each key
+            raise TypeError(f"{name}: Undeclared field overrides: {extra_override}")
+
+        # TODO: also check specialized
+
     def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
         """Sanity-checks for possibly defined parent schema."""
         parent_ref = plugin.Plugin.parent_schema
         if parent_ref is None:
-            plugin.__overrides__ = set()
             return  # no parent schema listed -> nothing to do
 
         # check whether parent is known, compatible and really is a superclass
@@ -166,37 +207,13 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             msg += f"claimed parent schema {parent} ({parent_ref})!"
             raise TypeError(msg)
 
-        # tag the overridden fields (defined in parent and in child)
-        # (could be automatically tested by pytest to check correct narrowing)
-        parent_fields = get_annotations(parent)
-        child_fields = get_annotations(plugin)
-        plugin.__overrides__ = set(parent_fields.keys()).intersection(
-            set(child_fields.keys())
-        )
-
-    def _check_types(self, name: str, plugin: Type[MetadataSchema]):
-        """Check shape of defined fields."""
-        hints = get_type_hints(plugin)
-        for field, hint in hints.items():
-            if field[0] == "_":
-                continue  # private field
-            if not PartialSchema._is_mergeable_type(hint):
-                raise TypeError(f"{name}: '{field}' contains a forbidden pattern!")
-
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        self._check_parent(name, plugin)
+        plugin.__typehints__ = dict(get_type_hints(plugin))
+        self._check_overrides(name, plugin)
+        # TODO: check + apply recursive substitition (like schema -> ROCrate Person)
         self._check_types(name, plugin)
-
-        # make sure that subclasses don't shadow parent attributes
-        # this is to strong an assumption, we actually want to allow to specialize them
-        # without breaking parsability
-        # TODO: this could go into a test suite helper - check that parsing as parent not broken
-        # for attr_name in overrides:
-        #     if child_fields[attr_name] != parent_fields[attr_name]:
-        #         msg = f"{name}: '{attr_name}' ({child_fields[attr_name]}) is "
-        #         msg += f"overriding type in parent schema ({parent_fields[attr_name]})!"
-        #         raise TypeError(msg)
+        self._check_parent(name, plugin)
 
     def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
         # NOTE: schemas must be already loaded
@@ -217,14 +234,14 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             return {(self.name, p.name)}
 
     def _needs_partial(self, plugin):
-        if plugin is MetadataSchema or not issubclass(plugin, MetadataSchema):
+        if plugin is SchemaBase or not issubclass(plugin, SchemaBase):
             return False
         return plugin not in self._partials
 
     def _derive_partial(self, plugin):
         # print("derive", plugin)
         # ensure all suitable base classes and sub-models have partial
-        subschemas = collect_model_types(plugin, bound=MetadataSchema)
+        subschemas = collect_model_types(plugin, bound=SchemaBase)
         for dep in chain(reversed(plugin.__bases__), *subschemas.values()):
             if dep is not plugin and self._needs_partial(dep):
                 self._derive_partial(dep)
@@ -249,13 +266,16 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
                 self._children[parent] = set()
             self._children[parent].add(name)
 
+        # following better done here instead of the schema metaclass
+        # due to forward references etc.:
+
         # update refs, otherwise issues with forward references in same module etc.
         plugin.update_forward_refs()
 
         # attach the subschemas helper inner class to registered schemas
         attach_field_inspector(
             plugin,
-            bound=MetadataSchema,
+            bound=SchemaBase,
             key_filter=lambda k: k not in plugin.__constants__,
         )
         # derive recursive partial schema

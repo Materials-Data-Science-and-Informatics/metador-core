@@ -8,6 +8,7 @@ from pydantic import parse_obj_as
 
 from ...plugins import schemas
 from .. import MetadataSchema
+from ..decorators import specialize
 from ..types import ParserMixin, PintQuantity, PintUnit
 from .rocrate import Organization, Person
 from .schemaorg import Number, QuantitativeValue, Text
@@ -95,6 +96,7 @@ FileMeta: Any = schemas["core.file"]
 DirMeta: Any = schemas["core.dir"]
 
 
+@specialize("author", "description", "name")
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
@@ -115,6 +117,7 @@ class BibMeta(DirMeta):
     """List of authors."""
 
 
+@specialize("width", "height")
 class ImageFileMeta(FileMeta):
     """A rasterized image file with known dimensions.
 

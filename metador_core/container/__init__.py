@@ -114,7 +114,7 @@ from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import PluginPkgMeta, PluginRef
+from ..schema.plugins import PluginPkgMeta, PluginRef
 from . import utils as M
 
 
