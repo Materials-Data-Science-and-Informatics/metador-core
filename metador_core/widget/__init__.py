@@ -89,13 +89,13 @@ class Widget(ABC, EnforceOverrides):
 
 WIDGET_GROUP_NAME = "widget"
 
+if TYPE_CHECKING:
+    SchemaPluginRef: TypeAlias = PluginRef
+else:
+    SchemaPluginRef = schemas.PluginRef
+
 
 class WidgetPlugin(pg.PluginBase):
-    if TYPE_CHECKING:
-        SchemaPluginRef: TypeAlias = PluginRef
-    else:
-        SchemaPluginRef: TypeAlias = schemas.PluginRef
-
     supports: Annotated[List[SchemaPluginRef], Field(min_items=1)]  # type: ignore
     """Return list of schemas supported by this widget."""
 

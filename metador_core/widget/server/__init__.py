@@ -98,7 +98,7 @@ class WidgetServer:
     def register_installed(self):
         # register installed widgets and the generic dashboard.
         # do imports here, otherwise circular imports.
-        from metador_core.widget import widgets
+        from metador_core.plugins import widgets
 
         from ..dashboard import Dashboard
 
