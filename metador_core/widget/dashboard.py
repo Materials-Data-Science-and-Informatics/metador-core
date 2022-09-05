@@ -85,14 +85,16 @@ class Dashboard:
                 self._widgets.append((localized_node, self._resolve_node(node, wmeta)))
 
         # order widgets by group, priority and node
-        def group(tup: NodeWidgetPair) -> DashboardGroup:
-            return tup[1].group
+
+        def group(tup: NodeWidgetPair) -> int:
+            return tup[1].group or 0
+
+        def prio(tup: NodeWidgetPair) -> int:
+            return tup[1].priority or 0
 
         def sorted_widgets(ws: Iterable[NodeWidgetPair]) -> List[NodeWidgetPair]:
             """Sort first on priority, and for same priority on container node."""
-            return list(
-                sorted(sorted(ws, key=lambda x: x[0]), key=lambda x: x[1].priority)
-            )
+            return list(sorted(sorted(ws, key=lambda x: x[0].name), key=prio))
 
         # dict, sorted in ascending group order
         self._groups = dict(
@@ -104,8 +106,8 @@ class Dashboard:
             )
         )
         # separate out the ungrouped widgets
-        self._ungrouped = self._groups[None]
-        del self._groups[None]
+        self._ungrouped = self._groups[0]
+        del self._groups[0]
 
     def _resolve_node(
         self, node: MetadorNode, wmeta: DashboardWidgetMeta
