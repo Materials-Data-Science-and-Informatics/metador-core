@@ -128,6 +128,8 @@ class SchemaMeta(ModelMetaclass):
         # prevent implicit inheritance of class-specific stuff
         if "Plugin" not in dct:
             self.Plugin = None
+        if "Fields" not in dct:
+            self.Fields = None
 
         self.__typehints__ = {}
         self.__base_typehints__ = {}

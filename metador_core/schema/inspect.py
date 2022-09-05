@@ -123,7 +123,10 @@ class FieldInspector:
         return f"{self.name}\n{indent_text(info)}"
 
 
-def add_field_inspector(model: MetadataSchema):
+INSPECT_ATTR = "Fields"
+
+
+def add_field_inspector(model: Type[MetadataSchema]):
     """Attach inner class to a model for sub-model lookup.
 
     This enables users to access subschemas without extra imports,
@@ -131,6 +134,9 @@ def add_field_inspector(model: MetadataSchema):
 
     Also can be used for introspection about fields.
     """
+    if model.__dict__.get(INSPECT_ATTR):
+        return
+
     # get hints corresponding to fields that are not inherited
     anns = get_annotations(model)
     field_hints = {
@@ -146,12 +152,18 @@ def add_field_inspector(model: MetadataSchema):
         k: FieldInspector(model, k, v, field_schemas[k]) for k, v in field_hints.items()
     }
 
-    # make sure base classes have inspectors
+    # make sure used subschemas have inspectors
+    for schema_set in field_schemas.values():
+        for s in schema_set:
+            if s is not model and issubclass(s, MetadataSchema):
+                add_field_inspector(s)
+
+    # make sure base classes have inspectors and collect them
     inspector_chain = [new_inspectors]
     for b in model.__bases__:
         if issubclass(b, MetadataSchema):
             add_field_inspector(b)
-            inspector_chain.append(b.Fields)
+            inspector_chain.append(b.Fields)  # type: ignore
 
     # compute traversal order (from newest overwritten to oldest inherited)
     covered_keys: Set[str] = set()
@@ -170,4 +182,4 @@ def add_field_inspector(model: MetadataSchema):
             return "\n".join(map(str, self.values()))
 
     # attach
-    setattr(model, "Fields", FieldInspectors)
+    setattr(model, INSPECT_ATTR, FieldInspectors)
