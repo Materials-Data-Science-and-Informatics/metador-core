@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import ChainMap
 from typing import Any, ClassVar, Dict, Set, Type
 
 import isodate
@@ -12,6 +13,7 @@ from pydantic_yaml import YamlModelMixin
 
 from .partial import DeepPartialModel
 from .types import PintQuantity, PintUnit
+from .utils import get_type_hints
 
 
 def _mod_def_dump_args(kwargs):
@@ -70,7 +72,8 @@ class SchemaBase(BaseModelPlus):
     Fields: ClassVar[Type]  # introspection of fields
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
 
-    __typehints__: ClassVar[Dict[str, Any]]  # type hints computed on plugin load
+    __typehints__: ClassVar[Dict[str, Any]]  # cached type hints of this class
+    __base_typehints__: ClassVar[Dict[str, Any]]  # cached type hints of parents
 
     # decorator markers (checked on plugin load)
 
@@ -94,6 +97,20 @@ class SchemaMeta(ModelMetaclass):
             return self == schemas.get(info.name)
         return False
 
+    @property
+    def _typehints(self):
+        if not self.__typehints__ and self.__dict__.get("__annotations__"):
+            self.__typehints__ = get_type_hints(self)
+        return self.__typehints__
+
+    @property
+    def _base_typehints(self):
+        if not self.__base_typehints__:
+            self.__base_typehints__ = ChainMap(
+                *(b._typehints for b in self.__bases__ if issubclass(b, SchemaBase))
+            )
+        return self.__base_typehints__
+
     def __new__(cls, name, bases, dct):
         # only allow inheriting from other schemas
         # TODO: fix parser mixin first!
@@ -113,6 +130,7 @@ class SchemaMeta(ModelMetaclass):
             self.Plugin = None
 
         self.__typehints__ = {}
+        self.__base_typehints__ = {}
         self.__overrides__ = set()
         self.__specialized__ = set()
         self.__constants__ = set.union(

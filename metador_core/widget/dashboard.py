@@ -90,7 +90,7 @@ class Dashboard:
             return tup[1].group or 0
 
         def prio(tup: NodeWidgetPair) -> int:
-            return tup[1].priority or 0
+            return -tup[1].priority or 0  # in descending order of priority
 
         def sorted_widgets(ws: Iterable[NodeWidgetPair]) -> List[NodeWidgetPair]:
             """Sort first on priority, and for same priority on container node."""

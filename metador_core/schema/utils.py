@@ -1,6 +1,4 @@
 from collections import ChainMap
-from dataclasses import dataclass
-from io import UnsupportedOperation
 from typing import (  # type: ignore
     Any,
     Callable,
@@ -16,6 +14,7 @@ from typing import (  # type: ignore
 )
 
 import typing_extensions
+import typing_utils
 from pydantic import BaseModel
 from pydantic.fields import ModelField
 from typing_extensions import Annotated, ClassVar, Literal, TypedDict, get_args
@@ -83,22 +82,26 @@ def is_optional(hint):
     return is_union(hint) and any(map(is_nonetype, get_args(hint)))
 
 
-def get_annotations(cls):
-    """Return (non-inherited) annotations (unparsed) of given class."""
-    return cls.__dict__.get("__annotations__", {})
-
-
-def get_type_hints(cls, *, include_inherited: bool = False) -> Mapping[str, Any]:
+def get_type_hints(cls) -> Mapping[str, Any]:
     """Return type hints of this class (if desired, including inherited)."""
-    if not include_inherited:
-        return typing_extensions.get_type_hints(cls, include_extras=True)
+    return typing_extensions.get_type_hints(cls, include_extras=True)
+
+
+def get_annotations(cls, *, all: bool = False) -> Mapping[str, Any]:
+    """Return (non-inherited) annotations (unparsed) of given class."""
+    if not all:
+        return cls.__dict__.get("__annotations__", {})
     return ChainMap(
         *(
-            typing_extensions.get_type_hints(c, include_extras=True)
+            c.__dict__.get("__annotations__", {})
             for c in cls.__mro__
-            if "__annotations__" in c.__dict__
+            if issubclass(c, BaseModel)
         )
     )
+
+
+def issubtype(sub, base):
+    return typing_utils.issubtype(sub, base)
 
 
 def make_typehint(t_cons_proxy, *t_args):
@@ -272,88 +275,3 @@ def unoptional(th):
     if len(args) == 1:
         return args[0]
     return make_typehint(th, *args)
-
-
-# ----
-
-
-class LiftedDict(type):
-    """Metaclass for classes providing dict keys as attributes.
-
-    Mostly for aesthetic reasons and to be used for things
-    where the dict is actually a fixed lookup table.
-    """
-
-    _dict: Dict[str, Any]
-    _repr: str = ""
-
-    def __repr__(self):
-        if self._repr:
-            return self._repr
-        return repr(list(self._dict.keys()))
-
-    def __dir__(self):
-        return list(self._dict.keys())
-
-    def __getattr__(self, key):
-        if s := self._dict.get(key):
-            return s
-        raise AttributeError(key)
-
-
-class LiftedRODict(LiftedDict):
-    """Like LiftedDict, but prohibits setting the attributes."""
-
-    def __setattr__(self, key, value):
-        raise UnsupportedOperation
-
-
-@dataclass
-class FieldInspector:
-    origin: Type
-
-    name: str
-    type: Type
-    schemas: Type
-
-    @property
-    def description(self) -> str:
-        from simple_parsing.docstring import get_attribute_docstring
-
-        docs = get_attribute_docstring(self.origin, self.name)
-        return docs.docstring_below or docs.comment_above or docs.comment_inline
-
-    def __init__(self, model, name, description, hint, subschemas):
-        self.origin = model
-        self.name = name
-        self.type = hint
-
-        class Schemas(metaclass=LiftedRODict):
-            _dict = {s.__name__: s for s in subschemas}
-
-        self.schemas = Schemas
-
-
-def attach_field_inspector(model: BaseModel, *, bound=BaseModel, key_filter=None):
-    """Attach inner class to a model for sub-model lookup.
-
-    This enables users to access subschemas without extra imports,
-    improving decoupling of plugins and packages.
-
-    Also can be used for introspection about fields.
-    """
-    key_filter = key_filter or (lambda _: True)
-    field_schemas = {
-        k: v
-        for k, v in collect_model_types(model, bound=bound).items()
-        if key_filter(k)
-    }
-    field_hint = {k: v for k, v in get_type_hints(model).items() if k in field_schemas}
-
-    class FieldInspectors(metaclass=LiftedRODict):
-        _dict = {
-            n: FieldInspector(model, n, "", field_hint[n], field_schemas[n])
-            for n in field_schemas
-        }
-
-    setattr(model, "Fields", FieldInspectors)

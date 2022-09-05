@@ -209,7 +209,7 @@ class PartialModel:
                 raise ValueError(f"No partial provided for {mcls} base {b}!")
 
         # get all annotations (we define fields only using them)
-        field_types = utils.get_type_hints(mcls, include_inherited=True)
+        field_types = utils.get_type_hints(mcls)
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()

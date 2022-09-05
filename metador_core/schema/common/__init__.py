@@ -96,7 +96,7 @@ FileMeta: Any = schemas["core.file"]
 DirMeta: Any = schemas["core.dir"]
 
 
-@specialize("name", "description", "author", "publisher")
+@specialize("name", "description", "author")
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
@@ -114,8 +114,8 @@ class BibMeta(DirMeta):
     author: List[Person]
     """List of authors (creators of the actual content)."""
 
-    publisher: List[Person]
-    """List of package publishers (responsible for the container)."""
+    creator: Person
+    """Person who created the container."""
 
 
 @specialize("width", "height")

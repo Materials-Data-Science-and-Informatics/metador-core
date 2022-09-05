@@ -55,13 +55,13 @@ def specialize(*names: str):
 
 
 def make_mandatory(*names: str):
-    """Make a field from the base class mandatory if it is optional.
+    """Make a field inherited from a base class mandatory if it is optional.
 
-    The field must exist in a base class and not be defined in the
+    The field must exist in a base class and must not be defined in the
     decorated class.
 
-    Use this instead of manually declaring an annotation if all
-    you need to do is making an existing field mandatory.
+    Use this decorator instead of manually declaring an annotation,
+    if all you need to do is making an existing field mandatory.
     """
     _check_names_public(names)
 
@@ -99,6 +99,7 @@ def const(consts: Dict[str, Any], *, override: bool = False):
 
     This can be used e.g. to make JSON data models semantic by attaching JSON-LD annotations.
     """
+    _check_names_public(consts.keys())
 
     def add_fields(mcls):
         _expect_schema_class(mcls)
