@@ -21,6 +21,11 @@ from pydantic.fields import ModelField
 from typing_extensions import Annotated, ClassVar, Literal, TypedDict, get_args
 
 
+def drop(n: int, it: Iterable):
+    """Drop fixed number of elements from iterator."""
+    return (x for i, x in enumerate(it) if i >= n)
+
+
 def is_instance_of(t: Any) -> Callable[[Any], bool]:
     """Return a predicate to check isinstance for a given type."""
     return lambda obj: isinstance(obj, t)
@@ -235,6 +240,38 @@ def collect_model_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
           contain only subclasses of the bound.
     """
     return {k: set(field_model_types(v, bound=bound)) for k, v in m.__fields__.items()}
+
+
+def field_origins(m: Type[BaseModel], name: str) -> Iterable[Type[BaseModel]]:
+    """Return sequence of bases where the field was defined / overridden."""
+    return (
+        b
+        for b in m.__mro__
+        if issubclass(b, BaseModel) and name in getattr(b, "__annotations__", {})
+    )
+
+
+def parent_field_type(m: Type[BaseModel], name: str) -> Iterable[Type[BaseModel]]:
+    b = next(filter(lambda x: x is not m, field_origins(m, name)), None)
+    if not b:
+        raise ValueError(f"No base class of {m} defines a field called '{name}'!")
+    # hints = b.__typehints__ or get_type_hints(b)
+    # if not b.__typehints__:
+    #     b.__typehints__ = hints
+    hints = get_type_hints(b)
+    if name not in hints:
+        raise TypeError(f"No type annotation for '{name}' in base {b} of {m}!")
+    return hints[name]
+
+
+def unoptional(th):
+    """Return type hint that is not optional (if it was optional)."""
+    if not is_union(th):
+        return th
+    args = tuple(filter(lambda h: not is_nonetype(h), get_args(th)))
+    if len(args) == 1:
+        return args[0]
+    return make_typehint(th, *args)
 
 
 # ----

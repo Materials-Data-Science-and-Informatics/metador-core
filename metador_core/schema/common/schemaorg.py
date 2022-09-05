@@ -13,7 +13,7 @@ from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
-from ..ld import LDSchema, ld_type_decorator
+from ..ld import LDOrRef, LDSchema, ld_type_decorator
 from ..types import Duration, NonEmptyStr, Number
 
 URL = AnyHttpUrl
@@ -74,7 +74,7 @@ class Person(Thing):
     additionalName: Optional[Text]
 
     email: Optional[Text]
-    affiliation: Optional[Organization]
+    affiliation: Optional[LDOrRef[Organization]]
 
 
 OrgOrPerson = Union[Person, Organization]
@@ -85,7 +85,7 @@ class CreativeWork(Thing):
     """See http://schema.org/CreativeWork for field documentation."""
 
     version: Optional[Union[NonNegativeInt, Text]]
-    citation: Optional[Set[Union[CreativeWork, Text]]]
+    citation: Optional[Set[Union[LDOrRef[CreativeWork], Text]]]
 
     # search
 
@@ -94,14 +94,14 @@ class CreativeWork(Thing):
 
     # people
 
-    author: Optional[List[OrgOrPerson]]
-    contributor: Optional[List[OrgOrPerson]]
-    maintainer: Optional[List[OrgOrPerson]]
-    producer: Optional[List[OrgOrPerson]]
-    provider: Optional[List[OrgOrPerson]]
-    publisher: Optional[List[OrgOrPerson]]
-    sponsor: Optional[List[OrgOrPerson]]
-    editor: Optional[List[Person]]
+    author: Optional[List[LDOrRef[OrgOrPerson]]]
+    contributor: Optional[List[LDOrRef[OrgOrPerson]]]
+    maintainer: Optional[List[LDOrRef[OrgOrPerson]]]
+    producer: Optional[List[LDOrRef[OrgOrPerson]]]
+    provider: Optional[List[LDOrRef[OrgOrPerson]]]
+    publisher: Optional[List[LDOrRef[OrgOrPerson]]]
+    sponsor: Optional[List[LDOrRef[OrgOrPerson]]]
+    editor: Optional[List[LDOrRef[Person]]]
 
     # date
 
@@ -111,18 +111,18 @@ class CreativeWork(Thing):
 
     # legal
 
-    copyrightHolder: Optional[OrgOrPerson]
+    copyrightHolder: Optional[LDOrRef[OrgOrPerson]]
     copyrightYear: Optional[int]
     copyrightNotice: Optional[Text]
-    license: Optional[Union[URL, CreativeWork]]
+    license: Optional[Union[URL, LDOrRef[CreativeWork]]]
 
     # provenance
 
-    about: Optional[Set[Thing]]
-    subjectOf: Optional[Set[CreativeWork]]
-    hasPart: Optional[Set[CreativeWork]]
-    isPartOf: Optional[Set[Union[URL, CreativeWork]]]
-    isBasedOn: Optional[Set[Union[URL, CreativeWork]]]
+    about: Optional[Set[LDOrRef[Thing]]]
+    subjectOf: Optional[Set[LDOrRef[CreativeWork]]]
+    hasPart: Optional[Set[LDOrRef[CreativeWork]]]
+    isPartOf: Optional[Set[Union[URL, LDOrRef[CreativeWork]]]]
+    isBasedOn: Optional[Set[Union[URL, LDOrRef[CreativeWork]]]]
 
 
 @schemaorg_type("MediaObject")

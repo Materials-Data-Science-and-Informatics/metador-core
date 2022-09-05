@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import parse_obj_as
 
@@ -10,7 +10,7 @@ from ...plugins import schemas
 from .. import MetadataSchema
 from ..decorators import specialize
 from ..types import ParserMixin, PintQuantity, PintUnit
-from .rocrate import Organization, Person
+from .rocrate import Person
 from .schemaorg import Number, QuantitativeValue, Text
 
 # ----
@@ -96,7 +96,7 @@ FileMeta: Any = schemas["core.file"]
 DirMeta: Any = schemas["core.dir"]
 
 
-@specialize("author", "description", "name")
+@specialize("name", "description", "author", "publisher")
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
@@ -105,16 +105,17 @@ class BibMeta(DirMeta):
         version = (0, 1, 0)
         parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
 
-    # id_: Annotated[Literal["./"], Field(alias="@id")] = "./"
-
     name: Text
     """Title for data in the container."""
 
     description: Text
     """Description of data in the container."""
 
-    author: List[Union[Person, Organization]]
-    """List of authors."""
+    author: List[Person]
+    """List of authors (creators of the actual content)."""
+
+    publisher: List[Person]
+    """List of package publishers (responsible for the container)."""
 
 
 @specialize("width", "height")
@@ -133,13 +134,18 @@ class ImageFileMeta(FileMeta):
     height: Pixels
 
 
+# TODO: see https://github.com/Materials-Data-Science-and-Informatics/metador-core/issues/8
+
+
 class ColumnHeader(MetadataSchema):
+    """Table column metadata."""
+
     name: Text
     unit: PintUnit
 
 
 class TableMeta(MetadataSchema):
-    """Metadata about a table."""
+    """Table metadata."""
 
     class Plugin:
         name = "core.table"

@@ -8,9 +8,9 @@ from typing import Set
 
 from pydantic import parse_obj_as, root_validator, validator
 
-from ..decorators import override, specialize
+from ..decorators import make_mandatory, specialize
 from ..ld import LDIdRef, ld_type_decorator
-from ..types import HashsumStr, MimeTypeStr
+from ..types import MimeTypeStr
 from . import schemaorg
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
@@ -19,26 +19,27 @@ CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 rocrate_type = ld_type_decorator(CTX_URL_ROCRATE)
 
 
-@specialize("contentSize", "sha256", "encodingFormat")
-@rocrate_type("File", override=True)
+@make_mandatory("contentSize", "sha256")
+@specialize("encodingFormat")
+@rocrate_type("File")
 class FileMeta(schemaorg.MediaObject):
     class Plugin:
         name = "core.file"
         version = (0, 1, 0)
 
-    # required by RO-Crate to be relative to RO Crate root and be URL-encoded
-    # we keep just the actual filename in "filename"
-    # and set @id when assembling the crate.
-    # cannot use "name" because "name" is used for stuff like "title" as well
     filename: str
+    """Original filename of the file.
 
-    contentSize: int
-    sha256: HashsumStr
+    We do not use `name` here because `name` is used semantically like a title,
+    which could also make sense.
+    """
+
     encodingFormat: MimeTypeStr
+    """A file must have a MIME type."""
 
 
-@rocrate_type("Dataset", override=True)
-@override("hasPart")
+@rocrate_type("Dataset")
+@specialize("hasPart")
 class DirMeta(schemaorg.Dataset):
     class Plugin:
         name = "core.dir"

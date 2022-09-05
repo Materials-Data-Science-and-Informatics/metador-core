@@ -29,12 +29,13 @@ from ..schema.plugins import PluginRef
 HARVESTER_GROUP_NAME = "harvester"
 
 
-class HarvesterPlugin(pg.PluginBase):
-    if TYPE_CHECKING:
-        SchemaPluginRef: TypeAlias = PluginRef
-    else:
-        SchemaPluginRef = schemas.PluginRef
+if TYPE_CHECKING:
+    SchemaPluginRef: TypeAlias = PluginRef
+else:
+    SchemaPluginRef = schemas.PluginRef
 
+
+class HarvesterPlugin(pg.PluginBase):
     returns: SchemaPluginRef
     """Schema returned by this harvester."""
 

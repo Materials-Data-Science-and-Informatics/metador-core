@@ -1,9 +1,9 @@
 """Helpers to create pydantic models that parse into and (de-)serialize to JSON-LD."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TypeVar, Union
 
 from pydantic import Extra, Field
-from typing_extensions import Annotated
+from typing_extensions import Annotated, TypeAlias
 
 from .core import MetadataSchema
 from .decorators import const
@@ -16,10 +16,13 @@ def ld(**kwargs) -> Dict[str, Any]:
 
 
 def ld_type_decorator(context=None):
-    """Return LD schema decorator for given context."""
+    """Return LD schema decorator for given context.
 
-    def decorator(name: str, *, override: bool = False):
-        return const(ld(type=name, context=context), override=override)
+    By default will silently override any inherited `@context` and/or `@type`.
+    """
+
+    def decorator(name: str, *, override: bool = True):
+        return const(ld(context=context, type=name), override=override)
 
     return decorator
 
@@ -36,6 +39,10 @@ class LDIdRef(MetadataSchema):
 
     id_: Annotated[NonEmptyStr, Field(alias="@id")]
 
+    @property
+    def is_ld_ref(self):
+        return True
+
 
 class LDSchema(MetadataSchema):
     """Semantically enriched schema for JSON-LD."""
@@ -49,3 +56,15 @@ class LDSchema(MetadataSchema):
         """
         assert self.id_ is not None, "Object has no @id attribute!"
         return LDIdRef(id_=self.id_)
+
+    @property
+    def is_ld_ref(self):
+        return False
+
+
+T = TypeVar("T", bound=LDSchema)
+LDOrRef: TypeAlias = Union[LDIdRef, T]
+"""LDOrRef[T] is either an object of LD Schema T, or a reference to an object.
+
+An LD reference is just an object with an @id.
+"""

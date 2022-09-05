@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from itertools import chain
+from itertools import chain, islice
 from typing import Dict, List, Optional, Set, Type
 
 from overrides import overrides
@@ -13,6 +13,7 @@ from .plugins import PluginBase
 from .utils import (
     attach_field_inspector,
     collect_model_types,
+    field_origins,
     get_type_hints,
     is_classvar,
     is_public_name,
@@ -179,8 +180,13 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         if miss_override:
             raise TypeError(f"{name}: Missing field overrides: {miss_override}")
         if extra_override:
-            # TODO: show base which is overridden for each key
-            raise TypeError(f"{name}: Undeclared field overrides: {extra_override}")
+            extras = {
+                k: next(islice(field_origins(plugin, k), 1, 2)) for k in extra_override
+            }
+            extras_str = "\n".join(
+                map(lambda t: f"\t{t[0]} (from {t[1]})", extras.items())
+            )
+            raise TypeError(f"{name}: Undeclared field overrides:\n{extras_str}")
 
         # TODO: also check specialized
 
@@ -209,11 +215,14 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     @overrides
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        plugin.__typehints__ = dict(get_type_hints(plugin))
+        if not plugin.__typehints__:
+            plugin.__typehints__ = dict(get_type_hints(plugin))
+
         self._check_overrides(name, plugin)
         # TODO: check + apply recursive substitition (like schema -> ROCrate Person)
-        self._check_types(name, plugin)
-        self._check_parent(name, plugin)
+
+        self._check_types(name, plugin)  # mergeable types?
+        self._check_parent(name, plugin)  # valid parent class?
 
     def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
         # NOTE: schemas must be already loaded
