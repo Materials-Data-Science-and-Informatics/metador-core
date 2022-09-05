@@ -1194,10 +1194,11 @@ class MetadorContainerTOC:
 
         This assumes that the already existing schemas and the new one are compatible!
         """
-        # store plugin ref
+        # store plugin ref (if not added yet)
         schema_ref = schemas.fullname(schema_name)
         ref_node_path = self._ref_node_path(schema_name)
-        self._container.__wrapped__[ref_node_path] = bytes(schema_ref)
+        if ref_node_path not in self._container.__wrapped__:
+            self._container.__wrapped__[ref_node_path] = bytes(schema_ref)
 
         # update/create providing package
         env_pkg_info: PluginPkgMeta = schemas.provider(schema_name)
