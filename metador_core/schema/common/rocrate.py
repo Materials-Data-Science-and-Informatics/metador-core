@@ -8,7 +8,7 @@ from typing import Set
 
 from pydantic import parse_obj_as, root_validator, validator
 
-from ..decorators import make_mandatory, specialize
+from ..decorators import make_mandatory
 from ..ld import LDIdRef, ld_type_decorator
 from ..types import MimeTypeStr
 from . import schemaorg
@@ -20,7 +20,6 @@ rocrate_type = ld_type_decorator(CTX_URL_ROCRATE)
 
 
 @make_mandatory("contentSize", "sha256")
-@specialize("encodingFormat")
 @rocrate_type("File")
 class FileMeta(schemaorg.MediaObject):
     class Plugin:
@@ -37,7 +36,6 @@ class FileMeta(schemaorg.MediaObject):
 
 
 @rocrate_type("Dataset")
-@specialize("hasPart")
 class DirMeta(schemaorg.Dataset):
     class Plugin:
         name = "core.dir"

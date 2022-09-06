@@ -8,7 +8,7 @@ from pydantic import parse_obj_as
 
 from ...plugins import schemas
 from .. import MetadataSchema
-from ..decorators import make_mandatory, specialize
+from ..decorators import make_mandatory
 from ..types import ParserMixin, PintQuantity, PintUnit
 from .rocrate import Person
 from .schemaorg import Number, QuantitativeValue, Text
@@ -97,7 +97,6 @@ DirMeta: Any = schemas["core.dir"]
 
 
 @make_mandatory("name", "abstract", "dateCreated")
-@specialize("author")
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
@@ -113,7 +112,6 @@ class BibMeta(DirMeta):
     """Person who created the container."""
 
 
-@specialize("width", "height")
 class ImageFileMeta(FileMeta):
     """A rasterized image file with known dimensions.
 

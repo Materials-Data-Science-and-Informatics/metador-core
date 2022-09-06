@@ -14,7 +14,13 @@ from pydantic_yaml import YamlModelMixin
 from .inspect import FieldInspector, LiftedRODict, get_field_inspector
 from .partial import DeepPartialModel
 from .types import PintQuantity, PintUnit
-from .utils import field_model_types, get_type_hints
+from .utils import (
+    field_model_types,
+    get_type_hints,
+    is_classvar,
+    is_public_name,
+    issubtype,
+)
 
 
 def _mod_def_dump_args(kwargs):
@@ -69,18 +75,28 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
 
 
 class SchemaBase(BaseModelPlus):
-    # auto-generated:
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
 
-    __inspect__: ClassVar[Type]  # introspection of fields
-    __typehints__: ClassVar[Dict[str, Any]]  # cached type hints of this class
-    __base_typehints__: ClassVar[Dict[str, Any]]  # cached type hints of parents
+    __inspect__: ClassVar[Type]
+    """Field introspection interface."""
 
-    __constants__: ClassVar[Set[str]]  # constant fields (added with `const` decorator)
+    __typehints__: ClassVar[Dict[str, Any]]
+    """Type hints of the schema class."""
 
-    # markers (checked on plugin load):
-    __overrides__: ClassVar[Set[str]]  # fields overriding immediate parent
-    __specialized__: ClassVar[Set[str]]  # fields overriding + claimed to be narrower
+    __base_typehints__: ClassVar[Dict[str, Any]]
+    """Combined type hints of the base classes."""
+
+    __constants__: ClassVar[Set[str]]
+    """Constant model fields, added with (derivatives of) the @const decorator."""
+
+    __overrides__: ClassVar[Set[str]]
+    """Field names explicitly overriding inherited field type.
+
+    Those not listed (by @overrides decorator) must, if they are overridden,
+    be strict subtypes of the inherited type."""
+
+    __types_checked__: ClassVar[bool]
+    """Helper flag used by check_overrides to avoid re-checking."""
 
 
 class SchemaMeta(ModelMetaclass):
@@ -125,7 +141,7 @@ class SchemaMeta(ModelMetaclass):
         self.__typehints__ = {}
         self.__base_typehints__ = {}
         self.__overrides__ = set()
-        self.__specialized__ = set()
+        self.__types_checked__ = False
         self.__constants__ = set.union(
             set(), *(getattr(b, "__constants__", set()) for b in bases)
         )
@@ -219,3 +235,74 @@ class PartialSchema(DeepPartialModel, SchemaBase):
         # exclude the "annotated" fields that we support
         constants = obj.__dict__.get("__constants__", set())
         return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
+
+
+# --- delayed checks (triggered during schema loading) ---
+# if we do it earlier, might lead to problems with forward refs and circularity
+
+
+def check_types(schema: Type[MetadataSchema], *, recheck: bool = False):
+    if schema is MetadataSchema or schema.__types_checked__ and not recheck:
+        return
+
+    # recursively check compositional and inheritance dependencies
+    for b in schema.__bases__:
+        if issubclass(b, MetadataSchema):
+            check_types(b, recheck=recheck)
+    for f in schema.Fields:
+        for sname in schema.Fields[f].schemas:
+            s = schema.Fields[f].schemas[sname]
+            if s is not schema and issubclass(s, MetadataSchema):
+                check_types(s, recheck=recheck)
+
+    check_allowed_types(schema)
+    check_overrides(schema)
+
+    schema.__types_checked__ = True
+
+
+def check_allowed_types(schema: Type[MetadataSchema]):
+    """Check that shape of defined fields is suitable for deep merging."""
+    hints = schema._typehints
+    for field, hint in hints.items():
+        if field[0] == "_":
+            continue  # private field
+        if not PartialSchema._is_mergeable_type(hint):
+            raise TypeError(f"{schema}: '{field}' type contains a forbidden pattern!")
+
+
+def is_pub_instance_field(schema, name, hint):
+    """Return whether field `name` in `schema` is a non-constant, public schema instance field."""
+    return (
+        is_public_name(name)
+        and not is_classvar(hint)
+        and name not in schema.__constants__
+    )
+
+
+def check_overrides(schema: Type[MetadataSchema]):
+    """Check that fields are overridden to subtypes or explicitly declared as overridden."""
+    new_hints = {
+        n for n, h in schema._typehints.items() if is_pub_instance_field(schema, n, h)
+    }
+    actual_overrides = set(schema._base_typehints.keys()).intersection(new_hints)
+    miss_override = schema.__overrides__ - actual_overrides
+    undecl_override = actual_overrides - schema.__overrides__
+    if miss_override:
+        raise TypeError(f"{schema}: Missing claimed field overrides: {miss_override}")
+
+    # all undeclared overrides must be strict subtypes of the inherited type:
+    for fname in undecl_override:
+        hint, parent_hint = schema._typehints[fname], schema._base_typehints[fname]
+        if not issubtype(hint, parent_hint):
+            msg = f"""{schema}:
+The assigned type for '{fname}'
+    {hint}
+does not look like a valid subtype of the inherited type
+    {parent_hint}
+
+If you are ABSOLUTELY sure that this is a false alarm,
+use the @overrides decorator to silence this error
+and live with the burden of responsibility.
+"""
+            raise TypeError(msg)

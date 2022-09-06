@@ -71,19 +71,28 @@ class LiftedRODict(type):
 
 @dataclass
 class FieldInspector:
+    """Basic field inspector carrying type and description of a field."""
+
     origin: Type
     name: str
-    description: str
     type: str
+
+    description: str  # declared for proper repr generation
+
+    @property  # type: ignore
+    def description(self):
+        # look up on-demand, could be expensive (parses source)
+        if not hasattr(self, "_description"):
+            self._description = get_attribute_docstring(
+                self.origin, self.name
+            ).docstring_below
+        return self._description
 
     def __init__(self, model: Type[BaseModel], name: str, hint: str):
         origin = next(field_origins(model, name))
         self.origin = origin
         self.name = name
         self.type = hint
-        self.description = get_attribute_docstring(
-            self.origin, self.name
-        ).docstring_below
 
 
 def make_field_inspector(

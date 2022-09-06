@@ -241,11 +241,9 @@ def collect_model_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
 
 
 def field_origins(m: Type[BaseModel], name: str) -> Iterator[Type[BaseModel]]:
-    """Return sequence of bases where the field was defined / overridden."""
+    """Return sequence of bases where the field type hint was defined / overridden."""
     return (
-        b
-        for b in m.__mro__
-        if issubclass(b, BaseModel) and name in getattr(b, "__annotations__", {})
+        b for b in m.__mro__ if issubclass(b, BaseModel) and name in get_annotations(b)
     )
 
 

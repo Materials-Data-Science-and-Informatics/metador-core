@@ -7,7 +7,7 @@ from pydantic import Extra, Field
 from typing_extensions import Annotated, TypeAlias
 
 from .core import MetadataSchema
-from .decorators import const
+from .decorators import add_const_fields
 from .types import NonEmptyStr
 
 
@@ -23,7 +23,7 @@ def ld_type_decorator(context=None):
     """
 
     def decorator(name: str, *, override: bool = True):
-        return const(ld(context=context, type=name), override=override)
+        return add_const_fields(ld(context=context, type=name), override=override)
 
     return decorator
 

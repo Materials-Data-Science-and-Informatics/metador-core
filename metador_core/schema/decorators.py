@@ -22,38 +22,6 @@ def _check_names_public(names):
         raise ValueError(f"Illegal private overrides: {priv_overrides}")
 
 
-def override(*names: str):
-    """Declare fields that are overridden.
-
-    These are checked during plugin loading, in order to catch accidental
-    overridden fields in schemas.
-    """
-    _check_names_public(names)
-
-    def add_overrides(mcls):
-        _expect_schema_class(mcls)
-        mcls.__overrides__.update(set(names))
-        return mcls
-
-    return add_overrides
-
-
-def specialize(*names: str):
-    """Declare fields that are overridden with a narrowed type.
-
-    Like `override`, but for these fields it is also checked that the
-    new field allows a subset of values allowed in the original field.
-    """
-    _check_names_public(names)
-
-    def add_specialized(mcls):
-        _expect_schema_class(mcls)
-        mcls.__specialized__.update(set(names))
-        return override(*names)(mcls)
-
-    return add_specialized
-
-
 def make_mandatory(*names: str):
     """Make a field inherited from a base class mandatory if it is optional.
 
@@ -82,12 +50,12 @@ def make_mandatory(*names: str):
             mcls.__fields__[name].required = True
             mcls.__annotations__[name] = hint
 
-        return specialize(*names)(mcls)
+        return mcls
 
     return make_fields_mandatory
 
 
-def const(consts: Dict[str, Any], *, override: bool = False):
+def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
     """Add constant fields to pydantic models.
 
     Must be passed a dict of field names mapped to the default values (only default JSON types).
@@ -137,7 +105,22 @@ def const(consts: Dict[str, Any], *, override: bool = False):
         # to later distinguish "const" fields from normal fields:
         parent_consts = mcls.__dict__.get("__constants__", set())
         ret.__constants__ = parent_consts.union(set(consts.keys()))
-        ret.__overrides__.update(overridden)
         return ret
 
     return add_fields
+
+
+def override(*names: str):
+    """Declare fields that are overridden (and not valid as subtypes).
+
+    These are checked during plugin loading, in order to catch accidental
+    overridden fields in schemas.
+    """
+    _check_names_public(names)
+
+    def add_overrides(mcls):
+        _expect_schema_class(mcls)
+        mcls.__overrides__.update(set(names))
+        return mcls
+
+    return add_overrides
