@@ -27,15 +27,13 @@ class FileMeta(schemaorg.MediaObject):
         name = "core.file"
         version = (0, 1, 0)
 
+    # NOTE: We do not use `name` here because `name` is used semantically
+    # like a title, which could also make sense for a file to have.
     filename: str
-    """Original filename of the file.
-
-    We do not use `name` here because `name` is used semantically like a title,
-    which could also make sense.
-    """
+    """Original name of the file in source directory."""
 
     encodingFormat: MimeTypeStr
-    """A file must have a MIME type."""
+    """MIME type of the file."""
 
 
 @rocrate_type("Dataset")
@@ -45,12 +43,8 @@ class DirMeta(schemaorg.Dataset):
         name = "core.dir"
         version = (0, 1, 0)
 
-    # required by RO-Crate to be relative to RO Crate root, URL-encoded and end with slash
-    # we keep just the actual dir name in "name"
-    # and set @id when assembling the crate.
-
-    # to list (subset of) files and subdirectories:
     hasPart: Set[LDIdRef] = set()
+    """References to (a subset of) contained files and subdirectories."""
 
 
 @rocrate_type("Organization")

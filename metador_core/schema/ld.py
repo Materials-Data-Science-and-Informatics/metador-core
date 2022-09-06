@@ -1,4 +1,5 @@
 """Helpers to create pydantic models that parse into and (de-)serialize to JSON-LD."""
+from __future__ import annotations
 
 from typing import Any, Dict, Optional, TypeVar, Union
 

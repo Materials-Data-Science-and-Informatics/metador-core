@@ -30,21 +30,20 @@ schemaorg_type = ld_type_decorator(CTX_URL_SCHEMAORG)
 class Thing(LDSchema):
     """See http://schema.org/Thing for field documentation."""
 
-    # can be used as "title/caption"
     name: Optional[Text]
-    # should be same as @id, if @id is identifier
-    identifier: Optional[Union[URL, Text]]  # or PropertyValue
-    # should be same as @id, if @id is URL
+    """Name, title or caption of the entity."""
+
+    identifier: Optional[Union[URL, Text]]
+    """Arbitrary identifier of the entity.
+
+    Prefer @id if the identifier is web-resolvable, or use more
+    specific fields if available."""
+
     url: Optional[URL]
+    """URL of the entity."""
 
     description: Optional[Text]
-    disambiguatingDescription: Optional[Text]
-
-    # linking:
-
-    additionalType: Optional[Set[URL]]
-    sameAs: Optional[Set[URL]]
-    alternateName: Optional[Set[Text]]
+    """Description of the entity."""
 
 
 @schemaorg_type("QuantitativeValue")
@@ -52,10 +51,22 @@ class QuantitativeValue(Thing):
     """See http://schema.org/QuantitativeValue for field documentation."""
 
     value: Optional[Union[bool, Number, Text]]
+
     minValue: Optional[Number]
+    """Minimal value of property this value corresponds to."""
+
     maxValue: Optional[Number]
+    """Maximal value of property this value corresponds to."""
+
     unitCode: Optional[Union[URL, Text]]
+    """UN/CEFACT Common Code (3 characters) or URL.
+
+    Other codes may be used with a prefix followed by a colon."""
+
     unitText: Optional[Text]
+    """String indicating the unit of measurement.
+
+    Useful if no standard unitCode can be provided."""
 
 
 @schemaorg_type("Organization")
@@ -63,6 +74,7 @@ class Organization(Thing):
     """See http://schema.org/Organization for field documentation."""
 
     address: Optional[Text]
+    """Address of the organization."""
 
 
 @schemaorg_type("Person")
@@ -70,11 +82,19 @@ class Person(Thing):
     """See http://schema.org/Person for field documentation."""
 
     givenName: Optional[Text]
+    """Given name, typically the first name of a Person."""
+
     familyName: Optional[Text]
+    """Family name of a Person."""
+
     additionalName: Optional[Text]
+    """Additional name for a Person, e.g. for a middle name."""
 
     email: Optional[Text]
+    """E-mail address."""
+
     affiliation: Optional[LDOrRef[Organization]]
+    """An organization this person is affiliated with."""
 
 
 OrgOrPerson = Union[Person, Organization]
@@ -85,17 +105,37 @@ class CreativeWork(Thing):
     """See http://schema.org/CreativeWork for field documentation."""
 
     version: Optional[Union[NonNegativeInt, Text]]
+    """Version of this work.
+
+    Either an integer, or a version string, e.g. "1.0.5".
+
+    When using version strings, follow https://semver.org
+    whenever applicable.
+    """
+
     citation: Optional[Set[Union[LDOrRef[CreativeWork], Text]]]
+    """Citation or reference to another creative work, e.g.
+    another publication, scholarly article, etc."""
 
     # search
 
     abstract: Optional[Text]
+    """A short description that summarizes the creative work."""
+
     keywords: Optional[Set[Text]]
+    """Keywords or tags to describe this creative work."""
 
     # people
 
     author: Optional[List[LDOrRef[OrgOrPerson]]]
+    """People responsible for the work, e.g. in research,
+    the people who would be authors on the relevant paper."""
+
     contributor: Optional[List[LDOrRef[OrgOrPerson]]]
+    """Additional people who contributed to the work, e.g.
+    in research, the people who would be in the acknowledgements
+    section of the relevant paper."""
+
     maintainer: Optional[List[LDOrRef[OrgOrPerson]]]
     producer: Optional[List[LDOrRef[OrgOrPerson]]]
     provider: Optional[List[LDOrRef[OrgOrPerson]]]
@@ -129,25 +169,33 @@ class CreativeWork(Thing):
 class MediaObject(CreativeWork):
     """See http://schema.org/MediaObject for field documentation."""
 
-    # we deviate to accept only bytes and as a number,
-    # storing it as string if we don't allow units is plain stupid
-    # google jsonld tester did not complain.
-    #
-    # alternatively, we could try using a variant of
-    # the quantity parser, but it should serialize to string, like pint
-    # but this requires to support the K(i)/M(i)/G(i)B units
     contentSize: Optional[int]
+    """Size of the object in bytes."""
 
     sha256: Optional[Text]
+    """Sha256 hashsum string of the object."""
+
     encodingFormat: Optional[Union[URL, Text]]
+    """MIME type, or if the format is too niche or no standard MIME type is
+    defined, an URL pointing to a description of the format."""
 
     width: Optional[QuantitativeValue]
+    """Width of the entity."""
+
     height: Optional[QuantitativeValue]
+    """Height of the entity."""
 
     bitrate: Optional[Text]
+    """Bitrate of the entity (e.g. for audio or video)."""
+
     duration: Optional[Duration]
+    """Duration of the entity (e.g. for audio or video)."""
+
     startTime: Optional[TimeOrDatetime]
+    """Physical starting time, e.g. of a recording or measurement."""
+
     endTime: Optional[TimeOrDatetime]
+    """Physical ending time, e.g. of a recording or measurement."""
 
 
 @schemaorg_type("Dataset")
@@ -155,3 +203,4 @@ class Dataset(CreativeWork):
     """See http://schema.org/Dataset for field documentation."""
 
     distribution: Optional[URL]  # NOTE: for top level description could link to repo
+    """Downloadable form of this dataset, at a specific location, in a specific format."""

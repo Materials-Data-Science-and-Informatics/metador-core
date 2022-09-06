@@ -8,7 +8,7 @@ from pydantic import parse_obj_as
 
 from ...plugins import schemas
 from .. import MetadataSchema
-from ..decorators import specialize
+from ..decorators import make_mandatory, specialize
 from ..types import ParserMixin, PintQuantity, PintUnit
 from .rocrate import Person
 from .schemaorg import Number, QuantitativeValue, Text
@@ -96,7 +96,8 @@ FileMeta: Any = schemas["core.file"]
 DirMeta: Any = schemas["core.dir"]
 
 
-@specialize("name", "description", "author")
+@make_mandatory("name", "abstract", "dateCreated")
+@specialize("author")
 class BibMeta(DirMeta):
     """Minimal bibliographic metadata required for a container."""
 
@@ -104,12 +105,6 @@ class BibMeta(DirMeta):
         name = "core.bib"
         version = (0, 1, 0)
         parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
-
-    name: Text
-    """Title for data in the container."""
-
-    description: Text
-    """Description of data in the container."""
 
     author: List[Person]
     """List of authors (creators of the actual content)."""
@@ -131,7 +126,10 @@ class ImageFileMeta(FileMeta):
         parent_schema = FileMeta.Plugin.ref(version=(0, 1, 0))
 
     width: Pixels
+    """Width of the image in pixels."""
+
     height: Pixels
+    """Height of the image in pixels."""
 
 
 # TODO: see https://github.com/Materials-Data-Science-and-Informatics/metador-core/issues/8
@@ -141,7 +139,10 @@ class ColumnHeader(MetadataSchema):
     """Table column metadata."""
 
     name: Text
+    """Column title."""
+
     unit: PintUnit
+    """Physical unit for this column."""
 
 
 class TableMeta(MetadataSchema):
@@ -152,4 +153,7 @@ class TableMeta(MetadataSchema):
         version = (0, 1, 0)
 
     name: Text
+    """Table title."""
+
     columns: List[ColumnHeader]
+    """List of column descriptions."""
