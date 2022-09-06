@@ -4,6 +4,7 @@ from typing import (  # type: ignore
     Callable,
     Dict,
     Iterable,
+    Iterator,
     List,
     Mapping,
     Set,
@@ -91,13 +92,7 @@ def get_annotations(cls, *, all: bool = False) -> Mapping[str, Any]:
     """Return (non-inherited) annotations (unparsed) of given class."""
     if not all:
         return cls.__dict__.get("__annotations__", {})
-    return ChainMap(
-        *(
-            c.__dict__.get("__annotations__", {})
-            for c in cls.__mro__
-            if issubclass(c, BaseModel)
-        )
-    )
+    return ChainMap(*(c.__dict__.get("__annotations__", {}) for c in cls.__mro__))
 
 
 def issubtype(sub, base):
@@ -245,7 +240,7 @@ def collect_model_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
     return {k: set(field_model_types(v, bound=bound)) for k, v in m.__fields__.items()}
 
 
-def field_origins(m: Type[BaseModel], name: str) -> Iterable[Type[BaseModel]]:
+def field_origins(m: Type[BaseModel], name: str) -> Iterator[Type[BaseModel]]:
     """Return sequence of bases where the field was defined / overridden."""
     return (
         b

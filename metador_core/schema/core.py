@@ -11,9 +11,10 @@ from pydantic import BaseModel
 from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
+from .inspect import FieldInspector, LiftedRODict, get_field_inspector
 from .partial import DeepPartialModel
 from .types import PintQuantity, PintUnit
-from .utils import get_type_hints
+from .utils import field_model_types, get_type_hints
 
 
 def _mod_def_dump_args(kwargs):
@@ -69,17 +70,17 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
 
 class SchemaBase(BaseModelPlus):
     # auto-generated:
-    Fields: ClassVar[Type]  # introspection of fields
     Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
 
+    __inspect__: ClassVar[Type]  # introspection of fields
     __typehints__: ClassVar[Dict[str, Any]]  # cached type hints of this class
     __base_typehints__: ClassVar[Dict[str, Any]]  # cached type hints of parents
 
-    # decorator markers (checked on plugin load)
+    __constants__: ClassVar[Set[str]]  # constant fields (added with `const` decorator)
 
+    # markers (checked on plugin load):
     __overrides__: ClassVar[Set[str]]  # fields overriding immediate parent
     __specialized__: ClassVar[Set[str]]  # fields overriding + claimed to be narrower
-    __constants__: ClassVar[Set[str]]  # constant fields (added with `const` decorator)
 
 
 class SchemaMeta(ModelMetaclass):
@@ -87,15 +88,7 @@ class SchemaMeta(ModelMetaclass):
 
     # NOTE: generating partial schemas here already is not good,
     # leads to problems with forward refs, so we do it afterwards
-
-    @property
-    def is_plugin(self):
-        """Return whether this schema is a installed schema plugin."""
-        from ..plugins import schemas
-
-        if info := self.__dict__.get("Plugin"):
-            return self == schemas.get(info.name)
-        return False
+    # NOTE 2: using a deferred property-based approach like with Fields could be worth a try
 
     @property
     def _typehints(self):
@@ -128,8 +121,6 @@ class SchemaMeta(ModelMetaclass):
         # prevent implicit inheritance of class-specific stuff
         if "Plugin" not in dct:
             self.Plugin = None
-        if "Fields" not in dct:
-            self.Fields = None
 
         self.__typehints__ = {}
         self.__base_typehints__ = {}
@@ -139,15 +130,82 @@ class SchemaMeta(ModelMetaclass):
             set(), *(getattr(b, "__constants__", set()) for b in bases)
         )
 
+    # ---- for public use ----
+
+    @property
+    def is_plugin(self):
+        """Return whether this schema is a installed schema plugin."""
+        from ..plugins import schemas
+
+        if info := self.__dict__.get("Plugin"):
+            return self == schemas.get(info.name)
+        return False
+
+    @property
+    def Fields(self):
+        """Access the field introspection interface."""
+        return get_field_inspector(  # class created on demand and cached
+            self,
+            "Fields",
+            "__inspect__",
+            bound=MetadataSchema,
+            key_filter=lambda k: k in self.__fields__ and k not in self.__constants__,
+            i_cls=SchemaFieldInspector,
+        )
+
 
 class MetadataSchema(SchemaBase, metaclass=SchemaMeta):
     """Extends Pydantic models with custom serializers and functions."""
 
-    Plugin: ClassVar[Type]  # user-defined (for schema plugins)
+    Plugin: ClassVar[Type]  # user-defined inner class (for schema plugins)
+
+
+def _indent_text(txt, prefix="\t"):
+    return "\n".join(map(lambda l: f"{prefix}{l}", txt.split("\n")))
+
+
+class SchemaFieldInspector(FieldInspector):
+    """MetadataSchema-specific field inspector.
+
+    It adds a user-friendly repr and access to nested subschemas.
+    """
+
+    schemas: LiftedRODict
+    _origin_name: str
+
+    def __init__(self, model: Type[BaseModel], name: str, hint: str):
+        super().__init__(model, name, hint)
+
+        # to show plugin name and version in case of registered plugin schemas:
+        og = self.origin
+        self._origin_name = f"{og.__module__}.{og.__qualname__}"
+        if og.is_plugin:
+            self._origin_name += (
+                f" (plugin: {og.Plugin.name} {'.'.join(map(str, og.Plugin.version))})"
+            )
+
+        # access to sub-entities/schemas:
+        subschemas = set(field_model_types(og.__fields__[name], bound=MetadataSchema))
+        self.schemas = LiftedRODict(
+            "Schemas", (), dict(_dict={s.__name__: s for s in subschemas})
+        )
+
+    def __repr__(self) -> str:
+        desc_str = ""
+        if self.description:
+            desc_str = f"description:\n{_indent_text(self.description)}\n"
+        schemas_str = (
+            f"schemas: {', '.join(self.schemas.keys())}\n" if self.schemas else ""
+        )
+        info = f"type: {str(self.type)}\norigin: {self._origin_name}\n{schemas_str}{desc_str}"
+        return f"{self.name}\n{_indent_text(info)}"
 
 
 class PartialSchema(DeepPartialModel, SchemaBase):
-    """Partial model for MetadataSchema model."""
+    """Partial model for MetadataSchema model.
+
+    Needed for harvesters to work (which can provide validated but partial metadata).
+    """
 
     # MetadataSchema-specific adaptations:
     @classmethod

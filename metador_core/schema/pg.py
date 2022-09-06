@@ -7,7 +7,6 @@ from typing import Dict, List, Optional, Set, Type
 
 from ..plugins import interface as pg
 from .core import MetadataSchema, PartialSchema, SchemaBase
-from .inspect import add_field_inspector
 from .plugins import PluginBase
 from .utils import (
     collect_model_types,
@@ -280,8 +279,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # update refs, otherwise issues with forward references in same module etc.
         plugin.update_forward_refs()
 
-        # attach the subschemas helper inner class to registered schemas
-        add_field_inspector(plugin)
         # derive recursive partial schema
         self._derive_partial(plugin)
 

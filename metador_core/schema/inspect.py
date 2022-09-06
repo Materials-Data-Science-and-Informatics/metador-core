@@ -1,12 +1,12 @@
 from collections import ChainMap
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import Any, Dict, List, Mapping, Optional, Set, Type
+from typing import Any, Callable, Dict, List, Optional, Set, Type
 
+from pydantic import BaseModel
 from simple_parsing.docstring import get_attribute_docstring
 
-from .core import MetadataSchema
-from .utils import field_model_types, field_origins
+from .utils import field_origins, get_annotations
 
 
 class LiftedRODict(type):
@@ -69,117 +69,98 @@ class LiftedRODict(type):
         return bool(self._dict)
 
 
-def _get_docs(cls, name) -> str:
-    docs = get_attribute_docstring(cls, name)
-    return docs.docstring_below
-
-
-def get_annotations(cls, *, all: bool = False) -> Mapping[str, Any]:
-    """Return (non-inherited) annotations (unparsed) of given class."""
-    if not all:
-        return cls.__dict__.get("__annotations__", {})
-    return ChainMap(*(c.__dict__.get("__annotations__", {}) for c in cls.__mro__))
-
-
-def indent_text(txt, prefix="\t"):
-    return "\n".join(map(lambda l: f"{prefix}{l}", txt.split("\n")))
-
-
 @dataclass
 class FieldInspector:
     origin: Type
-
     name: str
     description: str
     type: str
 
-    schemas: Type
-
-    def __init__(self, model, name, hint, subschemas):
+    def __init__(self, model: Type[BaseModel], name: str, hint: str):
         origin = next(field_origins(model, name))
-
         self.origin = origin
-        self._origin_name = f"{origin.__module__}.{origin.__qualname__}"
-        if origin.is_plugin:
-            self._origin_name += f" (plugin: {origin.Plugin.name} {'.'.join(map(str, origin.Plugin.version))})"
-
         self.name = name
         self.type = hint
-        self.description = _get_docs(self.origin, self.name)
-
-        class Schemas(metaclass=LiftedRODict):
-            _dict = {s.__name__: s for s in subschemas}
-
-        self.schemas = Schemas
-
-    def __repr__(self):
-        desc_str = (
-            f"description:\n{indent_text(self.description)}\n"
-            if self.description
-            else ""
-        )
-        schemas_str = f"schemas: {', '.join(self.schemas)}\n" if self.schemas else ""
-        info = f"type: {str(self.type)}\norigin: {self._origin_name}\n{schemas_str}{desc_str}"
-        return f"{self.name}\n{indent_text(info)}"
+        self.description = get_attribute_docstring(
+            self.origin, self.name
+        ).docstring_below
 
 
-INSPECT_ATTR = "Fields"
-
-
-def add_field_inspector(model: Type[MetadataSchema]):
-    """Attach inner class to a model for sub-model lookup.
-
-    This enables users to access subschemas without extra imports,
-    improving decoupling of plugins and packages.
-
-    Also can be used for introspection about fields.
-    """
-    if model.__dict__.get(INSPECT_ATTR):
-        return
-
+def make_field_inspector(
+    model: Type[BaseModel],
+    prop_name: str,
+    *,
+    bound: Optional[Type[BaseModel]] = BaseModel,
+    key_filter: Optional[Callable[[str], bool]],
+    i_cls: Optional[Type[FieldInspector]] = FieldInspector,
+):
+    """Create a field inspector class for the given model (see `get_field_inspector`)."""
     # get hints corresponding to fields that are not inherited
-    anns = get_annotations(model)
     field_hints = {
         k: v
-        for k, v in get_annotations(model, all=True).items()
-        if k in model.__fields__ and k in anns and k not in model.__constants__
+        for k, v in get_annotations(model).items()
+        if not key_filter or key_filter(k)
     }
-    field_schemas = {
-        k: set(field_model_types(model.__fields__[k], bound=MetadataSchema))
-        for k in field_hints.keys()
-    }
-    new_inspectors = {
-        k: FieldInspector(model, k, v, field_schemas[k]) for k, v in field_hints.items()
-    }
-
-    # make sure used subschemas have inspectors
-    for schema_set in field_schemas.values():
-        for s in schema_set:
-            if s is not model and issubclass(s, MetadataSchema):
-                add_field_inspector(s)
-
-    # make sure base classes have inspectors and collect them
-    inspector_chain = [new_inspectors]
-    for b in model.__bases__:
-        if issubclass(b, MetadataSchema):
-            add_field_inspector(b)
-            inspector_chain.append(b.Fields)  # type: ignore
-
-    # compute traversal order (from newest overwritten to oldest inherited)
+    # inspectors for fields declared in the given model (for inherited, will reuse/create parent inspectors)
+    new_inspectors = {k: i_cls(model, k, v) for k, v in field_hints.items()}
+    # manually compute desired traversal order (from newest overwritten to oldest inherited fields)
+    # as the default chain map order semantically is not suitable.
+    inspectors = [new_inspectors] + [
+        getattr(b, prop_name) for b in model.__bases__ if issubclass(b, bound)
+    ]
     covered_keys: Set[str] = set()
     ordered_keys: List[str] = []
-    for d in inspector_chain:
+    for d in inspectors:
         rem_keys = set(d.keys()) - covered_keys
         covered_keys.update(rem_keys)
         ordered_keys += [k for k in d.keys() if k in rem_keys]
+    # construct and return the class
+    return LiftedRODict(
+        f"{model.__name__}.{prop_name}",
+        (),
+        dict(
+            _keys=ordered_keys,
+            _dict=ChainMap(*inspectors),
+            _repr=lambda self: "\n".join(map(str, self.values())),
+        ),
+    )
 
-    # construct a class
-    class FieldInspectors(metaclass=LiftedRODict):
-        _keys = ordered_keys
-        _dict = ChainMap(*inspector_chain)
 
-        def _repr(self):
-            return "\n".join(map(str, self.values()))
+def get_field_inspector(
+    model: Type[BaseModel],
+    prop_name: str,
+    attr_name: str,
+    *,
+    bound: Optional[Type[BaseModel]] = BaseModel,
+    key_filter: Optional[Callable[[str], bool]],
+    i_cls: Optional[Type[FieldInspector]] = FieldInspector,
+):
+    """Return a field inspector for the given model.
 
-    # attach
-    setattr(model, INSPECT_ATTR, FieldInspectors)
+    This can be used for introspection about fields and also
+    enables users to access subschemas without extra imports,
+    improving decoupling of plugins and packages.
+
+    To be used in a metaclass for a custom top level model.
+
+    Args:
+        model: Class for which to return the inspector
+        prop_name: Name of the metaclass property that wraps this function
+        attr_name: Name of the class attribute that caches the returned class
+        i_cls: Optional subclass of FieldInspector to customize it
+        bound: Top level class using the custom metaclass that uses this function
+        key_filter: Predicate used to filter the annotations that are to be inspectable
+    Returns:
+        If an inspector was already created, will return it.
+        Otherwise will create a fresh inspector class first and cache it.
+    """
+    if inspector := model.__dict__.get(attr_name):
+        return inspector
+    setattr(
+        model,
+        attr_name,
+        make_field_inspector(
+            model, prop_name, key_filter=key_filter, bound=bound, i_cls=i_cls
+        ),
+    )
+    return model.__dict__.get(attr_name)
