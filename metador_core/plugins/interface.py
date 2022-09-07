@@ -300,6 +300,14 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             return  # is not the "plugingroup" group itself
         create_pg(plugin)  # create plugin group if it does not exist
 
+    def register_plugin(self, name: str, plugin: Type[T]):
+        """Register and load a plugin manually, without defining an entry point."""
+        print("WARNING: register_plugin is only for development and testing!")
+        print("Register an entry point for your plugin for proper deployment!")
+        self._ENTRY_POINTS[name] = None
+        self._LOADED_PLUGINS[name] = plugin
+        self._load_plugin(name, plugin)
+
 
 # ----
 
