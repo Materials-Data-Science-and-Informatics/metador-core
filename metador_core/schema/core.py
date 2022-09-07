@@ -5,15 +5,14 @@ from __future__ import annotations
 from collections import ChainMap
 from typing import Any, ClassVar, Dict, Set, Type
 
-import isodate
 from overrides import overrides
 from pydantic import BaseModel
-from pydantic.main import ModelMetaclass
 from pydantic_yaml import YamlModelMixin
 
+from .encoder import DynEncoderModelMeta
 from .inspect import FieldInspector, LiftedRODict, get_field_inspector
+from .parser import ParserMixin
 from .partial import DeepPartialModel
-from .types import PintQuantity, PintUnit
 from .utils import (
     field_model_types,
     get_type_hints,
@@ -32,7 +31,9 @@ def _mod_def_dump_args(kwargs):
     return kwargs
 
 
-class BaseModelPlus(YamlModelMixin, BaseModel):
+class BaseModelPlus(
+    ParserMixin, YamlModelMixin, BaseModel, metaclass=DynEncoderModelMeta
+):
     """Extended pydantic BaseModel with some good defaults.
 
     Used as basis for various entities, including:
@@ -43,19 +44,11 @@ class BaseModelPlus(YamlModelMixin, BaseModel):
     class Config:
         underscore_attrs_are_private = True  # make PrivateAttr not needed
         use_enum_values = True  # serialize enums properly
-
         # when alias is set, still allow using field name
         # (we use aliases for invalid attribute names in Python)
         allow_population_by_field_name = True
         # users should jump through hoops to add invalid stuff
         validate_assignment = True
-
-        # https://pydantic-docs.helpmanual.io/usage/exporting_models/#json_encoders
-        json_encoders = {
-            PintUnit: lambda x: str(x),
-            PintQuantity: lambda x: str(x),
-            isodate.Duration: lambda x: isodate.duration_isoformat(x),
-        }
 
     def dict(self, *args, **kwargs):
         return super().dict(*args, **_mod_def_dump_args(kwargs))
@@ -99,7 +92,7 @@ class SchemaBase(BaseModelPlus):
     """Helper flag used by check_overrides to avoid re-checking."""
 
 
-class SchemaMeta(ModelMetaclass):
+class SchemaMeta(DynEncoderModelMeta):
     """Metaclass for doing some magic."""
 
     # NOTE: generating partial schemas here already is not good,
