@@ -2,9 +2,12 @@
 
 Supports a subset of commonly useful fields.
 
-Adds no constraints beyond the spec, except for fixing a multiplicity for fields.
+Adds almost no constraints beyond the spec, except for fixing a multiplicity for fields.
 
 Can serve as the basis for more specific schemas.
+
+Note that this schemas ARE NOT able to parse arbitrary schema.org,
+their purpose is to ensure that successfully parsed input is made semantically vaild.
 """
 from __future__ import annotations
 
@@ -51,6 +54,9 @@ class QuantitativeValue(Thing):
     """See http://schema.org/QuantitativeValue for field documentation."""
 
     value: Optional[Union[bool, Number, Text]]
+    # NOTE: this will coerce 1 to True and 0 to False...
+    # if we want to avoid that, we might need to have a custom parser
+    # using a similar or generalized approach like done for `Number`
 
     minValue: Optional[Number]
     """Minimal value of property this value corresponds to."""

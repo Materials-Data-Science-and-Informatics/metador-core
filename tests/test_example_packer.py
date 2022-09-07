@@ -3,9 +3,8 @@
 import h5py
 import pytest
 
-from metador_core.packer import PGPacker
 from metador_core.packer.utils import DirValidationErrors
-from metador_core.plugin import plugingroups
+from metador_core.plugins import packers
 
 pytest.skip(reason="FIXME when API complete", allow_module_level=True)
 
@@ -14,8 +13,7 @@ def test_example_packer(tmp_path_factory, tmp_ds_path, testutils):
     tmp1 = tmp_path_factory.mktemp("tmp1")
     tmp2 = tmp_path_factory.mktemp("tmp2")
 
-    PACKERS = plugingroups.group("packer", PGPacker)
-    generic = PACKERS["generic"]
+    generic = packers["generic"]
 
     # prepare directory and check that it is packer-compatible (just to make sure)
     testutils.prepare_dir(tmp1, testutils.data_dir["tmp1"])
@@ -28,7 +26,7 @@ def test_example_packer(tmp_path_factory, tmp_ds_path, testutils):
     print(errs)
 
     with pytest.raises(DirValidationErrors):
-        PACKERS.pack("generic", tmp1, tmp_ds_path, h5py.File)
+        packers.pack("generic", tmp1, tmp_ds_path, h5py.File)
 
     # fix error with directory
     (tmp1 / "renamed").rename(tmp1 / "_meta.yaml")
@@ -39,4 +37,4 @@ def test_example_packer(tmp_path_factory, tmp_ds_path, testutils):
         f.write("author: changed")
 
     # now update
-    PACKERS.update("generic", tmp2, tmp_ds_path, h5py.File)
+    packers.update("generic", tmp2, tmp_ds_path, h5py.File)

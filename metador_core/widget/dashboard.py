@@ -26,7 +26,7 @@ class DashboardWidgetMeta(MetadataSchema):
     priority: Optional[DashboardPriority] = DashboardPriority(1)
     """Priority of the widget (1-10), higher priority nodes are shown first."""
 
-    group: Optional[DashboardGroup] = None
+    group: Optional[DashboardGroup]
     """Dashboard group of the widget.
 
     Groups are presented in ascending order.
@@ -35,13 +35,13 @@ class DashboardWidgetMeta(MetadataSchema):
     Widgets without an assigned group come last.
     """
 
-    metador_schema: Optional[str] = None
+    metador_schema: Optional[str]
     """Name of schema of an metadata object at the current node to be visualized.
 
     If not given, any suitable presentable object will be used.
     """
 
-    metador_widget: Optional[str] = None
+    metador_widget: Optional[str]
     """Name of widget to be used to present the (meta)data.
 
     If not given, any suitable will be used.

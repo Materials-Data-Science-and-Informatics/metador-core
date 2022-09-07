@@ -115,15 +115,17 @@ class SchemaMeta(DynEncoderModelMeta):
 
     def __new__(cls, name, bases, dct):
         # only allow inheriting from other schemas
-        # TODO: fix parser mixin first!
-        # for b in bases:
-        #    if not issubclass(b, SchemaBase):
-        #        raise TypeError(f"Base class {b} is not a MetadataSchema!")
-
+        for b in bases:
+            if not issubclass(b, SchemaBase):
+                raise TypeError(f"Base class {b} is not a MetadataSchema!")
+        # let's enforce single inheritance
+        if len(bases) > 1:
+            raise TypeError("A schema can only have one parent schema!")
         # prevent user from defining special names by hand
         for atr in SchemaBase.__annotations__.keys():
             if atr in dct:
                 raise TypeError(f"{name}: Invalid attribute '{atr}'")
+
         return super().__new__(cls, name, bases, dct)
 
     def __init__(self, name, bases, dct):
@@ -228,6 +230,15 @@ class PartialSchema(DeepPartialModel, SchemaBase):
         # exclude the "annotated" fields that we support
         constants = obj.__dict__.get("__constants__", set())
         return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
+
+    @classmethod
+    @overrides
+    def _create_partial(cls, mcls, *, partials=...):
+        ret = super()._create_partial(mcls, partials=partials)
+        # copy custom parser
+        if parser := getattr(mcls, "Parser", None):
+            setattr(ret, "Parser", parser)
+        return ret
 
 
 # --- delayed checks (triggered during schema loading) ---

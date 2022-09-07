@@ -9,6 +9,7 @@ from pydantic import parse_obj_as
 from ...plugins import schemas
 from .. import MetadataSchema
 from ..decorators import make_mandatory
+from ..parser import BaseParser
 from ..types import PintQuantity, PintUnit
 from .rocrate import Person
 from .schemaorg import Number, QuantitativeValue, Text
@@ -16,24 +17,35 @@ from .schemaorg import Number, QuantitativeValue, Text
 # ----
 
 
+class SIValueParser(BaseParser):
+    @classmethod
+    def parse(cls, tcls, v) -> SIValue:
+        if isinstance(v, str):
+            q = parse_obj_as(PintQuantity, v)
+            return tcls(value=q.m, unitText=str(q.u))
+
+        # special case: its a quantitative value already,
+        # just check unit and repack as SIValue
+        if isinstance(v, tcls.__base__):
+            v.unitText = str(parse_obj_as(PintUnit, v.unitText or ""))
+            return tcls.construct(v.dict())
+
+        # important: parse back serialized data!
+        if isinstance(v, dict):
+            return tcls.validate(v)
+
+        msg = f"Cannot parse {v} ({type(v).__name__}) into a {tcls.__name__}!"
+        raise TypeError(msg)
+
+
 class SIValue(QuantitativeValue):
-    """Numerical value in SI physical units."""
+    """QuantitativeValue that holds a numerical value given in SI units.
+
+    Uses the `pint` library to parse and normalize the unit.
+    """
 
     value: Number
-
-    class Parser:
-        @classmethod
-        def parse(pcls, cls, v):
-            if isinstance(v, str):
-                q = PintQuantity.validate(v)
-                return cls(value=q.m, unitText=str(q.u))
-
-            # important to parse back serialized data!
-            if isinstance(v, dict):
-                v = parse_obj_as(cls, v)
-            if isinstance(v, QuantitativeValue):
-                v.unitText = str(PintUnit.validate(v.unitText or ""))
-                return v
+    Parser = SIValueParser
 
 
 class NumValue(QuantitativeValue):
@@ -41,55 +53,53 @@ class NumValue(QuantitativeValue):
 
     value: Number
 
-    class Parser:
+    class Parser(BaseParser):
         schema_info: Dict[str, Any] = {}
 
         allowed_units: List[str] = []
         infer_unit: Optional[str] = None
         require_unit: bool = False
 
-        # def __init__(self, *args, **kwargs):
-        #     super().__init__(*args, **kwargs)
-        #     self.__dict__.update(self.parse(self).__dict__)
-
         @classmethod
-        def parse(pcls, cls, v):
-            conf = cls._parser_config()
-
-            if isinstance(v, int) or isinstance(v, float):
-                if conf.require_unit:
+        def parse(cls, tcls, v):
+            if isinstance(v, (int, float)):
+                if cls.require_unit:
                     raise ValueError(f"Value '{v}' must have a unit!")
-                return cls.construct(value=v, unitText=conf.infer_unit)
+                return tcls.construct(value=v, unitText=cls.infer_unit)
 
             if isinstance(v, str):
                 arr = v.strip().split(maxsplit=1)
 
             # important to parse back serialized data!
             if isinstance(v, dict):
-                v = parse_obj_as(QuantitativeValue, v)
-            if isinstance(v, QuantitativeValue):
-                def_unit = conf.infer_unit or ""
+                v = tcls.__base__.validate(v)  # -> QuantitativeValue
+
+            if isinstance(v, tcls.__base__):  # unpack QuantitativeValue
+                def_unit = cls.infer_unit or ""
                 arr = (v.value, v.unitText or v.unitCode or def_unit)
 
-            if len(arr) == 1:
-                if conf.require_unit:
+            # check that value and unit are valid:
+
+            if len(arr) == 1:  # no unit given?
+                if cls.require_unit:
                     raise ValueError(f"Value '{v}' must have a unit!")
                 val = parse_obj_as(Number, arr[0])
-                return cls.construct(value=val, unitText=conf.infer_unit)
+                # return with inferred unit
+                return tcls.construct(value=val, unitText=cls.infer_unit)
 
             val = parse_obj_as(Tuple[Number, str], arr)
-            if conf.allowed_units and not val[1] in conf.allowed_units:
+            if cls.allowed_units and not val[1] in cls.allowed_units:
                 msg = (
-                    f"Invalid unit '{val[1]}', unit must be one of {conf.allowed_units}"
+                    f"Invalid unit '{val[1]}', unit must be one of {cls.allowed_units}"
                 )
                 raise ValueError(msg)
-            return cls.construct(value=val[0], unitText=val[1])
+            return tcls.construct(value=val[0], unitText=val[1])
 
 
 class Pixels(NumValue):
     """Numeric value representing pixels."""
 
-    class ParserConfig:
+    class Parser(NumValue.Parser):
         allowed_units = ["px"]
         infer_unit = "px"
 

@@ -11,7 +11,7 @@ from pydantic import NonNegativeInt
 
 from ..hashutils import _hash_alg
 from .encoder import json_encoder
-from .parser import ParserMixin
+from .parser import BaseParser, ParserMixin
 
 SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 """Type to be used for SemVer triples."""
@@ -50,7 +50,8 @@ class Number(ParserMixin, wrapt.ObjectProxy):
     NEVER use Union[int, float], because you will lose the decimal part of any float!
     """
 
-    class Parser(ParserMixin.Parser):
+    class Parser(BaseParser):
+        strict = False  # will return int or float, not a Number
 
         schema_info = dict(
             title="An integer or floating point number.",
@@ -58,7 +59,7 @@ class Number(ParserMixin, wrapt.ObjectProxy):
         )
 
         @classmethod
-        def parse(pcls, cls, v):
+        def parse(cls, _, v):
             if isinstance(v, int) or isinstance(v, float):
                 return v
             if isinstance(v, str):
@@ -76,7 +77,7 @@ class Number(ParserMixin, wrapt.ObjectProxy):
 class Duration(ParserMixin, isodate.Duration):
     """ISO 8601 Duration."""
 
-    class Parser(ParserMixin.Parser):
+    class Parser(BaseParser):
         schema_info = dict(
             title="string in ISO 8601 duration format",
             type="string",
@@ -84,35 +85,32 @@ class Duration(ParserMixin, isodate.Duration):
         )
 
         @classmethod
-        def parse(pcls, cls, v):
-            if not isinstance(v, (str, cls)):
+        def parse(cls, tcls, v):
+            if not isinstance(v, (str, tcls)):
                 raise TypeError(f"Expected str or Duration, got {type(v)}.")
             # we have to force it into a Duration object,
             # otherwise we get possibly a timedelta back, which we do not want
             # because we want to serialize to the ISO format in both cases
             dur = isodate.parse_duration(v) if isinstance(v, str) else v
-            return cls(seconds=dur.total_seconds())
+            return tcls(seconds=dur.total_seconds())
 
 
 # Physical units
 
 
-class StringParser(ParserMixin.Parser):
-    """Parser to be mixed into a class that parses a string by __init__."""
-
-    def identity(x):
-        return x
+class StringParser(BaseParser):
+    """Parser from string into some target class."""
 
     @classmethod
-    def parse(pcls, cls, v):
-        if isinstance(v, cls):
+    def parse(cls, tcls, v):
+        if isinstance(v, tcls):
             return v
 
         if not isinstance(v, str):
-            msg = f"Expected str or {pcls.returns}, got {type(v)}."
+            msg = f"Expected str or {tcls.__name__}, got {type(v)}."
             raise TypeError(msg)
 
-        ret = cls(v)
+        ret = tcls(v)
         return ret
 
 
@@ -120,12 +118,12 @@ class PintParser(StringParser):
     """Shared base for `PintUnit` and `PintQuantity`, taking care of exceptions."""
 
     @classmethod
-    def parse(pcls, cls, v):
+    def parse(cls, tcls, v):
         if not v:
-            msg = f"Got empty string, expected {cls.__name__}."
+            msg = f"Got empty string, expected {tcls.__name__}."
             raise ValueError(msg)
         try:
-            return super().parse(cls, v)
+            return super().parse(tcls, v)
         except UndefinedUnitError as e:
             raise ValueError(str(e))
 
@@ -157,8 +155,8 @@ class PintQuantity(ParserMixin, Quantity):
         return cls(ret.m, ret.u, passthrough=True)
 
     class Parser(PintParser):
-        schema_info = {
-            "title": "Physical quantity compatible with the Python pint library.",
-            "type": "string",
-            "examples": ["5 meter * candela", "7.12 kilogram / second ** 2"],
-        }
+        schema_info = dict(
+            title="Physical quantity compatible with the Python pint library.",
+            type="string",
+            examples=["5 meter * candela", "7.12 kilogram / second ** 2"],
+        )
