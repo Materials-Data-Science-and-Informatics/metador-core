@@ -109,6 +109,7 @@ from metador_core.ih5.protocols import (
     H5GroupLike,
     H5NodeLike,
 )
+from metador_core.ih5.record import OpenMode
 
 from ..ih5.container import IH5Record
 from ..ih5.overlay import H5Type, node_h5type
@@ -290,7 +291,7 @@ class MetadorNode(wrapt.ObjectProxy):
     # make wrapper transparent
 
     def __repr__(self):
-        return repr(self.__wrapped__)  # RAW
+        return repr(self.__wrapped__)
 
     # added features
 
@@ -594,10 +595,9 @@ class MetadorGroup(MetadorNode):
                 # register copied metadata objects under new uuids
                 self._self_container.toc._find_missing_links(dst_path, repair=True)
 
-    # anything else we simply won't support
     def __getattr__(self, key):
-        if hasattr(self.__wrapped__, key):  # RAW
-            raise UnsupportedOperationError(key)
+        if hasattr(self.__wrapped__, key):
+            raise UnsupportedOperationError(key)  # deliberately unsupported
         else:
             msg = f"'{type(self).__name__}' object has no attribute '{key}'"
             raise AttributeError(msg)
@@ -616,21 +616,28 @@ class MetadorDataset(MetadorNode):
             self._guard_mut_method(key)
         if self.skel_only and key == "get":
             self._guard_nskel_method(key)
-        return getattr(self.__wrapped__, key)  # RAW
+
+        return getattr(self.__wrapped__, key)
 
     # prevent getter of node if marked as skel_only
     def __getitem__(self, *args, **kwargs):
         self._guard_nskel_method("__getitem__")
-        return self.__wrapped__.__getitem__(*args, **kwargs)  # RAW
+
+        return self.__wrapped__.__getitem__(*args, **kwargs)
 
     # prevent mutating method calls of node is marked as read_only
 
     def __setitem__(self, *args, **kwargs):
         self._guard_mut_method("__setitem__")
-        return self.__wrapped__.__setitem__(*args, **kwargs)  # RAW
+
+        return self.__wrapped__.__setitem__(*args, **kwargs)
 
 
-class MetadorContainer(wrapt.ObjectProxy):
+MetadorDriver = Union[Type[h5py.File], Type[IH5Record]]
+METADOR_DRIVERS = (h5py.File, IH5Record)
+
+
+class MetadorContainer(MetadorGroup):
     """Wrapper class adding Metador container interface to h5py.File-like objects.
 
     The wrapper ensures that any actions done to IH5Records through this interface
@@ -640,13 +647,33 @@ class MetadorContainer(wrapt.ObjectProxy):
     """
 
     __wrapped__: H5FileLike
-    _self_skel_only: bool
 
-    def __init__(self, obj, **kwargs):
-        if not isinstance(obj, h5py.File) and not isinstance(obj, IH5Record):
-            raise ValueError("Passed object muss be an h5py.File or a IH5(MF)Record!")
-        super().__init__(obj)
-        self._self_skel_only = kwargs.pop("skel_only", False)
+    _self_SUPPORTED = {"mode", "flush", "close"}
+
+    def __init__(
+        self,
+        name_or_obj: Union[str, MetadorDriver],
+        mode: OpenMode = "r",
+        *,
+        driver: Optional[MetadorDriver] = None,
+    ):
+        if isinstance(name_or_obj, str):
+            driver = driver or h5py.File  # use normal h5py.File by default
+            if not issubclass(driver, METADOR_DRIVERS):
+                raise ValueError(
+                    "Passed driver class must be one of: {METADOR_DRIVERS}"
+                )
+            # create an instance
+            obj = driver(name_or_obj, mode)
+        else:
+            if not isinstance(name_or_obj, METADOR_DRIVERS):
+                msg = f"Passed object is not instance of one of these classes: {METADOR_DRIVERS}"
+                raise ValueError(msg)
+            # wrap existing instance
+            obj = name_or_obj
+        super().__init__(self, obj)
+
+        # ----
 
         ver = self.spec_version if M.METADOR_VERSION_PATH in self.__wrapped__ else None
         if ver is None and self.mode == "r":
@@ -658,16 +685,16 @@ class MetadorContainer(wrapt.ObjectProxy):
             raise ValueError(msg)
 
         if ver is None:  # writable + fresh -> mark as a metador container
-            self.__wrapped__[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION  # RAW
+            self.__wrapped__[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION
 
         # add UUID if container does not have one yet
         if M.METADOR_UUID_PATH not in self.__wrapped__:
-            self.__wrapped__[M.METADOR_UUID_PATH] = str(uuid1())  # RAW
+            self.__wrapped__[M.METADOR_UUID_PATH] = str(uuid1())
 
         # if we are here, we should have an existing metador container, or a fresh one
         self._self_toc = MetadorContainerTOC(self)
 
-    # not clear if we want these in the public interface. keep this private for now.
+    # not clear if we want these in the public interface. keep this private for now:
 
     def _find_orphan_meta(self) -> List[str]:
         """Return list of paths to metadata that has no corresponding user node anymore."""
@@ -678,7 +705,7 @@ class MetadorContainer(wrapt.ObjectProxy):
                 if M.to_data_node_path(name) not in self:
                     ret.append(name)
 
-        self.__wrapped__.visit(collect_orphans)  # RAW
+        self.__wrapped__.visit(collect_orphans)
         return ret
 
     def _repair(self, remove_orphans: bool = False):
@@ -693,7 +720,7 @@ class MetadorContainer(wrapt.ObjectProxy):
         """
         if remove_orphans:
             for path in self._find_orphan_meta():
-                del self.__wrapped__[path]  # RAW
+                del self.__wrapped__[path]
         self.toc._find_broken_links(repair=True)
         self.toc._find_missing_links("/", repair=True)
 
@@ -702,7 +729,7 @@ class MetadorContainer(wrapt.ObjectProxy):
     @property
     def spec_version(self) -> List[int]:
         """Return Metador container specification version for this container."""
-        ver = cast(H5DatasetLike, self.__wrapped__[M.METADOR_VERSION_PATH])  # RAW
+        ver = cast(H5DatasetLike, self.__wrapped__[M.METADOR_VERSION_PATH])
         return list(map(int, ver[()].decode("utf-8").split(".")))
 
     @property
@@ -712,57 +739,29 @@ class MetadorContainer(wrapt.ObjectProxy):
 
     # ---- pass through HDF5 group methods to a wrapped root group instance ----
 
-    def __enter__(self):
-        self.__wrapped__.__enter__()  # RAW
-        return self  # return the MetadorContainer back, not the raw thing
-
-    # overriding method of IH5Record, but a new method for h5py.File
-    # used for forwarding group methods
-    def _root_group(self) -> MetadorGroup:
-        ret = MetadorGroup(self, self.__wrapped__["/"])  # RAW
-        if self._self_skel_only:
-            ret.restrict(skel_only=True)
-        return ret
-
     def __getattr__(self, key: str):
-        # takes care of forwarding all non-special methods
-        try:
-            return getattr(self._root_group(), key)  # try passing to wrapped group
-        except UnsupportedOperationError as e:
-            raise e  # group has that, but we chose not to support it
-        except AttributeError:
-            # otherwise pass to file object
-            return getattr(self.__wrapped__, key)  # RAW
+        if key in self._self_SUPPORTED:
+            return getattr(self.__wrapped__, key)
+        return super().__getattr__(key)  # ask group for method
+
+    # context manager: return the wrapper back, not the raw thing:
+
+    def __enter__(self):
+        self.__wrapped__.__enter__()
+        return self
+
+    def __exit__(self, *args):
+        return self.__wrapped__.__exit__(*args)
 
     # we want these also to be forwarded to the wrapped group, not the raw object:
-
-    def __getitem__(self, key: str) -> MetadorGroup:
-        return self._root_group()[key]
-
-    def __setitem__(self, key: str, value):
-        self._root_group()[key] = value
-
-    def __delitem__(self, key: str):
-        del self._root_group()[key]
-
-    def __iter__(self):
-        return iter(self._root_group())
-
-    def __contains__(self, key: str) -> bool:
-        return key in self._root_group()
-
-    def __len__(self) -> int:
-        return len(self._root_group())
-
-    # need that to add our new methods
 
     def __dir__(self):
         return list(set(super().__dir__()).union(type(self).__dict__.keys()))
 
-    # make wrapper transparent
+    # make wrapper transparent:
 
     def __repr__(self) -> str:
-        return repr(self.__wrapped__)  # RAW
+        return repr(self.__wrapped__)  # shows that its a File, not just a Group
 
 
 # --------

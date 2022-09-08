@@ -283,7 +283,7 @@ class PGPacker(pg.PluginGroup[Packer]):
         """
         packer, hashsums = self._prepare(packer_name, data_dir)
         # use skel_only to enforce stub-compatibility of packer
-        container = MetadorContainer(h5like_cls(target, "x"), skel_only=True)
+        container = MetadorContainer(h5like_cls(target, "x")).restrict(skel_only=True)
         packer.pack(Unclosable(container), data_dir)
         self._finalize(packer_name, hashsums, container)
 
@@ -301,10 +301,10 @@ class PGPacker(pg.PluginGroup[Packer]):
         """
         packer, hashsums = self._prepare(packer_name, data_dir)
         # use skel_only to enforce stub-compatibility of packer
-        container = MetadorContainer(h5like_cls(target, "r+"), skel_only=True)
+        container = MetadorContainer(h5like_cls(target, "r+")).restrict(skel_only=True)
 
         # check compatibility
-        pinfo = container.meta.get(self._PACKER_INFO_NAME, PackerInfo)
+        pinfo = container.meta.get(self._PACKER_INFO_NAME)
         if not pinfo:
             msg = f"Container does not have {self._PACKER_INFO_NAME} metadata!"
         curr_ref = self.fullname(packer_name)
