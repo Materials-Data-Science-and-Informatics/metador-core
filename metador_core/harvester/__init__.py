@@ -50,7 +50,7 @@ class HarvesterArgs(BaseModelPlus):
         extra = Extra.forbid
 
 
-class PartialArgs(PartialModel, HarvesterArgs):
+class HarvesterArgsPartial(PartialModel, HarvesterArgs):
     """Base class for partial harvester arguments."""
 
     @classmethod
@@ -61,13 +61,11 @@ class PartialArgs(PartialModel, HarvesterArgs):
 class HarvesterMetaMixin(type):
     _args_partials: Dict[Type, Type] = {}
 
-    def __new__(cls, name, bases, dct):
-        # generate partial arguments model
-        ret = super().__new__(cls, name, bases, dct)
-        p_cls = PartialArgs._create_partial(ret.Args, partials=cls._args_partials)
-        ret.Args.Partial = p_cls
-        cls._args_partials[ret.Args] = p_cls
-        return ret
+    @property
+    # @cache not needed, partials take care of that themselves
+    def PartialArgs(self):
+        """Access the partial schema based on the current schema."""
+        return HarvesterArgsPartial._get_partial(self.Args)
 
 
 class HarvesterMeta(HarvesterMetaMixin, ABCMeta):
@@ -95,10 +93,13 @@ class Harvester(ABC, metaclass=HarvesterMeta):
 
     Plugin: ClassVar[HarvesterPlugin]
 
-    class Args(HarvesterArgs):
+    if TYPE_CHECKING:
+        Args: TypeAlias = HarvesterArgs
+    else:
+        Args = HarvesterArgs
         """Arguments to be passed to the harvester."""
 
-    args: Union[Args, PartialArgs]
+    args: Union[Args, HarvesterArgsPartial]
 
     @property
     def schema(self):
@@ -113,11 +114,11 @@ class Harvester(ABC, metaclass=HarvesterMeta):
 
     def __init__(self, **kwargs):
         """Initialize harvester with (partial) configuration."""
-        self.args = self.Args.Partial.parse_obj(kwargs)
+        self.args = type(self).PartialArgs.parse_obj(kwargs)
 
     def __call__(self, **kwargs):
         """Return copy of harvester with updated configuration."""
-        args = self.Args.Partial.parse_obj(kwargs)
+        args = type(self).PartialArgs.parse_obj(kwargs)
         merged = self.args.merge_with(args)
         return type(self)(**merged.dict())
 

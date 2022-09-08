@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from collections import ChainMap
-from typing import Any, ClassVar, Dict, Set, Type
+from typing import Any, ClassVar, Set, Type, cast
 
 from overrides import overrides
 from pydantic import BaseModel
 from pydantic_yaml import YamlModelMixin
 
 from .encoder import DynEncoderModelMeta
-from .inspect import FieldInspector, LiftedRODict, get_field_inspector
+from .inspect import FieldInspector, LiftedRODict, make_field_inspector
 from .parser import ParserMixin
 from .partial import DeepPartialModel
 from .utils import (
+    cache,
     field_model_types,
     get_type_hints,
     is_classvar,
@@ -68,17 +69,6 @@ class BaseModelPlus(
 
 
 class SchemaBase(BaseModelPlus):
-    Partial: ClassVar[MetadataSchema]  # partial schemas for harvesters
-
-    __inspect__: ClassVar[Type]
-    """Field introspection interface."""
-
-    __typehints__: ClassVar[Dict[str, Any]]
-    """Type hints of the schema class."""
-
-    __base_typehints__: ClassVar[Dict[str, Any]]
-    """Combined type hints of the base classes."""
-
     __constants__: ClassVar[Set[str]]
     """Constant model fields, added with (derivatives of) the @const decorator."""
 
@@ -95,32 +85,16 @@ class SchemaBase(BaseModelPlus):
 class SchemaMeta(DynEncoderModelMeta):
     """Metaclass for doing some magic."""
 
-    # NOTE: generating partial schemas here already is not good,
-    # leads to problems with forward refs, so we do it afterwards
-    # NOTE 2: using a deferred property-based approach like with Fields could be worth a try
-
-    @property
-    def _typehints(self):
-        if not self.__typehints__ and self.__dict__.get("__annotations__"):
-            self.__typehints__ = get_type_hints(self)
-        return self.__typehints__
-
-    @property
-    def _base_typehints(self):
-        if not self.__base_typehints__:
-            self.__base_typehints__ = ChainMap(
-                *(b._typehints for b in self.__bases__ if issubclass(b, SchemaBase))
-            )
-        return self.__base_typehints__
-
     def __new__(cls, name, bases, dct):
         # only allow inheriting from other schemas
         for b in bases:
             if not issubclass(b, SchemaBase):
                 raise TypeError(f"Base class {b} is not a MetadataSchema!")
+
         # let's enforce single inheritance
         if len(bases) > 1:
             raise TypeError("A schema can only have one parent schema!")
+
         # prevent user from defining special names by hand
         for atr in SchemaBase.__annotations__.keys():
             if atr in dct:
@@ -133,12 +107,23 @@ class SchemaMeta(DynEncoderModelMeta):
         if "Plugin" not in dct:
             self.Plugin = None
 
-        self.__typehints__ = {}
-        self.__base_typehints__ = {}
         self.__overrides__ = set()
-        self.__types_checked__ = False
         self.__constants__ = set.union(
             set(), *(getattr(b, "__constants__", set()) for b in bases)
+        )
+
+        self.__types_checked__ = False
+
+    @property  # type: ignore
+    @cache
+    def _typehints(self):
+        return get_type_hints(self)
+
+    @property  # type: ignore
+    @cache
+    def _base_typehints(self):
+        return ChainMap(
+            *(b._typehints for b in self.__bases__ if issubclass(b, SchemaBase))
         )
 
     # ---- for public use ----
@@ -146,23 +131,29 @@ class SchemaMeta(DynEncoderModelMeta):
     @property
     def is_plugin(self):
         """Return whether this schema is a installed schema plugin."""
-        from ..plugins import schemas
-
         if info := self.__dict__.get("Plugin"):
-            return self == schemas.get(info.name)
+            from ..plugins import schemas
+
+            return self is schemas.get(info.name)
         return False
 
-    @property
-    def Fields(self):
+    @property  # type: ignore
+    @cache
+    def Fields(self: Any) -> Any:
         """Access the field introspection interface."""
-        return get_field_inspector(  # class created on demand and cached
+        return make_field_inspector(
             self,
             "Fields",
-            "__inspect__",
             bound=MetadataSchema,
             key_filter=lambda k: k in self.__fields__ and k not in self.__constants__,
             i_cls=SchemaFieldInspector,
         )
+
+    @property
+    # @cache not needed, partials take care of that themselves
+    def Partial(self):
+        """Access the partial schema based on the current schema."""
+        return PartialSchema._get_partial(self)
 
 
 class MetadataSchema(SchemaBase, metaclass=SchemaMeta):
@@ -233,9 +224,9 @@ class PartialSchema(DeepPartialModel, SchemaBase):
 
     @classmethod
     @overrides
-    def _create_partial(cls, mcls, *, partials=...):
-        ret = super()._create_partial(mcls, partials=partials)
-        # copy custom parser
+    def _create_partial(cls, mcls, *, typehints=...):
+        ret = super()._create_partial(mcls, typehints=mcls._typehints)
+        # copy custom parser (these are supposed to also work with the partials)
         if parser := getattr(mcls, "Parser", None):
             setattr(ret, "Parser", parser)
         return ret
@@ -253,9 +244,11 @@ def check_types(schema: Type[MetadataSchema], *, recheck: bool = False):
     for b in schema.__bases__:
         if issubclass(b, MetadataSchema):
             check_types(b, recheck=recheck)
-    for f in schema.Fields:
-        for sname in schema.Fields[f].schemas:
-            s = schema.Fields[f].schemas[sname]
+
+    schemaFields = cast(Any, schema.Fields)
+    for f in schemaFields:  # type: ignore
+        for sname in schemaFields[f].schemas:
+            s = schemaFields[f].schemas[sname]
             if s is not schema and issubclass(s, MetadataSchema):
                 check_types(s, recheck=recheck)
 
@@ -267,7 +260,7 @@ def check_types(schema: Type[MetadataSchema], *, recheck: bool = False):
 
 def check_allowed_types(schema: Type[MetadataSchema]):
     """Check that shape of defined fields is suitable for deep merging."""
-    hints = schema._typehints
+    hints = cast(Any, schema._typehints)
     for field, hint in hints.items():
         if field[0] == "_":
             continue  # private field
@@ -286,10 +279,11 @@ def is_pub_instance_field(schema, name, hint):
 
 def check_overrides(schema: Type[MetadataSchema]):
     """Check that fields are overridden to subtypes or explicitly declared as overridden."""
-    new_hints = {
-        n for n, h in schema._typehints.items() if is_pub_instance_field(schema, n, h)
-    }
-    actual_overrides = set(schema._base_typehints.keys()).intersection(new_hints)
+    hints = cast(Any, schema._typehints)
+    base_hints = cast(Any, schema._base_typehints)
+
+    new_hints = {n for n, h in hints.items() if is_pub_instance_field(schema, n, h)}
+    actual_overrides = set(base_hints.keys()).intersection(new_hints)
     miss_override = schema.__overrides__ - actual_overrides
     undecl_override = actual_overrides - schema.__overrides__
     if miss_override:
@@ -297,7 +291,7 @@ def check_overrides(schema: Type[MetadataSchema]):
 
     # all undeclared overrides must be strict subtypes of the inherited type:
     for fname in undecl_override:
-        hint, parent_hint = schema._typehints[fname], schema._base_typehints[fname]
+        hint, parent_hint = hints[fname], base_hints[fname]
         if not issubtype(hint, parent_hint):
             msg = f"""{schema}:
 The assigned type for '{fname}'

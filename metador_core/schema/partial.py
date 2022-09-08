@@ -29,6 +29,9 @@ from typing_extensions import Annotated
 
 from . import utils
 
+_partials = {}
+_forwardrefs = {}
+
 
 class PartialModel:
     """Base partial metadata model mixin.
@@ -186,30 +189,13 @@ class PartialModel:
         return (cls._partial_type(th), fi)
 
     @classmethod
-    def _create_partial(cls, mcls, *, partials={}):
-        """Return a new schema with all fields of the given schema optional.
-
-        Original default values are not respected and are set to `None`.
-
-        The use of the returned class is for validating partial data before
-        zipping together partial results into a completed one.
-
-        This is a much more fancy version of e.g.
-        https://github.com/pydantic/pydantic/issues/1799
-
-        because it recursively substitutes with partial models.
-        This allows us to implement smart deep merge for partials.
-        """
+    def _create_partial(cls, mcls, *, typehints=None):
+        """Create a new partial model class based on `mcls`."""
         if not issubclass(mcls, cls.__base__):
             raise ValueError(f"{mcls} is not a {cls.__base__.__name__}!")
-        for b in mcls.__bases__:
-            if not issubclass(b, cls.__base__) or b is cls.__base__:
-                continue
-            if b not in partials:
-                raise ValueError(f"No partial provided for {mcls} base {b}!")
 
         # get all annotations (we define fields only using them)
-        field_types = utils.get_type_hints(mcls)
+        field_types = typehints or utils.get_type_hints(mcls)
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()
@@ -221,8 +207,8 @@ class PartialModel:
             if b_cls is cls.__base__:
                 return cls  # top base
             if not issubclass(b_cls, cls.__base__):
-                return b_cls  # not child of top base
-            return partials[b_cls]  # replace with existing partials
+                return b_cls  # not child of top base -> leave it
+            return cls._get_partial(b_cls)  # replace with existing partials
 
         # create partial model
         ret: Type[PartialModel] = create_model(
@@ -235,6 +221,49 @@ class PartialModel:
         ret._partial_of = mcls  # connect to original model
 
         return ret
+
+    @classmethod
+    def _get_partial(cls, mcls, *, typehints=None):
+        """Return a partial schema with all fields of the given schema optional.
+
+        Original default values are not respected and are set to `None`.
+
+        The use of the returned class is for validating partial data before
+        zipping together partial results into a completed one.
+
+        This is a much more fancy version of e.g.
+        https://github.com/pydantic/pydantic/issues/1799
+
+        because it recursively substitutes with partial models.
+        This allows us to implement smart deep merge for partials.
+        """
+        if cls not in _partials:
+            _partials[cls] = {}
+            _forwardrefs[cls] = {}
+
+        if partial := _partials[cls].get(mcls):
+            return partial
+
+        # ----
+        # create a partial for a model:
+
+        # print("make partial for", mcls)
+
+        mcls.update_forward_refs()  # to be sure
+        partial = cls._create_partial(mcls, typehints=typehints)
+
+        partial_ref = cls._partial_forwardref_name(mcls)
+        _forwardrefs[cls][partial_ref] = partial
+        _partials[cls][mcls] = partial
+
+        # create partials that are marked as "to be done"
+        missing = {m for m, p in _partials[cls].items() if p is None}
+        for model in missing:
+            cls._get_partial(model)
+
+        # resolve possible circular references
+        partial.update_forward_refs(**_forwardrefs[cls])
+        return partial
 
 
 # ----
@@ -291,6 +320,11 @@ class DeepPartialModel(PartialModel):
             return orig_type  # not a class (probably just a hint)
         if not issubclass(orig_type, cls.__base__):
             return orig_type  # not a suitable model
+
+        if p := _partials[cls].get(orig_type):
+            return p  # existing partial
+        _partials[cls][orig_type] = None  # mark as "to be generated"
+        # return a reference to be resolved later
         return ForwardRef(cls._partial_forwardref_name(orig_type))
 
     @classmethod

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from itertools import chain
 from typing import Dict, List, Optional, Set, Type
 
 from ..plugins import interface as pg
-from .core import MetadataSchema, PartialSchema, SchemaBase, check_types
+from .core import MetadataSchema, PartialSchema, check_types
 from .plugins import PluginBase
-from .utils import collect_model_types
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
@@ -169,8 +167,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             msg += f"claimed parent schema {parent} ({parent_ref})!"
             raise TypeError(msg)
 
-    # ----
-
     def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
         # NOTE: schemas must be already loaded
         schema_name = plugin.Plugin.name
@@ -185,26 +181,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         ret.reverse()
         return ret
 
-    def _needs_partial(self, plugin):
-        if plugin is SchemaBase or not issubclass(plugin, SchemaBase):
-            return False
-        return plugin not in self._partials
-
-    def _derive_partial(self, plugin):
-        # print("derive", plugin)
-        # ensure all suitable base classes and sub-models have partial
-        subschemas = collect_model_types(plugin, bound=SchemaBase)
-        for dep in chain(reversed(plugin.__bases__), *subschemas.values()):
-            if dep is not plugin and self._needs_partial(dep):
-                self._derive_partial(dep)
-
-        partial = PartialSchema._create_partial(plugin, partials=self._partials)
-        partial_ref = PartialSchema._partial_forwardref_name(plugin)
-        self._partials[plugin] = partial
-        self._forwardrefs[partial_ref] = partial
-        partial.update_forward_refs(**self._forwardrefs)
-        setattr(plugin, "Partial", partial)
-
     def init_plugin(self, name, plugin):
         # pre-compute parent schema path
         self._parents[name] = self._compute_parent_path(plugin)
@@ -217,15 +193,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             if parent not in self._children:
                 self._children[parent] = set()
             self._children[parent].add(name)
-
-        # following better done here instead of the schema metaclass
-        # due to forward references etc.:
-
-        # update refs, otherwise issues with forward references in same module etc.
-        plugin.update_forward_refs()
-
-        # derive recursive partial schema
-        self._derive_partial(plugin)
 
     # ----
 

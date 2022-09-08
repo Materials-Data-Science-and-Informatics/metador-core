@@ -1,4 +1,5 @@
 from collections import ChainMap
+from functools import lru_cache
 from typing import (  # type: ignore
     Any,
     Callable,
@@ -19,6 +20,8 @@ import typing_utils
 from pydantic import BaseModel
 from pydantic.fields import ModelField
 from typing_extensions import Annotated, ClassVar, Literal, TypedDict, get_args
+
+cache = lru_cache(maxsize=None)  # for 3.8 compat
 
 
 def drop(n: int, it: Iterable):
