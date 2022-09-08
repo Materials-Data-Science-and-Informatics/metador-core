@@ -38,3 +38,7 @@ repos:
       - id: mypy
         args: [--no-strict-optional, --ignore-missing-imports]
         additional_dependencies: [pydantic==1.9.0,phantom-types==0.17.1]
+  - repo: https://github.com/citation-file-format/cff-converter-python
+    rev: "44e8fc9"
+    hooks:
+      - id: validate-cff

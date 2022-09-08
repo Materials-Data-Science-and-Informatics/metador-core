@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "metador-core"
 version = "0.1.0"
-description = "Metador core library providing container and plugin interfaces."
-authors = ["a.pirogov <a.pirogov@fz-juelich.de>"]
+description = "Core of Metador, the metadata-first research data management framework."
+authors = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 license = "MIT"
 
