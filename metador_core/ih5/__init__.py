@@ -32,14 +32,14 @@ from metador_core.ih5.container import IH5Record
 
 
 # initial creation:
-with IH5Record.create("record_name") as ds:
+with IH5Record("record_name", "w") as ds:
     # A new record is automatically in writable mode,
     # so let us write some data, just like with h5py:
     ds["foo/bar"] = "something"
     ds["foo"].attrs["attribute"] = 123
 
 # updating the record we created later on:
-with IH5Record.open("record_name") as ds:
+with IH5Record("record_name", "r") as ds:
     # A record is opened in read-only mode, so
     # before we can add, modify or delete anything, we need to call:
     ds.create_patch()

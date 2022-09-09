@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, get_args
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args
 from uuid import UUID, uuid1
 
 import h5py
@@ -35,6 +35,8 @@ FORMAT_MAGIC_STR: Final[str] = "ih5_v01"
 USER_BLOCK_SIZE: Final[int] = 1024
 """Space to reserve at beginning of each HDF5 file in bytes.
 Must be a power of 2 and at least 512 (required by HDF5)."""
+
+T = TypeVar("T", bound="IH5Record")
 
 
 def hashsum_file(filename: Path, skip_bytes: int = 0) -> str:
@@ -152,7 +154,7 @@ OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
 _OPEN_MODES = list(get_args(OpenMode))
 
 
-class IH5Record:
+class IH5Record(IH5Group):
     """
     Class representing a record, which consists of a collection of immutable files.
 
@@ -162,7 +164,7 @@ class IH5Record:
     Runtime invariants to be upheld before/after each method call (after __init__):
 
     * all files of an instance are open for reading (until `close()` is called)
-    * all files in `_files` are in patch index order
+    * all files in `__files__` are in patch index order
     * at most one file is open in writable mode (if any, it is the last one)
     * modifications are possible only after `create_patch` was called
         and until `commit_patch` or `discard_patch` was called, and at no other time
@@ -179,12 +181,30 @@ class IH5Record:
     _PATCH_INFIX = ".p"
     _FILE_EXT = ".ih5"
 
+    # core "wrapped" objects
+    __files__: List[h5py.File]
+
     # attributes
-    _closed: bool  # false after close()
-    _allow_patching: bool  # false if opened with "r"
-    _has_writable: bool  # true while uncommitted patch exists
-    _files: List[h5py.File]
-    _ublocks: Dict[Path, IH5UserBlock]
+    _closed: bool  # True after close()
+    _allow_patching: bool  # false iff opened with "r"
+    _ublocks: Dict[Path, IH5UserBlock]  # in-memory copy of HDF5 user blocks
+
+    def __new__(cls, *args, **kwargs):
+        ret = super().__new__(cls)
+        ret._allow_patching = True
+        ret.__files__ = []
+        return ret
+
+    def __eq__(self, o) -> bool:
+        return self.__files__ == o.__files__
+
+    @property
+    def _has_writable(self):
+        """Return True iff an uncommitted patch exists."""
+        if not self.__files__:
+            return False
+        f = self.__files__[-1]
+        return bool(f) and f.mode == "r+"
 
     @classmethod
     def _is_valid_record_name(cls, name: str) -> bool:
@@ -202,7 +222,7 @@ class IH5Record:
 
     def _next_patch_filepath(self) -> Path:
         """Compute filepath for the next patch based on the previous one."""
-        path = Path(self._files[0].filename)
+        path = Path(self.__files__[0].filename)
         parent = path.parent
         patch_index = self._ublock(-1).patch_index + 1
         res = f"{parent}/{self._infer_name(path)}{self._PATCH_INFIX}{patch_index}{self._FILE_EXT}"
@@ -210,11 +230,11 @@ class IH5Record:
 
     def _ublock(self, obj: Union[h5py.File, int]) -> IH5UserBlock:
         """Return the parsed user block of a container file."""
-        f: h5py.File = obj if isinstance(obj, h5py.File) else self._files[obj]
+        f: h5py.File = obj if isinstance(obj, h5py.File) else self.__files__[obj]
         return self._ublocks[Path(f.filename)]
 
     def _set_ublock(self, obj: Union[h5py.File, int], ub: IH5UserBlock):
-        f: h5py.File = obj if isinstance(obj, h5py.File) else self._files[obj]
+        f: h5py.File = obj if isinstance(obj, h5py.File) else self.__files__[obj]
         self._ublocks[Path(f.filename)] = ub
 
     @classmethod
@@ -286,7 +306,7 @@ class IH5Record:
         return not self.attrs.keys() and not self.keys()
 
     @classmethod
-    def _create(cls, record: Union[Path, str], truncate: bool = False):
+    def _create(cls: Type[T], record: Union[Path, str], truncate: bool = False) -> T:
         """Create a new record consisting of a base container.
 
         The base container is exposed as the `writable` container.
@@ -302,16 +322,17 @@ class IH5Record:
 
         # create new container
         ret = cls.__new__(cls)
+        super().__init__(ret, ret)
         ret._closed = False
-        ret._allow_patching = True
-        ret._has_writable = True
+
         ub = IH5UserBlock.create(prev=None)
-        ret._files = [cls._new_container(path, ub)]
         ret._ublocks = {path: ub}
+
+        ret.__files__ = [cls._new_container(path, ub)]
         return ret
 
     @classmethod
-    def _open(cls, paths: List[Path], **kwargs):
+    def _open(cls: Type[T], paths: List[Path], **kwargs) -> T:
         """Open a record consisting of a base container + possible set of patches.
 
         Expects a set of full file paths forming a valid record.
@@ -324,46 +345,46 @@ class IH5Record:
         allow_baseless: bool = kwargs.pop("allow_baseless", False)
 
         ret = cls.__new__(cls)
+        super().__init__(ret, ret)
         ret._closed = False
-        ret._allow_patching = True
-        ret._has_writable = False
+
         ret._ublocks = {Path(path): IH5UserBlock.load(path) for path in paths}
-        ret._files = [h5py.File(path, "r") for path in paths]
-        # sort files by patch index order (important!)
+        # files, sorted  by patch index order (important!)
         # if something is wrong with the indices, this will throw an exception.
-        ret._files.sort(key=lambda f: ret._ublock(f).patch_index)
-        has_patches: bool = len(ret._files) > 1
+        ret.__files__ = [h5py.File(path, "r") for path in paths]
+        ret.__files__.sort(key=lambda f: ret._ublock(f).patch_index)
+        # ----
+        has_patches: bool = len(ret.__files__) > 1
 
         # check containers and relationship to each other:
 
         # check first container (it could be a base container and it has no predecessor)
         if not allow_baseless and ret._ublock(0).prev_patch is not None:
             msg = "base container must not have attribute 'prev_patch'!"
-            raise ValueError(f"{ret._files[0].filename}: {msg}")
-        ret._check_ublock(ret._files[0].filename, ret._ublock(0), None, has_patches)
+            raise ValueError(f"{ret.__files__[0].filename}: {msg}")
+        ret._check_ublock(ret.__files__[0].filename, ret._ublock(0), None, has_patches)
 
         # check patches except last one (with checking the hashsum)
-        for i in range(1, len(ret._files) - 1):
-            filename = ret._files[i].filename
+        for i in range(1, len(ret.__files__) - 1):
+            filename = ret.__files__[i].filename
             ret._check_ublock(filename, ret._ublock(i), ret._ublock(i - 1), True)
         if has_patches:  # check latest patch (without checking hashsum)
             ret._check_ublock(
-                ret._files[-1].filename, ret._ublock(-1), ret._ublock(-2), False
+                ret.__files__[-1].filename, ret._ublock(-1), ret._ublock(-2), False
             )
 
         # now check whether the last container (patch or base or whatever) has a checksum
         if ret._ublock(-1).hdf5_hashsum is None:
             if kwargs.pop("reopen_incomplete_patch", False):
                 # if opening in writable mode, allow to complete the patch
-                f = ret._files[-1]
-                path = ret._files[-1].filename
+                f = ret.__files__[-1]
+                path = ret.__files__[-1].filename
                 f.close()
-                ret._files[-1] = h5py.File(Path(path), "r+")
-                ret._has_writable = True
+                ret.__files__[-1] = h5py.File(Path(path), "r+")
 
         # additional sanity check: container uuids must be all distinct
-        cn_uuids = {ret._ublock(f).patch_uuid for f in ret._files}
-        if len(cn_uuids) != len(ret._files):
+        cn_uuids = {ret._ublock(f).patch_uuid for f in ret.__files__}
+        if len(cn_uuids) != len(ret.__files__):
             raise ValueError("Some patch_uuid is not unique, invalid file set!")
         # all looks good
         return ret
@@ -378,12 +399,12 @@ class IH5Record:
     @property
     def ih5_files(self) -> List[Path]:
         """List of container filenames this record consists of."""
-        return [Path(f.filename) for f in self._files]
+        return [Path(f.filename) for f in self.__files__]
 
     @property
     def ih5_meta(self) -> List[IH5UserBlock]:
         """Return user block metadata, in container patch order."""
-        return [self._ublock(i).copy() for i in range(len(self._files))]
+        return [self._ublock(i).copy() for i in range(len(self.__files__))]
 
     @classmethod
     def find_files(cls, record: Path) -> List[Path]:
@@ -430,8 +451,6 @@ class IH5Record:
                 ret.append(m.group(0))
         return list(map(lambda name: dir / name, set(ret)))
 
-    # for consistency with h5py.File:
-
     def __init__(self, record: Union[str, Path], mode: OpenMode = "r", **kwargs):
         """Open or create a record.
 
@@ -444,6 +463,8 @@ class IH5Record:
         If the mode is 'a' or 'r+', then a new patch will be created in case the latest
         patch has already been committed.
         """
+        super().__init__(self)
+
         record = Path(record)
         if mode not in _OPEN_MODES:
             raise ValueError(f"Unknown file open mode: {mode}")
@@ -451,7 +472,7 @@ class IH5Record:
         if mode[0] == "w" or mode == "x":
             # create new or overwrite to get new
             ret = self._create(record, truncate=(mode == "w"))
-            self.__dict__ = ret.__dict__
+            self.__dict__.update(ret.__dict__)
             return
 
         if mode == "a" or mode[0] == "r":
@@ -462,25 +483,22 @@ class IH5Record:
                     raise FileNotFoundError(f"No files found for record: {record}")
                 else:  # a means create new if not existing (will be writable)
                     ret = self._create(record, truncate=False)
-                    self.__dict__ = ret.__dict__
+                    self.__dict__.update(ret.__dict__)
                     return
 
             # open existing (will be ro if everything is fine, writable if latest patch was uncommitted)
             want_rw = mode != "r"
             ret = self._open(paths, reopen_incomplete_patch=want_rw, **kwargs)
-            self.__dict__ = ret.__dict__
+            self.__dict__.update(ret.__dict__)
             self._allow_patching = want_rw
 
-            if want_rw and self.mode == "r":
+            if want_rw and not self._has_writable:
                 # latest patch was completed correctly -> make writable by creating new patch
                 self.create_patch()
 
     @property
     def mode(self) -> Literal["r", "r+"]:
-        if not self._has_writable:
-            return "r"
-        else:
-            return "r+"
+        return "r+" if self._allow_patching else "r"
 
     def close(self, commit: bool = True) -> None:
         """Close all files that belong to this record.
@@ -495,13 +513,13 @@ class IH5Record:
 
         if self._has_writable and commit:
             self.commit_patch()
-        for f in self._files:
+        for f in self.__files__:
             f.close()
-        self.__dict__ = {}
+        self.__files__ = []
         self._closed = True
 
     def _expect_not_ro(self):
-        if not self._allow_patching:
+        if self.mode == "r":
             raise ValueError("The container is opened as read-only!")
 
     def create_patch(self) -> None:
@@ -513,18 +531,16 @@ class IH5Record:
 
         path = self._next_patch_filepath()
         ub = IH5UserBlock.create(prev=self._ublock(-1))
-        self._files.append(self._new_container(path, ub))
+        self.__files__.append(self._new_container(path, ub))
         self._ublocks[path] = ub
-        self._has_writable = True
 
     def _delete_latest_container(self) -> None:
         """Discard the current writable container (patch or base)."""
-        cfile = self._files.pop()
+        cfile = self.__files__.pop()
         fn = cfile.filename
         del self._ublocks[Path(fn)]
         cfile.close()
         Path(fn).unlink()
-        self._has_writable = False
 
     def discard_patch(self) -> None:
         """Discard the current incomplete patch container."""
@@ -532,7 +548,7 @@ class IH5Record:
         self._expect_not_ro()
         if not self._has_writable:
             raise ValueError("No patch to discard!")
-        if len(self._files) == 1:
+        if len(self.__files__) == 1:
             raise ValueError("Cannot discard base container! Just delete the file!")
             # reason: the base container provides record_uuid,
             # destroying it makes this object inconsistent / breaks invariants
@@ -554,7 +570,7 @@ class IH5Record:
         self._expect_not_ro()
         if not self._has_writable:
             raise ValueError("No patch to commit!")
-        cfile = self._files[-1]
+        cfile = self.__files__[-1]
         filepath = Path(cfile.filename)
         cfile.close()  # must close it now, as we will write outside of HDF5 next
 
@@ -564,8 +580,7 @@ class IH5Record:
         self._ublocks[filepath].save(filepath)
 
         # reopen the container file now as read-only
-        self._files[-1] = h5py.File(filepath, "r")
-        self._has_writable = False
+        self.__files__[-1] = h5py.File(filepath, "r")
 
     def _fixes_after_merge(self, merged_file, ub):
         """Run hook for subclasses into merge process.
@@ -590,7 +605,7 @@ class IH5Record:
         if self._has_writable:
             raise ValueError("Cannot merge, please commit or discard your changes!")
 
-        with self._create(target) as ds:
+        with type(self)(target, "x") as ds:
             source_node = self["/"]
             target_node = ds["/"]
             for k, v in source_node.attrs.items():  # copy root attributes
@@ -621,6 +636,9 @@ class IH5Record:
         for file in cls.find_files(record):
             file.unlink()
 
+    def __repr__(self):
+        return f"<IH5 record (mode {self.mode}) {self.__files__}>"
+
     # ---- context manager support (i.e. to use `with`) ----
 
     def __enter__(self):
@@ -629,32 +647,3 @@ class IH5Record:
     def __exit__(self, ex_type, ex_value, ex_traceback):
         # this will ensure that commit_patch() is called and the files are closed
         self.close()
-
-    # ---- like h5py, pass through unknown methods to an implicit root group instance ----
-
-    # helper, more efficient than going through self["/"] in the following methods
-    def _root_group(self) -> IH5Group:
-        return IH5Group(self)
-
-    def __getattr__(self, key):
-        # takes care of forwarding all non-special methods
-        self._expect_open()
-        return getattr(self._root_group(), key)
-
-    def __getitem__(self, key):
-        return self._root_group()[key]
-
-    def __setitem__(self, key, value):
-        self._root_group()[key] = value
-
-    def __delitem__(self, key):
-        del self._root_group()[key]
-
-    def __iter__(self):
-        return iter(self._root_group())
-
-    def __contains__(self, key):
-        return key in self._root_group()
-
-    def __len__(self):
-        return len(self._root_group())

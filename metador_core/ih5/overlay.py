@@ -9,10 +9,26 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import h5py
 import numpy as np
+
+if TYPE_CHECKING:
+    from .record import IH5Record
+else:
+    IH5Record = Any
+
 
 # dataset value marking a deleted group, dataset or attribute
 DEL_VALUE = np.void(b"\x7f")  # ASCII DELETE
@@ -52,7 +68,7 @@ class IH5Node:
     that may consist of a base container file and a number of patch containers.
     """
 
-    _record: Any
+    _record: IH5Record
     """Record this node belongs to (needed to access the actual data)."""
 
     _gpath: str
@@ -67,12 +83,12 @@ class IH5Node:
         """Instantiate an overlay node."""
         if not self._gpath or self._gpath[0] != "/":
             raise ValueError("Path must be absolute!")
-        if not (0 <= self._cidx <= self._last_idx):
-            raise ValueError("Creation index must be in index range of file list!")
+        if not (0 <= self._cidx):
+            raise ValueError("Creation index must be non-negative!")
 
     @property
     def _files(self) -> List[h5py.File]:
-        return self._record._files
+        return self._record.__files__
 
     def __hash__(self):
         """Hash an overlay node.
@@ -82,6 +98,9 @@ class IH5Node:
         """
         return hash((id(self._record), self._gpath, self._cidx))
 
+    def __bool__(self) -> bool:
+        return bool(self._files) and bool(all(map(bool, self._files)))
+
     @property
     def _last_idx(self):
         """Index of the latest container."""
@@ -90,12 +109,12 @@ class IH5Node:
     @property
     def _is_read_only(self) -> bool:
         """Return true if the newest container is read-only and nothing can be written."""
-        return self._record.mode == "r"
+        return not self._record._has_writable
 
     def _guard_open(self):
         """Check that the record is open (if it was closed, the files are gone)."""
-        if not self._files:
-            raise ValueError("Record is not open!")
+        if not self:
+            raise ValueError("Record is not open or accessible!")
 
     def _guard_read_only(self):
         if self._is_read_only:
@@ -164,19 +183,17 @@ class IH5Node:
                 if isinstance(node, h5py.Dataset):
                     print("    ", node[()])
 
-    # h5py-like interface:
-
-    @property
-    def __bool__(self) -> bool:
-        return bool(self._files[self._cidx])
-
 
 class IH5InnerNode(IH5Node):
-    """Common Group and AttributeManager methods.
+    """Common functionality for Group and AttributeManager.
 
     Will grant either access to child records/subgroups,
     or to the attributes attached to the group/dataset at a path in a record.
     """
+
+    @property
+    def _is_attrs(self) -> bool:
+        return self.__is_attrs__
 
     def __init__(
         self,
@@ -195,7 +212,7 @@ class IH5InnerNode(IH5Node):
         """
         super().__init__(record, gpath, creation_idx)
         # if attrs set, represents AttributeManager, otherwise its a group
-        self._attrs: bool = attrs
+        self.__is_attrs__: bool = attrs
 
     def _guard_key(self, key: str):
         """Check a key used with bracket accessor notation.
@@ -208,12 +225,12 @@ class IH5InnerNode(IH5Node):
             raise ValueError(f"Invalid symbol '@' in key: '{key}'!")
         if re.match(r"^[!-~]+$", key) is None:
             raise ValueError("Invalid key: Only printable ASCII is allowed!")
-        if self._attrs and (key.find("/") >= 0 or key == SUBST_KEY):
+        if self._is_attrs and (key.find("/") >= 0 or key == SUBST_KEY):
             raise ValueError(f"Invalid attribute key: '{key}'!")
 
     def _get_child_raw(self, key: str, cidx: int) -> Any:
         """Return given child (dataset, group, attribute) from given container."""
-        if self._attrs:
+        if self._is_attrs:
             return self._files[cidx][self._gpath].attrs[key]
         else:
             return self._files[cidx][self._abs_path(key)]
@@ -245,7 +262,7 @@ class IH5InnerNode(IH5Node):
                 continue
 
             obj = self._files[i][self._gpath]
-            if self._attrs:
+            if self._is_attrs:
                 obj = obj.attrs
             assert isinstance(obj, h5py.Group) or isinstance(obj, h5py.AttributeManager)
 
@@ -264,7 +281,7 @@ class IH5InnerNode(IH5Node):
         return {
             k: idx
             for k, idx in sorted(children.items(), key=lambda x: x[0])
-            if (not self._attrs or not k == SUBST_KEY)
+            if (not self._is_attrs or not k == SUBST_KEY)
             and not _node_is_del_mark(self._get_child_raw(k, idx))
         }
 
@@ -315,7 +332,7 @@ class IH5InnerNode(IH5Node):
         Returns:
             Index >= 0 of most recent container patching that path if found, else None.
         """
-        if self._attrs:  # access an attribute by key (always "relative")
+        if self._is_attrs:  # access an attribute by key (always "relative")
             return self._children().get(key, None)
         # access a path (absolute or relative)
         nodes = self._node_seq(key)
@@ -466,10 +483,10 @@ class IH5Group(IH5InnerNode):
         return None
 
     def __init__(self, record, gpath: str = "/", creation_idx: Optional[int] = None):
+        if gpath == "/":
+            creation_idx = 0
         if creation_idx is None:
-            creation_idx = self._latest_idx(record._files, gpath)
-            # this is only used with '/' (so it always exists)
-            assert creation_idx is not None
+            raise ValueError("Need creation_idx for path != '/'!")
         super().__init__(record, gpath, creation_idx, False)
 
     def _create_virtual(self, path: str) -> bool:

@@ -18,7 +18,7 @@ def create_entries(node: Union[IH5Group, IH5AttributeManager]):
     node["array"] = [0, 0, 0]
     node["bool"] = False
     node["int"] = 0
-    node["string"] = node._gpath + ("@" if node._attrs else "/") + "string"
+    node["string"] = node._gpath + ("@" if node.__is_attrs__ else "/") + "string"
     node["raw"] = np.void(b"raw")
 
 

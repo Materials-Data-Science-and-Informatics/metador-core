@@ -284,6 +284,6 @@ class IH5MFRecord(IH5Record):
         init_stub_base(ds, user_block, skeleton)  # prepares structure and user block
         # commit_patch() completes stub + fixes the hashsum
         ds.commit_patch(__is_stub__=True)
-        assert ds.mode == "r"
+        assert not ds._has_writable
 
         return ds

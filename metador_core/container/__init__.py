@@ -633,7 +633,7 @@ class MetadorDataset(MetadorNode):
         return self.__wrapped__.__setitem__(*args, **kwargs)
 
 
-MetadorDriver = Union[Type[h5py.File], Type[IH5Record]]
+MetadorDriver = Union[h5py.File, IH5Record]
 METADOR_DRIVERS = (h5py.File, IH5Record)
 
 
@@ -655,7 +655,7 @@ class MetadorContainer(MetadorGroup):
         name_or_obj: Union[str, MetadorDriver],
         mode: OpenMode = "r",
         *,
-        driver: Optional[MetadorDriver] = None,
+        driver: Optional[Type[MetadorDriver]] = None,
     ):
         if isinstance(name_or_obj, str):
             driver = driver or h5py.File  # use normal h5py.File by default
@@ -671,7 +671,7 @@ class MetadorContainer(MetadorGroup):
                 raise ValueError(msg)
             # wrap existing instance
             obj = name_or_obj
-        super().__init__(self, obj)
+        super().__init__(self, obj)  # type: ignore
 
         # ----
 

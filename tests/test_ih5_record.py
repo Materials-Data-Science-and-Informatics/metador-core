@@ -192,7 +192,7 @@ def test_create_patch_discard(tmp_ds_path):
     # also try calling these methods multiple times when it is not valid
     with IH5Record(tmp_ds_path, "w") as ds:
         assert len(ds.ih5_files) == 1
-        assert ds.mode == "r+"
+        assert ds._has_writable
         ds["foo"] = 123
 
         with pytest.raises(ValueError):  # cannot discard base container
@@ -202,7 +202,7 @@ def test_create_patch_discard(tmp_ds_path):
             ds.create_patch()
 
         ds.commit_patch()  # commit base container
-        assert ds.mode == "r"
+        assert not ds._has_writable
 
         with pytest.raises(ValueError):  # after commit nothing to discard
             ds.discard_patch()
@@ -214,7 +214,7 @@ def test_create_patch_discard(tmp_ds_path):
             ds["bar"] = 456
 
         ds.create_patch()
-        assert ds.mode == "r+"
+        assert ds._has_writable
         with pytest.raises(ValueError):  # should not work twice
             ds.create_patch()
         assert len(ds.ih5_files) == 2  # new container was created
@@ -223,7 +223,7 @@ def test_create_patch_discard(tmp_ds_path):
         assert "bar" in ds
 
         ds.discard_patch()
-        assert ds.mode == "r"
+        assert not ds._has_writable
 
         assert len(ds.ih5_files) == 1
         assert "bar" not in ds

@@ -25,7 +25,7 @@ from typing_extensions import Literal
 class H5NodeLike(Protocol):
     @property
     def name(self) -> str:
-        # absolute path of the node
+        # absolute path of the node in the archive
         ...
 
     @property
@@ -135,6 +135,9 @@ class H5GroupLike(H5NodeLike, Protocol):
 @runtime_checkable
 class H5FileLike(H5GroupLike, Protocol):
     # inherits interface because of pass-through to root group
+
+    def close(self):
+        ...
 
     @property
     def mode(self) -> Literal["r", "r+"]:
