@@ -69,7 +69,7 @@ class PluginBase(BaseModelPlus):
     version: SemVerTuple
     requires: List[str] = []
 
-    def ref(self, *, version=None):
+    def ref(self, *, version: SemVerTuple):
         from ..plugins import plugingroups
 
         return plugingroups[self.group].PluginRef(
