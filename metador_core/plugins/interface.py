@@ -11,6 +11,7 @@ from typing import (
     Iterable,
     KeysView,
     Optional,
+    Protocol,
     Tuple,
     Type,
     TypeVar,
@@ -86,15 +87,19 @@ class PGPlugin(PluginBase):
     plugin_class: Optional[Any] = object
 
 
-T = TypeVar("T")
-
-
 class PluginGroupMeta(type):
     """Metaclass that will check a plugin group on creation."""
 
     def __init__(self, name, bases, dct):
         self.Plugin.plugin_info_class.group = self.Plugin.name
         self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
+
+
+class IsPlugin(Protocol):
+    Plugin: ClassVar[Any]
+
+
+T = TypeVar("T", bound=IsPlugin)
 
 
 class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
@@ -153,7 +158,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
     def fullname(self, ep_name: str) -> PluginRef:
         plugin = self[ep_name]
-        return self.PluginRef(name=ep_name, version=cast(Any, plugin).Plugin.version)
+        return self.PluginRef(name=ep_name, version=plugin.Plugin.version)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:
         """Return package metadata of Python package providing this plugin."""
@@ -287,10 +292,10 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
-        ppgi_cls = cast(Any, plugin).Plugin.plugin_info_class
+        ppgi_cls = plugin.Plugin.plugin_info_class
         if not ppgi_cls.group:
             raise TypeError(f"{name}: {ppgi_cls} is missing 'group' attribute!")
-        if not ppgi_cls.group == cast(Any, plugin).Plugin.name:
+        if not ppgi_cls.group == plugin.Plugin.name:
             msg = f"{name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
             raise TypeError(msg)
 

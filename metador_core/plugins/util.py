@@ -1,13 +1,15 @@
 """General utitilies with relevance for plugins."""
 from typing import Optional, Type, TypeVar
 
-from .interface import PluginGroup
+from .interface import IsPlugin, PluginGroup
 
 
 def is_notebook() -> bool:
     # https://stackoverflow.com/a/39662359
     try:
-        shell = get_ipython().__class__.__name__
+        # get_ipython() is defined globally in ipython-like env!
+        shell = get_ipython().__class__.__name__  # type: ignore
+
         if shell == "ZMQInteractiveShell":
             return True  # Jupyter notebook or qtconsole
         elif shell == "TerminalInteractiveShell":
@@ -18,12 +20,11 @@ def is_notebook() -> bool:
         return False  # Probably standard Python interpreter
 
 
-T = TypeVar("T")
+T = TypeVar("T", bound=IsPlugin)
 
 
 def register_in_group(pgroup: PluginGroup[T], plugin: Optional[Type[T]] = None):
     """Register and load a plugin manually, without defining an entry point."""
-
     if not is_notebook():
         raise RuntimeError("This is not supposed to be used outside of notebooks!")
 

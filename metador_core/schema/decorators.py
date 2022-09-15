@@ -1,15 +1,9 @@
 from typing import Any, Dict, Optional
 
-from pydantic.fields import FieldInfo, ModelField
+from pydantic.fields import ModelField
 
 from .core import MetadataSchema
-from .utils import (
-    get_annotations,
-    is_public_name,
-    make_literal,
-    parent_field_type,
-    unoptional,
-)
+from .utils import get_annotations, is_public_name, parent_field_type, unoptional
 
 
 def _expect_schema_class(mcls):
@@ -84,8 +78,16 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
                 else:
                     overridden.add(name)
 
-            val = value.default if isinstance(value, FieldInfo) else value
-            ctype = Optional[make_literal(val)]  # type: ignore
+            # this would force the exact constant on load
+            # but this breaks parent compatibility if consts overridden!
+            # ----
+            # val = value.default if isinstance(value, FieldInfo) else value
+            # ctype = Optional[make_literal(val)]  # type: ignore
+            # ----
+            # we simply ignore the constants as opaque somethings
+            ctype = Optional[Any]  # type: ignore
+
+            # configure pydantic field
             field = ModelField.infer(
                 name=name,
                 value=value,
@@ -94,6 +96,7 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
                 config=mcls.__config__,
             )
             mcls.__fields__[name] = field
+            # add type hint (important for our field analysis!)
             mcls.__annotations__[name] = field.type_
         ret = mcls
 
@@ -103,8 +106,7 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
         #     ret.Plugin = mcls.Plugin
 
         # to later distinguish "const" fields from normal fields:
-        parent_consts = mcls.__dict__.get("__constants__", set())
-        ret.__constants__ = parent_consts.union(set(consts.keys()))
+        ret.__constants__.update(consts)
         return ret
 
     return add_fields

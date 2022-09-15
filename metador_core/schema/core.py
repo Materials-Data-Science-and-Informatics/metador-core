@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import ChainMap
-from typing import Any, ClassVar, Set, Type, cast
+from typing import Any, ClassVar, Dict, Optional, Set, Type, cast
 
 from overrides import overrides
-from pydantic import BaseModel
+from pydantic import BaseModel, root_validator
 from pydantic_yaml import YamlModelMixin
+from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
 
 from .encoder import DynEncoderModelMeta
 from .inspect import FieldInspector, LiftedRODict, make_field_inspector
@@ -52,13 +54,48 @@ class BaseModelPlus(
         validate_assignment = True
 
     def dict(self, *args, **kwargs):
+        """Return a dict.
+
+        Nota that this will eliminate all pydantic models,
+        but might still contain complex value types.
+        """
         return super().dict(*args, **_mod_def_dump_args(kwargs))
 
-    def json(self, *args, **kwargs):
+    def json(self, *args, **kwargs) -> str:
+        """Return serialized JSON as string."""
         return super().json(*args, **_mod_def_dump_args(kwargs))
 
-    def yaml(self, *args, **kwargs):
-        return super().yaml(*args, **_mod_def_dump_args(kwargs))
+    def json_dict(self, **kwargs):
+        """Return a JSON-compatible dict.
+
+        Uses round-trip through JSON serialization.
+        """
+        return json.loads(self.json(**kwargs))
+
+    def yaml(
+        self,
+        *,
+        # sort_keys: bool = False,
+        default_flow_style: bool = False,
+        default_style: Optional[YamlStyle] = None,
+        indent: Optional[bool] = None,
+        encoding: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        """Return serialized YAML as string."""
+        # Current way: use round trip through JSON to kick out non-JSON entities
+        # (more elegant: allow ruamel yaml to reuse defined custom JSON dumpers)
+        tmp = self.json_dict(**_mod_def_dump_args(kwargs))
+        # NOTE: yaml_dumps is defined by the used yaml mixin in the config
+        cfg = cast(YamlModelMixinConfig, self.__config__)
+        return cfg.yaml_dumps(
+            tmp,
+            # sort_keys=sort_keys, # does not work for some weird arg passing reason
+            default_flow_style=default_flow_style,
+            default_style=default_style,
+            encoding=encoding,
+            indent=indent,
+        )
 
     def __bytes__(self) -> bytes:
         """Serialize to JSON and return UTF-8 encoded bytes to be written in a file."""
@@ -69,8 +106,8 @@ class BaseModelPlus(
 
 
 class SchemaBase(BaseModelPlus):
-    __constants__: ClassVar[Set[str]]
-    """Constant model fields, added with (derivatives of) the @const decorator."""
+    __constants__: ClassVar[Dict[str, Any]]
+    """Constant model fields, usually added with a decorator, ignored on input."""
 
     __overrides__: ClassVar[Set[str]]
     """Field names explicitly overriding inherited field type.
@@ -80,6 +117,15 @@ class SchemaBase(BaseModelPlus):
 
     __types_checked__: ClassVar[bool]
     """Helper flag used by check_overrides to avoid re-checking."""
+
+    @root_validator(pre=True)
+    def override_consts(cls, values):
+        """Override/add defined schema constants.
+
+        They must be present on dump, but are ignored on load.
+        """
+        values.update(cls.__constants__)
+        return values
 
 
 class SchemaMeta(DynEncoderModelMeta):
@@ -108,9 +154,9 @@ class SchemaMeta(DynEncoderModelMeta):
             self.Plugin = None
 
         self.__overrides__ = set()
-        self.__constants__ = set.union(
-            set(), *(getattr(b, "__constants__", set()) for b in bases)
-        )
+        self.__constants__ = {}
+        for b in bases:
+            self.__constants__.update(getattr(b, "__constants__", {}))
 
         self.__types_checked__ = False
 
@@ -209,6 +255,8 @@ class PartialSchema(DeepPartialModel, SchemaBase):
     Needed for harvesters to work (which can provide validated but partial metadata).
     """
 
+    __constants__: ClassVar[Dict[str, Any]] = {}
+
     # MetadataSchema-specific adaptations:
     @classmethod
     @overrides
@@ -219,7 +267,7 @@ class PartialSchema(DeepPartialModel, SchemaBase):
     @overrides
     def _get_fields(cls, obj):
         # exclude the "annotated" fields that we support
-        constants = obj.__dict__.get("__constants__", set())
+        constants = obj.__dict__.get("__constants__", {}).keys()
         return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
 
     @classmethod
@@ -293,14 +341,15 @@ def check_overrides(schema: Type[MetadataSchema]):
     for fname in undecl_override:
         hint, parent_hint = hints[fname], base_hints[fname]
         if not issubtype(hint, parent_hint):
-            msg = f"""{schema}:
-The assigned type for '{fname}'
+            msg = f"""{schema}: The type assigned to field '{fname}'
     {hint}
 does not look like a valid subtype of the inherited type
     {parent_hint}
+from
+    {cast(MetadataSchema, schema.__base__).Fields[fname]._origin_name}
 
 If you are ABSOLUTELY sure that this is a false alarm,
 use the @overrides decorator to silence this error
-and live with the burden of responsibility.
+and live forever with the burden of responsibility.
 """
             raise TypeError(msg)
