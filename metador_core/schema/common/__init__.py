@@ -106,8 +106,8 @@ class Pixels(NumValue):
 
 # ----
 
-FileMeta: Any = schemas["core.file"]
-DirMeta: Any = schemas["core.dir"]
+FileMeta: Any = schemas.get("core.file", (0, 1, 0))
+DirMeta: Any = schemas.get("core.dir", (0, 1, 0))
 
 
 @make_mandatory("name", "abstract", "dateCreated")

@@ -1,12 +1,18 @@
 """Schemas needed for the plugin system."""
 from __future__ import annotations
 
-from typing import ClassVar, Dict, List, Literal, Optional, Protocol, Set
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
 
 from pydantic import AnyHttpUrl, ValidationError, create_model
 
 from .core import BaseModelPlus, MetadataSchema
 from .types import NonEmptyStr, SemVerTuple
+
+
+class IsPlugin(Protocol):
+    """A Plugin has a Plugin inner class with plugin infos."""
+
+    Plugin: ClassVar[Any]
 
 
 class PluginRef(MetadataSchema):

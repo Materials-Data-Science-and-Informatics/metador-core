@@ -36,7 +36,7 @@ class PGPluginGroup(wrapt.ObjectProxy):
         """Get a registered plugin group by name."""
         if key == PG_GROUP_NAME:
             return self
-        if grp_cls := self.__wrapped__.get(key):
+        if grp_cls := self.__wrapped__._get_unsafe(key):
             # now if it was not existing, it is + stored in _self_groups
             return cast(S, self._self_groups.get(grp_cls.Plugin.name))
 

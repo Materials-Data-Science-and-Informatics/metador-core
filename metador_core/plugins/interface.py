@@ -11,7 +11,6 @@ from typing import (
     Iterable,
     KeysView,
     Optional,
-    Protocol,
     Tuple,
     Type,
     TypeVar,
@@ -22,7 +21,10 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
-from ..schema.plugins import PluginBase, PluginPkgMeta
+from metador_core.schema.types import SemVerTuple
+
+from ..schema.core import UndefVersion
+from ..schema.plugins import IsPlugin, PluginBase, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
 from .entrypoints import get_group, pkg_meta
 
@@ -95,10 +97,6 @@ class PluginGroupMeta(type):
         self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
 
 
-class IsPlugin(Protocol):
-    Plugin: ClassVar[Any]
-
-
 T = TypeVar("T", bound=IsPlugin)
 
 
@@ -157,7 +155,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         return dict(self._PKG_META)
 
     def fullname(self, ep_name: str) -> PluginRef:
-        plugin = self[ep_name]
+        plugin = self._get_unsafe(ep_name)
         return self.PluginRef(name=ep_name, version=plugin.Plugin.version)
 
     def provider(self, ep_name: str) -> PluginPkgMeta:
@@ -192,26 +190,42 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
 
     @overload
-    def get(self, key: str) -> Optional[Type[T]]:
+    def get(self, key: str, version: Optional[SemVerTuple] = None) -> Optional[Type[T]]:
         ...
 
     @overload
-    def get(self, key: PRX) -> Optional[PRX]:
+    def get(self, key: PRX, version: Optional[SemVerTuple] = None) -> Optional[PRX]:
         ...
 
-    def get(self, key: Union[str, PRX]) -> Union[Type[T], PRX, None]:
+    def get(
+        self, key: Union[str, PRX], version: Optional[SemVerTuple] = None
+    ) -> Union[Type[T], PRX, None]:
         passed_str = isinstance(key, str)
         key_: str = key if passed_str else key.Plugin.name  # type: ignore
-        if key_ not in self:
-            return None  # no such plugin installed
 
-        self._ensure_is_loaded(key_)
-        ret = self._LOADED_PLUGINS[key_]
+        ret = self._get_unsafe(key_)
+
+        if not version:
+            ret = UndefVersion.mark(ret)
+        else:
+            # check for version compatibility:
+            cur_ver = ret.Plugin.ref(version=ret.Plugin.version)
+            req_ver = ret.Plugin.ref(version=version)
+            if not cur_ver.supports(req_ver):
+                msg = f"{ret.Plugin.name} {cur_ver} incompatible with required version {req_ver}!"
+                raise RuntimeError(msg)
 
         if passed_str:
             return cast(Type[T], ret)
         else:
             return ret
+
+    def _get_unsafe(self, key: str):
+        # returns any version that is installed
+        if key not in self:
+            return None  # no such plugin installed
+        self._ensure_is_loaded(key)
+        return self._LOADED_PLUGINS[key]
 
     def _ensure_is_loaded(self, key: str):
         """Load plugin from entrypoint if it is not loaded yet."""

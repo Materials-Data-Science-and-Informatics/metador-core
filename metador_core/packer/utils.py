@@ -50,7 +50,7 @@ def check_metadata_file(path: Path, **kwargs):
     return errs
 
 
-FileMeta = schemas["core.file"]
+FileMeta = schemas.get("core.file", (0, 1, 0))
 
 
 def embed_file(

@@ -151,7 +151,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
             return  # no parent schema listed -> nothing to do
 
         # check whether parent is known, compatible and really is a superclass
-        parent = self.get(parent_ref.name)
+        parent = self._get_unsafe(parent_ref.name)
         if not parent:
             msg = f"{name}: Parent schema '{parent_ref}' not found!"
             raise TypeError(msg)
@@ -175,7 +175,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         parent = curr.Plugin.parent_schema
         while parent is not None:
             ret.append(parent.name)
-            curr = self[parent.name]
+            curr = self._get_unsafe(parent.name)
             parent = curr.Plugin.parent_schema
 
         ret.reverse()

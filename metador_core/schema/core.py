@@ -128,20 +128,52 @@ class SchemaBase(BaseModelPlus):
         return values
 
 
+class MarkerMixin:
+    """Base class for Metador-internal marker mixins."""
+
+    @classmethod
+    def mark(cls, orig):
+        """Mark a class with this marker mixin."""
+        if cls is not MarkerMixin and issubclass(orig, cls):
+            raise TypeError(f"{cls} already marked by {cls}!")
+
+        return orig.__class__(orig.__name__, (cls, orig), {})
+
+
+class UndefVersion(MarkerMixin):
+    """Marker mixin for a plugin class to be marked as "unspecified version"."""
+
+    @classmethod
+    def mark(cls, orig):
+        ret = super().mark(orig)
+        if not ret.__dict__.get("Plugin"):
+            # make sure that the Plugin is actually inherited
+            # (normally this is prevented by the plugin metaclass)
+            ret.Plugin = orig.Plugin
+        return ret
+
+
 class SchemaMeta(DynEncoderModelMeta):
     """Metaclass for doing some magic."""
 
     def __new__(cls, name, bases, dct):
-        # only allow inheriting from other schemas
         for b in bases:
-            if not issubclass(b, SchemaBase):
+            # only allow inheriting from other schemas:
+            if not issubclass(b, (SchemaBase, MarkerMixin)):
                 raise TypeError(f"Base class {b} is not a MetadataSchema!")
 
-        # let's enforce single inheritance
-        if len(bases) > 1:
+            # prevent subclassing from classes that are plugins,
+            # but were imported without a fixed version
+            if b is not UndefVersion and issubclass(b, UndefVersion):
+                msg = f"Cannot inherit from {b.Plugin.name} of undefined version!"
+                raise TypeError(msg)
+
+        # enforce single inheritance
+        parent_schemas = tuple(b for b in bases if issubclass(b, SchemaBase))
+        if len(parent_schemas) > 1:
             raise TypeError("A schema can only have one parent schema!")
 
-        # prevent user from defining special names by hand
+        # prevent user from defining special fields by hand
         for atr in SchemaBase.__annotations__.keys():
             if atr in dct:
                 raise TypeError(f"{name}: Invalid attribute '{atr}'")
@@ -177,11 +209,13 @@ class SchemaMeta(DynEncoderModelMeta):
     @property
     def is_plugin(self):
         """Return whether this schema is a installed schema plugin."""
-        if info := self.__dict__.get("Plugin"):
-            from ..plugins import schemas
+        return bool(self.__dict__.get("Plugin"))
+        # too strict if we do magic mixins:
+        # if info := self.__dict__.get("Plugin"):
+        #     from ..plugins import schemas
 
-            return self is schemas.get(info.name)
-        return False
+        #     return self is schemas.get(info.name, info.version)
+        # return False
 
     @property  # type: ignore
     @cache
