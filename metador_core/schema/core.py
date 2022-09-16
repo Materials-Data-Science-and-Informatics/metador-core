@@ -336,12 +336,16 @@ def check_overrides(schema: Type[MetadataSchema]):
     for fname in undecl_override:
         hint, parent_hint = hints[fname], base_hints[fname]
         if not issubtype(hint, parent_hint):
-            msg = f"""{schema}: The type assigned to field '{fname}'
-    {hint}
-does not look like a valid subtype of the inherited type
-    {parent_hint}
-from
-    {cast(MetadataSchema, schema.__base__).Fields[fname]._origin_name}
+            msg = f"""The type assigned to field '{fname}'
+in   {schema}:
+
+  {hint}
+
+does not look like a valid subtype of the inherited type:
+
+  {parent_hint}
+
+from {schema.__base__}
 
 If you are ABSOLUTELY sure that this is a false alarm,
 use the @overrides decorator to silence this error

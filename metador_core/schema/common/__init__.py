@@ -117,7 +117,6 @@ class BibMeta(DirMeta):
     class Plugin:
         name = "core.bib"
         version = (0, 1, 0)
-        parent_schema = DirMeta.Plugin.ref(version=(0, 1, 0))
 
     author: List[Person]
     """List of authors (creators of the actual content)."""
@@ -135,7 +134,6 @@ class ImageFileMeta(FileMeta):
     class Plugin:
         name = "core.imagefile"
         version = (0, 1, 0)
-        parent_schema = FileMeta.Plugin.ref(version=(0, 1, 0))
 
     width: Pixels
     """Width of the image in pixels."""

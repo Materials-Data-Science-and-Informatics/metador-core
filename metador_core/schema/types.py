@@ -20,7 +20,7 @@ SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 
 
 # we use that instead of NonEmpty[str] so we can subclass more flexibly:
-class NonEmptyStr(FullMatch, pattern=".+"):
+class NonEmptyStr(FullMatch, pattern=r"\s*\S.*"):
     """Non-empty string."""
 
 

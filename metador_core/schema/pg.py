@@ -12,13 +12,20 @@ SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
 
 class SchemaPlugin(PluginBase):
-    parent_schema: Optional[PGSchema.PluginRef]
-    """Declares a parent schema plugin.
+    """Schema-specific Plugin section."""
 
-    By declaring a parent schema you agree to the following contract:
-    Any data that can be loaded using this schema MUST also be
-    loadable by the parent schema (with possible information loss).
+
+def _infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]:
+    """Return closest base schema that is a plugin, or None.
+
+    This allows to skip over intermediate schemas and bases that are not plugins.
     """
+    return next(
+        filter(
+            lambda c: issubclass(c, MetadataSchema) and c.is_plugin, plugin.__mro__[1:]
+        ),
+        None,
+    )
 
 
 class PGSchema(pg.PluginGroup[MetadataSchema]):
@@ -47,45 +54,44 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
       - default classes supported by pydantic (e.g. `enum.Enum`, `datetime`, etc.)
       - constrained types defined using the `phantom` package
       - valid schema classes (subclasses of `MetadataSchema`)
+
     * `Optional` is for values that are semantically *missing*,
       You must not assume that a `None` value represents anything else than that.
+
     * Prefer `Set` over `List` when order is irrelevant and duplicates are not needed
+
     * Avoid using plain `Dict`, always define a schema instead if you know the keys,
       unless you really need to "pass through" whatever is given, which is usually
       not necessary for schemas that you design from scratch.
+
     * Prefer types from `phantom` over using pydantic `Field` settings for expressing
       simple value constraints (e.g. minimal/maximal value or collection length, etc.),
       because `phantom` types can be subclassed to narrow them down.
+
     * In general, avoid using `Field` at all, except for defining an `alias` for
       attributes that are not valid as Python variables (e.g. `@id` or `$schema`).
+
     * When using `Field`, make sure to annotate it with `typing_extensions.Annotated`,
       instead of assigning the `Field` object to the field name.
 
 
     Rules for schema versioning:
 
-    All schemas must be subclass of `MetadataSchema` and also subclass of the
-    parent schema plugin declared as `parent_schema` (if defined).
+    All schemas must be direct or indirect subclass of `MetadataSchema`.
 
     Semantic versioning (MAJOR, MINOR, PATCH) is to be followed.
-    For schemas, this roughly translates to:
+    Bumping a version component means incrementing it and resetting the
+    later ones to 0. When updating a schema, you must bump:
 
-    If you do not modify the set of parsable instances by your changes,
-    you may increment only PATCH.
+    * PATCH, if you do not modify the set of parsable instances,
 
-    If your changes strictly increase parsable instances, that is,
-    your new version can parse older metadata of the same MAJOR,
-    you may increment only MINOR (resetting PATCH to 0).
+    * MINOR, if if your changes strictly increase parsable instances,
 
-    If your changes could make some older metadata invalid,
-    you must increment MAJOR (resetting MINOR and PATCH to 0).
+    * MAJOR otherwise, i.e. some older metadata might not be valid anymore.
 
-    If you add, remove or change the name of a parent schema,
-    you must increment MAJOR.
-
-    If you change the version in the `parent_schema` to a version
-    that with higher X (MAJOR, MINOR or PATCH), the version
-    of your schema must be incremented in X as well.
+    If you update a nested or inherited schema to a version
+    with higher X (MAJOR, MINOR or PATCH), the version
+    of your schema must be bumped in X as well.
 
 
     Rules for schema subclassing:
@@ -109,10 +115,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     Try expressing field value restrictions by:
 
     * removing alternatives from a `Union`
-    * using a subclass of a schema or `phantom` type used in the parent
+    * using a subclass of a schema or `phantom` type that was used in the parent
 
-    These can be statically type-checked by e.g. mypy most of the time.
-
+    These can be automatically checked most of the time.
     """
 
     class Plugin:
@@ -122,16 +127,17 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
 
-    def plugin_deps(self, plugin):
-        if p := plugin.Plugin.parent_schema:
-            return {(self.name, p.name)}
-
     def __post_init__(self):
+        self._parent_schema: Dict[
+            Type[MetadataSchema], Optional[Type[MetadataSchema]]
+        ] = {}
         self._parents: Dict[str, List[str]] = {}  # base plugins
         self._children: Dict[str, Set[str]] = {}  # subclass plugins
 
         # used schemas inside schemas
-        self._field_types: Dict[MetadataSchema, Dict[str, Set[MetadataSchema]]] = {}
+        self._field_types: Dict[
+            Type[MetadataSchema], Dict[str, Set[Type[MetadataSchema]]]
+        ] = {}
         self._subschemas: Dict[MetadataSchema, Set[MetadataSchema]] = {}
 
         # partial schema classes
@@ -139,44 +145,21 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
+        # infer the parent schema plugin, if any
+        self._parent_schema[plugin] = _infer_parent(plugin)
         # overrides of inherited fields are valid?
         check_types(plugin)
-        # valid claimed parent plugin schema?
-        self._check_parent(name, plugin)
-
-    def _check_parent(self, name: str, plugin: Type[MetadataSchema]):
-        """Sanity-checks for possibly defined parent schema."""
-        parent_ref = plugin.Plugin.parent_schema
-        if parent_ref is None:
-            return  # no parent schema listed -> nothing to do
-
-        # check whether parent is known, compatible and really is a superclass
-        parent = self._get_unsafe(parent_ref.name)
-        if not parent:
-            msg = f"{name}: Parent schema '{parent_ref}' not found!"
-            raise TypeError(msg)
-
-        inst_parent_ref = self.fullname(parent_ref.name)
-        if not inst_parent_ref.supports(parent_ref):
-            msg = f"{name}: Installed parent schema '{parent_ref.name}' version incompatible "
-            msg += f"(has: {inst_parent_ref.version}, needs: {parent_ref.version})!"
-            raise TypeError(msg)
-
-        if not issubclass(plugin, parent):
-            msg = f"{name}: {plugin} is not subclass of "
-            msg += f"claimed parent schema {parent} ({parent_ref})!"
-            raise TypeError(msg)
 
     def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
         # NOTE: schemas must be already loaded
         schema_name = plugin.Plugin.name
         ret = [schema_name]
         curr = plugin
-        parent = curr.Plugin.parent_schema
+        parent = self._parent_schema[curr]
         while parent is not None:
-            ret.append(parent.name)
-            curr = self._get_unsafe(parent.name)
-            parent = curr.Plugin.parent_schema
+            ret.append(parent.Plugin.name)
+            curr = self._get_unsafe(parent.Plugin.name)
+            parent = self._parent_schema[curr]
 
         ret.reverse()
         return ret

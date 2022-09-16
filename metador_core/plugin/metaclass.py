@@ -110,7 +110,7 @@ class PluginMetaclassMixin(type):
         # prevent inheriting from a plugin accessed without stating a version
         for b in bases:
             if UndefVersion.is_marked(b):
-                msg = f"Cannot inherit from plugin '{b.Plugin.name}' of unspecified version!"
+                msg = f"{name}: Cannot inherit from plugin '{b.Plugin.name}' of unspecified version!"
                 raise TypeError(msg)
 
         # prevent inheriting inner Plugin class by setting it to None
