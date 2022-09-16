@@ -32,9 +32,22 @@ interfaces and specific plugin development topics are provided [here](./tutorial
 
 For a first taste, you can install this package just as any other package into your
 current Python environment using:
+
+<!--
+old install link based on https:
+metador-core@git+https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
+-->
+
 ```
-$ pip install metador-core@git+https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
+$ pip install git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
 ```
+
+or if you are adding it as a dependency into your poetry project:
+
+```
+$ poetry add git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
+```
+
 As usual, it is highly recommended that you use a
 [virtual environment](https://stackoverflow.com/questions/41573587/what-is-the-difference-between-venv-pyvenv-pyenv-virtualenv-virtualenvwrappe)
 to ensure isolation of dependencies between unrelated projects.
@@ -64,7 +77,7 @@ in order to contribute.
 
 Then you can run the following lines to setup the project and install the package:
 ```
-$ git clone https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
+$ git clone git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
 $ cd metador-core
 $ poetry install
 ```
