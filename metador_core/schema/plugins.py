@@ -75,7 +75,10 @@ class PluginBase(BaseModelPlus):
     version: SemVerTuple
     requires: List[str] = []
 
-    def ref(self, *, version: SemVerTuple):
+    def version_string(self):
+        return ".".join(map(str, self.version))
+
+    def ref(self, *, version: Optional[SemVerTuple] = None):
         from ..plugins import plugingroups
 
         return plugingroups[self.group].PluginRef(
@@ -129,7 +132,7 @@ class PluginPkgMeta(MetadataSchema):
         # avoid circular import by importing here
         from importlib_metadata import distribution
 
-        from ..plugins.entrypoints import DistMeta, distmeta_for
+        from ..plugin.entrypoints import DistMeta, distmeta_for
 
         dm: DistMeta = distmeta_for(distribution(package_name))
         # from ..plugin import plugingroups

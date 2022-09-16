@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, List, TypeVar, cast
 
 import wrapt
 
-from .interface import PG_GROUP_NAME, PluginGroup
+from .plugin.interface import PG_GROUP_NAME, PluginGroup
 
 S = TypeVar("S", bound=PluginGroup)
 
@@ -18,7 +18,7 @@ class PGPluginGroup(wrapt.ObjectProxy):
 
     def __init__(self):
         # initialize the meta-plugingroup
-        from .interface import _plugin_groups, create_pg
+        from .plugin.interface import _plugin_groups, create_pg
 
         create_pg(PluginGroup)
         # wire it up with this wrapper
@@ -44,6 +44,7 @@ class PGPluginGroup(wrapt.ObjectProxy):
 # access to available plugin groups:
 
 plugingroups: PGPluginGroup = PGPluginGroup()
+plugingroup_classes = plugingroups.__wrapped__
 
 # help mypy (obviously only for groups in this package):
 if TYPE_CHECKING:

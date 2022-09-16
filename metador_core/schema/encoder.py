@@ -82,7 +82,7 @@ def _dynamize_encoder(encoder_func):
     return wrapped_encoder
 
 
-class DynJsonEncoder(type):
+class DynJsonEncoderMetaMixin(type):
     """Metaclass mixin to first look in dynamic encoder registry.
 
     Combine this with (a subclass of) `ModelMetaClass` and use it for your custom base model.
@@ -93,5 +93,5 @@ class DynJsonEncoder(type):
         self.__json_encoder__ = staticmethod(_dynamize_encoder(self.__json_encoder__))
 
 
-class DynEncoderModelMeta(DynJsonEncoder, ModelMetaclass):
+class DynEncoderModelMetaclass(DynJsonEncoderMetaMixin, ModelMetaclass):
     """Set this metaclass for your custom base model to enable dynamic encoders."""

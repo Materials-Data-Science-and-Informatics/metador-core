@@ -11,7 +11,8 @@ from pydantic import BaseModel, root_validator
 from pydantic_yaml import YamlModelMixin
 from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
 
-from .encoder import DynEncoderModelMeta
+from ..plugin.metaclass import PluginMetaclassMixin
+from .encoder import DynEncoderModelMetaclass
 from .inspect import FieldInspector, LiftedRODict, make_field_inspector
 from .parser import ParserMixin
 from .partial import DeepPartialModel
@@ -35,7 +36,7 @@ def _mod_def_dump_args(kwargs):
 
 
 class BaseModelPlus(
-    ParserMixin, YamlModelMixin, BaseModel, metaclass=DynEncoderModelMeta
+    ParserMixin, YamlModelMixin, BaseModel, metaclass=DynEncoderModelMetaclass
 ):
     """Extended pydantic BaseModel with some good defaults.
 
@@ -128,49 +129,16 @@ class SchemaBase(BaseModelPlus):
         return values
 
 
-class MarkerMixin:
-    """Base class for Metador-internal marker mixins."""
-
-    @classmethod
-    def mark(cls, orig):
-        """Mark a class with this marker mixin."""
-        if cls is not MarkerMixin and issubclass(orig, cls):
-            raise TypeError(f"{cls} already marked by {cls}!")
-
-        return orig.__class__(orig.__name__, (cls, orig), {})
-
-
-class UndefVersion(MarkerMixin):
-    """Marker mixin for a plugin class to be marked as "unspecified version"."""
-
-    @classmethod
-    def mark(cls, orig):
-        ret = super().mark(orig)
-        if not ret.__dict__.get("Plugin"):
-            # make sure that the Plugin is actually inherited
-            # (normally this is prevented by the plugin metaclass)
-            ret.Plugin = orig.Plugin
-        return ret
-
-
-class SchemaMeta(DynEncoderModelMeta):
+class SchemaMagic(DynEncoderModelMetaclass):
     """Metaclass for doing some magic."""
 
     def __new__(cls, name, bases, dct):
         for b in bases:
             # only allow inheriting from other schemas:
-            if not issubclass(b, (SchemaBase, MarkerMixin)):
+            if not issubclass(b, SchemaBase):
                 raise TypeError(f"Base class {b} is not a MetadataSchema!")
 
-            # prevent subclassing from classes that are plugins,
-            # but were imported without a fixed version
-            if b is not UndefVersion and issubclass(b, UndefVersion):
-                msg = f"Cannot inherit from {b.Plugin.name} of undefined version!"
-                raise TypeError(msg)
-
-        # enforce single inheritance
-        parent_schemas = tuple(b for b in bases if issubclass(b, SchemaBase))
-        if len(parent_schemas) > 1:
+        if len(bases) > 1:
             raise TypeError("A schema can only have one parent schema!")
 
         # prevent user from defining special fields by hand
@@ -206,17 +174,6 @@ class SchemaMeta(DynEncoderModelMeta):
 
     # ---- for public use ----
 
-    @property
-    def is_plugin(self):
-        """Return whether this schema is a installed schema plugin."""
-        return bool(self.__dict__.get("Plugin"))
-        # too strict if we do magic mixins:
-        # if info := self.__dict__.get("Plugin"):
-        #     from ..plugins import schemas
-
-        #     return self is schemas.get(info.name, info.version)
-        # return False
-
     @property  # type: ignore
     @cache
     def Fields(self: Any) -> Any:
@@ -236,7 +193,11 @@ class SchemaMeta(DynEncoderModelMeta):
         return PartialSchema._get_partial(self)
 
 
-class MetadataSchema(SchemaBase, metaclass=SchemaMeta):
+class SchemaMetaclass(PluginMetaclassMixin, SchemaMagic):
+    """Combine schema magic with general plugin magic."""
+
+
+class MetadataSchema(SchemaBase, metaclass=SchemaMetaclass):
     """Extends Pydantic models with custom serializers and functions."""
 
     Plugin: ClassVar[Type]  # user-defined inner class (for schema plugins)
@@ -263,7 +224,7 @@ class SchemaFieldInspector(FieldInspector):
         self._origin_name = f"{og.__module__}.{og.__qualname__}"
         if og.is_plugin:
             self._origin_name += (
-                f" (plugin: {og.Plugin.name} {'.'.join(map(str, og.Plugin.version))})"
+                f" (plugin: {og.Plugin.name} {og.Plugin.version_string()})"
             )
 
         # access to sub-entities/schemas:

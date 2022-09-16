@@ -10,7 +10,7 @@ from pydantic import Field
 from typing_extensions import Annotated, TypeAlias
 
 from ..container import MetadorNode
-from ..plugins import interface as pg
+from ..plugin import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
 from ..schema.plugins import PluginRef

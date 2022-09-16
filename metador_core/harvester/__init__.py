@@ -19,7 +19,7 @@ from overrides import overrides
 from pydantic import Extra, ValidationError
 from typing_extensions import TypeAlias
 
-from ..plugins import interface as pg
+from ..plugin import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
 from ..schema.core import BaseModelPlus, PartialSchema

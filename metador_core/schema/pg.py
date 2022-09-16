@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Set, Type
 
-from ..plugins import interface as pg
+from ..plugin import interface as pg
 from .core import MetadataSchema, PartialSchema, check_types
 from .plugins import PluginBase
 

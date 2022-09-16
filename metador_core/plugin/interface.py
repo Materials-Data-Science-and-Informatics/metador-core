@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from abc import ABCMeta
 from importlib.metadata import EntryPoint
 from typing import (
     Any,
@@ -23,10 +24,10 @@ from typing_extensions import TypeAlias
 
 from metador_core.schema.types import SemVerTuple
 
-from ..schema.core import UndefVersion
 from ..schema.plugins import IsPlugin, PluginBase, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
 from .entrypoints import get_group, pkg_meta
+from .metaclass import UndefVersion
 
 PG_GROUP_NAME = "plugingroup"
 
@@ -89,8 +90,9 @@ class PGPlugin(PluginBase):
     plugin_class: Optional[Any] = object
 
 
-class PluginGroupMeta(type):
-    """Metaclass that will check a plugin group on creation."""
+# TODO: plugin group inheritance is not checked yet because it adds complications
+class PluginGroupMeta(ABCMeta):
+    """Metaclass to initialize some things on creation."""
 
     def __init__(self, name, bases, dct):
         self.Plugin.plugin_info_class.group = self.Plugin.name
@@ -206,7 +208,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         ret = self._get_unsafe(key_)
 
         if not version:
-            ret = UndefVersion.mark(ret)
+            ret = UndefVersion.mark_class(ret)
         else:
             # check for version compatibility:
             cur_ver = ret.Plugin.ref(version=ret.Plugin.version)
@@ -249,7 +251,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def _load_plugin(self, name: str, plugin):
         """Run checks and finalize loaded plugin."""
         # print("load", self.name, name, plugin)
-        from . import plugingroups
+        from ..plugins import plugingroups
 
         # run inner Plugin class checks (with possibly new Fields cls)
         if not plugin.__dict__.get("Plugin"):

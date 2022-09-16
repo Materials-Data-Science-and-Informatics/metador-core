@@ -13,9 +13,8 @@ from metador_core.ih5.manifest import IH5MFRecord
 
 from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
-from ..plugins import harvesters
-from ..plugins import interface as pg
-from ..plugins import schemas
+from ..plugin import interface as pg
+from ..plugins import harvesters, schemas
 from ..schema.core import MetadataSchema
 from ..schema.plugins import PluginPkgMeta
 from .diff import DirDiff
