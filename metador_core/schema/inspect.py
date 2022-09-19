@@ -1,7 +1,7 @@
 from collections import ChainMap
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import Any, Callable, Dict, List, Optional, Set, Type
+from typing import Any, Callable, Dict, List, Optional, Set, Type, Union
 
 from pydantic import BaseModel
 from simple_parsing.docstring import get_attribute_docstring
@@ -14,59 +14,61 @@ class LiftedRODict(type):
 
     Mostly for aesthetic reasons and to be used for things
     where the dict is actually a fixed lookup table.
+
+    We don't provide explicit `keys`/`values`/`items`, because
+    these could be key names in the dict.
+
+    You can use `iter` to go through the keys and use dict-like
+    access, if dynamic iteration is needed.
     """
 
-    _keys: Optional[List[str]] = None
     _dict: Dict[str, Any]
-    _repr: str = ""
+    """The underlying dict."""
+
+    _keys: Optional[List[str]] = None
+    """Optionally, list of keys in desired order."""
+
+    _repr: Union[str, Callable] = ""
+    """Optional custom repr string or function."""
 
     def __repr__(self):
+        # choose best representation based on configuration
         if self._repr:
             if isinstance(self._repr, str):
                 return self._repr
             else:
                 return self._repr(self)
-
-        elif self._keys:
+        if self._keys:
             return repr(self._keys)
         return repr(list(self._dict.keys()))
 
     def __dir__(self):
+        # helpful for tab completion
         return list(self._dict.keys())
 
-    def __setattr__(self, key, value):
-        raise UnsupportedOperation
+    def __bool__(self):
+        return bool(self._dict)
 
-    def __getattr__(self, key):
-        if s := self._dict.get(key):
-            return s
-        raise AttributeError(key)
-
-    def __getitem__(self, key):
-        return self._dict[key]
-
-    def keys(self):
-        if self._keys:
-            return list(self._keys)
-        return self._dict.keys()
-
-    def values(self):
-        if self._keys:
-            return (self._dict[k] for k in self.keys())
-        return self._dict.values()
-
-    def items(self):
-        if self._keys:
-            return ((k, self._dict[k]) for k in self.keys())
-        return self._dict.items()
+    def __contains__(self, key):
+        return key in self._dict
 
     def __iter__(self):
         if self._keys:
             return iter(self._keys)
         return iter(self._dict)
 
-    def __bool__(self):
-        return bool(self._dict)
+    def __getitem__(self, key):
+        return self._dict[key]
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as e:
+            raise AttributeError(str(e))
+
+    def __setattr__(self, key, value):
+        # this is supposed to be read-only
+        raise UnsupportedOperation
 
 
 @dataclass
@@ -110,6 +112,7 @@ def make_field_inspector(
         for k, v in get_annotations(model).items()
         if not key_filter or key_filter(k)
     }
+
     # inspectors for fields declared in the given model (for inherited, will reuse/create parent inspectors)
     new_inspectors = {k: i_cls(model, k, v) for k, v in field_hints.items()}
     # manually compute desired traversal order (from newest overwritten to oldest inherited fields)
@@ -120,9 +123,10 @@ def make_field_inspector(
     covered_keys: Set[str] = set()
     ordered_keys: List[str] = []
     for d in inspectors:
-        rem_keys = set(d.keys()) - covered_keys
+        rem_keys = set(iter(d)) - covered_keys
         covered_keys.update(rem_keys)
-        ordered_keys += [k for k in d.keys() if k in rem_keys]
+        ordered_keys += [k for k in d if k in rem_keys]
+
     # construct and return the class
     return LiftedRODict(
         f"{model.__name__}.{prop_name}",
@@ -130,7 +134,7 @@ def make_field_inspector(
         dict(
             _keys=ordered_keys,
             _dict=ChainMap(*inspectors),
-            _repr=lambda self: "\n".join(map(str, self.values())),
+            _repr=lambda self: "\n".join(map(str, (self[k] for k in self))),
         ),
     )
 

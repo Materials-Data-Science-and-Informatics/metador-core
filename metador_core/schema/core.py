@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 from collections import ChainMap
+from functools import partial
 from typing import Any, ClassVar, Dict, Optional, Set, Type, cast
 
+import wrapt
 from overrides import overrides
 from pydantic import BaseModel, root_validator
 from pydantic_yaml import YamlModelMixin
 from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
 
-from ..plugin.metaclass import PluginMetaclassMixin
+from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
 from .encoder import DynEncoderModelMetaclass
 from .inspect import FieldInspector, LiftedRODict, make_field_inspector
 from .parser import ParserMixin
@@ -21,8 +23,11 @@ from .utils import (
     field_model_types,
     get_type_hints,
     is_classvar,
+    is_instance_of,
     is_public_name,
+    is_subclass_of,
     issubtype,
+    traverse_typehint,
 )
 
 
@@ -174,20 +179,18 @@ class SchemaMagic(DynEncoderModelMetaclass):
 
     # ---- for public use ----
 
-    @property  # type: ignore
-    @cache
+    @property
     def Fields(self: Any) -> Any:
         """Access the field introspection interface."""
-        return make_field_inspector(
-            self,
-            "Fields",
-            bound=MetadataSchema,
-            key_filter=lambda k: k in self.__fields__ and k not in self.__constants__,
-            i_cls=SchemaFieldInspector,
-        )
+        fields = make_schema_inspector(self)
+        # make sure that subschemas accessed in a schema without explicit version
+        # are also marked so we can check if someone uses them illegally
+        if issubclass(self, UndefVersion):
+            return WrappedLiftedDict(fields, UndefVersionFieldInspector)
+        else:
+            return fields
 
     @property
-    # @cache not needed, partials take care of that themselves
     def Partial(self):
         """Access the partial schema based on the current schema."""
         return PartialSchema._get_partial(self)
@@ -203,7 +206,11 @@ class MetadataSchema(SchemaBase, metaclass=SchemaMetaclass):
     Plugin: ClassVar[Type]  # user-defined inner class (for schema plugins)
 
 
+# ----
+
+
 def _indent_text(txt, prefix="\t"):
+    """Add indentation at new lines in given string."""
     return "\n".join(map(lambda l: f"{prefix}{l}", txt.split("\n")))
 
 
@@ -216,7 +223,7 @@ class SchemaFieldInspector(FieldInspector):
     schemas: LiftedRODict
     _origin_name: str
 
-    def __init__(self, model: Type[BaseModel], name: str, hint: str):
+    def __init__(self, model: Type[MetadataSchema], name: str, hint: str):
         super().__init__(model, name, hint)
 
         # to show plugin name and version in case of registered plugin schemas:
@@ -228,9 +235,9 @@ class SchemaFieldInspector(FieldInspector):
             )
 
         # access to sub-entities/schemas:
-        subschemas = set(field_model_types(og.__fields__[name], bound=MetadataSchema))
+        subschemas = list(field_model_types(og.__fields__[name], bound=MetadataSchema))
         self.schemas = LiftedRODict(
-            "Schemas", (), dict(_dict={s.__name__: s for s in subschemas})
+            "Schemas", (), dict(_dict={s.__name__: s for s in set(subschemas)})
         )
 
     def __repr__(self) -> str:
@@ -238,10 +245,64 @@ class SchemaFieldInspector(FieldInspector):
         if self.description:
             desc_str = f"description:\n{_indent_text(self.description)}\n"
         schemas_str = (
-            f"schemas: {', '.join(self.schemas.keys())}\n" if self.schemas else ""
+            f"schemas: {', '.join(iter(self.schemas))}\n" if self.schemas else ""
         )
         info = f"type: {str(self.type)}\norigin: {self._origin_name}\n{schemas_str}{desc_str}"
         return f"{self.name}\n{_indent_text(info)}"
+
+
+def _is_schema_field(schema, key: str):
+    """Return whether a given key name is a non-constant model field."""
+    return key in schema.__fields__ and key not in schema.__constants__
+
+
+@cache
+def make_schema_inspector(schema):
+    return make_field_inspector(
+        schema,
+        "Fields",
+        bound=MetadataSchema,
+        key_filter=partial(_is_schema_field, schema),
+        i_cls=SchemaFieldInspector,
+    )
+
+
+# ----
+# some wrappers needed to "infect" nested schemas with UndefVersion
+
+
+class WrappedLiftedDict(wrapt.ObjectProxy):
+    """Wrap values returned by a LiftedRODict."""
+
+    def __init__(self, obj, wrapperfun):
+        if not isinstance(obj, LiftedRODict):
+            raise TypeError(f"{obj} is not a LiftedRODict!")
+        super().__init__(obj)
+        self._self_wrapperfun = wrapperfun
+
+    def __getitem__(self, key):
+        return self._self_wrapperfun(self.__wrapped__[key])
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as e:
+            raise AttributeError(str(e))
+
+    def __repr__(self):
+        return repr(self.__wrapped__)
+
+
+class UndefVersionFieldInspector(wrapt.ObjectProxy):
+    @property
+    def schemas(self):
+        return WrappedLiftedDict(self.__wrapped__.schemas, UndefVersion._mark_class)
+
+    def __repr__(self):
+        return repr(self.__wrapped__)
+
+
+# ----
 
 
 class PartialSchema(DeepPartialModel, SchemaBase):
@@ -308,7 +369,21 @@ def check_allowed_types(schema: Type[MetadataSchema]):
         if field[0] == "_":
             continue  # private field
         if not PartialSchema._is_mergeable_type(hint):
-            raise TypeError(f"{schema}: '{field}' type contains a forbidden pattern!")
+            raise TypeError(
+                f"{schema}:\n\ttype of '{field}' contains a forbidden pattern!"
+            )
+
+        # check that no nested schemas from undefVersion plugins are used in field definitions
+        # (the Plugin metaclass cannot check this, but it checks for inheritance)
+        if illegal := next(
+            filter(
+                is_subclass_of(UndefVersion),
+                filter(is_instance_of(type), traverse_typehint(hint)),
+            ),
+            None,
+        ):
+            msg = f"{schema}:\n\ttype of '{field}' contains an illegal subschema:\n\t\t{illegal}"
+            raise TypeError(msg)
 
 
 def is_pub_instance_field(schema, name, hint):

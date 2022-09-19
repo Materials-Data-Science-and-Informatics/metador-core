@@ -14,6 +14,17 @@ SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 class SchemaPlugin(PluginBase):
     """Schema-specific Plugin section."""
 
+    auxiliary: bool = False
+    """If set to True, the schema is considered auxiliary.
+
+    The consequence is that metadata objects based on this schema cannot be
+    attached to containers.
+
+    The intended for schema plugins that are too general or not self-contained,
+    but could be useful in a larger context, e.g. as a parent schema or nested
+    schema.
+    """
+
 
 class PGSchema(pg.PluginGroup[MetadataSchema]):
     """Interface to access installed schema plugins.

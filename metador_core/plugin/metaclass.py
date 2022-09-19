@@ -1,4 +1,4 @@
-# from typing import ClassVar, Type
+"""This module defines a metaclass that should be used for all plugin types."""
 
 
 class MarkerMixin:
@@ -13,14 +13,14 @@ class MarkerMixin:
         return f"__{cls.__name__}_unwrapped__"
 
     @classmethod
-    def is_marked(cls, c) -> bool:
+    def _is_marked(cls, c) -> bool:
         """Return whether `c` is proper subclass of this marker."""
         return c is not cls and issubclass(c, cls)
 
     @classmethod
-    def mark_class(cls, c):
+    def _mark_class(cls, c):
         """Mark a class with this marker mixin."""
-        if cls.is_marked(c):
+        if cls._is_marked(c):
             raise TypeError(f"{c} already marked by {cls}!")
 
         ret = c.__class__(c.__name__, (cls, c), {})
@@ -33,7 +33,8 @@ class MarkerMixin:
         return ret
 
     @classmethod
-    def unwrap(cls, c):
+    def _unwrap(cls, c):
+        """Return the original class, or None if given argument is not marked."""
         if issubclass(c, cls):
             return getattr(c, cls._fieldname())
         else:
@@ -41,15 +42,24 @@ class MarkerMixin:
 
 
 class UndefVersion(MarkerMixin):
-    """Marker for a plugin class retrieved with no specified version."""
+    """Marker for a plugin class retrieved with no specified version.
+
+    We have to do this crazy thing, because wrapt.ObjectProxy-wrapped
+    classes can be transparently derived, and what is even worse,
+    the derived class is not wrapped anymore.
+
+    The mixin subclass approach therefore makes more sense here, as
+    the metaclass then can check for its presence.
+    """
 
     @classmethod
-    def mark_class(cls, c):
+    def _mark_class(cls, c):
         # a plugin has a no non-None Plugin attribute -> wrong use
-        if not getattr(c, "Plugin", None):
-            raise TypeError(f"{c} does not look like a Plugin class!")
+        # NOTE: no, we also want to mark nested non plugins to prevent subclassing
+        # if not getattr(c, "Plugin", None):
+        #     raise TypeError(f"{c} does not look like a Plugin class!")
 
-        ret = super().mark_class(c)
+        ret = super()._mark_class(c)
 
         # make sure that the Plugin section *is* actually inherited,
         # (normally this is prevented by the plugin metaclass)
@@ -77,8 +87,9 @@ class PluginMetaclassMixin(type):
     """
 
     def __repr__(self):
-        if c := UndefVersion.unwrap(self):
-            # indicate UndefVersion marking, if present
+        # add plugin name and version to default class repr
+        if c := UndefVersion._unwrap(self):
+            # indicate the attached UndefVersion
             return f"{repr(c)} (version unspecified)"
         else:
             # indicate loaded plugin name and version
@@ -92,7 +103,8 @@ class PluginMetaclassMixin(type):
     @property
     def is_plugin(self):
         """Return whether this schema is a (possibly marked) installed schema plugin."""
-        c = UndefVersion.unwrap(self) or self  # get real underlying class
+        c = UndefVersion._unwrap(self) or self  # get real underlying class
+
         # check its exactly a registered plugin, if it has a Plugin section
         if info := c.__dict__.get("Plugin"):
             from ..schema.plugins import PluginBase
@@ -109,8 +121,12 @@ class PluginMetaclassMixin(type):
     def __new__(cls, name, bases, dct):
         # prevent inheriting from a plugin accessed without stating a version
         for b in bases:
-            if UndefVersion.is_marked(b):
-                msg = f"{name}: Cannot inherit from plugin '{b.Plugin.name}' of unspecified version!"
+            if UndefVersion._is_marked(b):
+                if b.is_plugin:
+                    ref = f"plugin '{b.Plugin.name}'"
+                else:
+                    ref = f"{UndefVersion._unwrap(b)} originating from a plugin"
+                msg = f"{name}: Cannot inherit from {ref} of unspecified version!"
                 raise TypeError(msg)
 
         # prevent inheriting inner Plugin class by setting it to None
