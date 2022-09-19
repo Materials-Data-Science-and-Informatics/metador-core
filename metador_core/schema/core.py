@@ -320,6 +320,19 @@ def is_pub_instance_field(schema, name, hint):
     )
 
 
+def infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]:
+    """Return closest base schema that is a plugin, or None.
+
+    This allows to skip over intermediate schemas and bases that are not plugins.
+    """
+    return next(
+        filter(
+            lambda c: issubclass(c, MetadataSchema) and c.is_plugin, plugin.__mro__[1:]
+        ),
+        None,
+    )
+
+
 def check_overrides(schema: Type[MetadataSchema]):
     """Check that fields are overridden to subtypes or explicitly declared as overridden."""
     hints = cast(Any, schema._typehints)
@@ -337,7 +350,7 @@ def check_overrides(schema: Type[MetadataSchema]):
         hint, parent_hint = hints[fname], base_hints[fname]
         if not issubtype(hint, parent_hint):
             msg = f"""The type assigned to field '{fname}'
-in   {schema}:
+in schema {schema}:
 
   {hint}
 
@@ -345,7 +358,7 @@ does not look like a valid subtype of the inherited type:
 
   {parent_hint}
 
-from {schema.__base__}
+from schema {cast(Any, infer_parent(schema)).Fields[fname]._origin_name}.
 
 If you are ABSOLUTELY sure that this is a false alarm,
 use the @overrides decorator to silence this error

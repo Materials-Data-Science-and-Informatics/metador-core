@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set, Type
 
 from ..plugin import interface as pg
-from .core import MetadataSchema, PartialSchema, check_types
+from .core import MetadataSchema, PartialSchema, check_types, infer_parent
 from .plugins import PluginBase
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
@@ -13,19 +13,6 @@ SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
 class SchemaPlugin(PluginBase):
     """Schema-specific Plugin section."""
-
-
-def _infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]:
-    """Return closest base schema that is a plugin, or None.
-
-    This allows to skip over intermediate schemas and bases that are not plugins.
-    """
-    return next(
-        filter(
-            lambda c: issubclass(c, MetadataSchema) and c.is_plugin, plugin.__mro__[1:]
-        ),
-        None,
-    )
 
 
 class PGSchema(pg.PluginGroup[MetadataSchema]):
@@ -146,7 +133,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
 
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
         # infer the parent schema plugin, if any
-        self._parent_schema[plugin] = _infer_parent(plugin)
+        self._parent_schema[plugin] = infer_parent(plugin)
         # overrides of inherited fields are valid?
         check_types(plugin)
 
