@@ -208,7 +208,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         ret = self._get_unsafe(key_)
 
         if not version:
-            ret = UndefVersion.mark_class(ret)
+            ret = UndefVersion._mark_class(ret)
         else:
             # check for version compatibility:
             cur_ver = ret.Plugin.ref(version=ret.Plugin.version)

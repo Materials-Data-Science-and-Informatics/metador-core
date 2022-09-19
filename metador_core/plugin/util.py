@@ -23,9 +23,11 @@ def is_notebook() -> bool:
 T = TypeVar("T", bound=IsPlugin)
 
 
-def register_in_group(pgroup: PluginGroup[T], plugin: Optional[Type[T]] = None):
+def register_in_group(
+    pgroup: PluginGroup[T], plugin: Optional[Type[T]] = None, violently: bool = False
+):
     """Register and load a plugin manually, without defining an entry point."""
-    if not is_notebook():
+    if not violently and not is_notebook():
         raise RuntimeError("This is not supposed to be used outside of notebooks!")
 
     def manual_register(plugin: Type[T]) -> Type[T]:

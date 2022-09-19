@@ -945,7 +945,12 @@ class MetadorMeta:
             )
 
         # get the correct installed plugin class (don't trust the user class!)
-        schema_class: Type[MetadataSchema] = schemas[schema_name]
+        schema_class: Type[MetadataSchema] = schemas._get_unsafe(schema_name)
+
+        # reject auxiliary schemas
+        if schema_class.Plugin.auxiliary:
+            msg = f"Cannot attach instances of auxiliary schema '{schema_name}' to a node!"
+            raise TypeError(msg)
 
         # handle and check the passed metadata
         if isinstance(value, schema_class):
