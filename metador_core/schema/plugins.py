@@ -1,6 +1,7 @@
 """Schemas needed for the plugin system."""
 from __future__ import annotations
 
+import json
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
 
 from pydantic import AnyHttpUrl, ValidationError, create_model
@@ -56,6 +57,9 @@ class PluginRef(MetadataSchema):
         # causing problems for equality based on __hash__
         return hash((self.group, self.name, self.version))
 
+    def __str__(self) -> str:
+        return self.json()  # no indent
+
     @classmethod
     def subclass_for(cls, group: str):
         # lit = Literal[group_name] # type: ignore
@@ -84,6 +88,14 @@ class PluginBase(BaseModelPlus):
         return plugingroups[self.group].PluginRef(
             name=self.name, version=version or self.version
         )
+
+    def __str__(self) -> str:
+        # pretty-print semver in user-facing representation
+        dct = dict(group=self.group, name=self.name, version=self.version_string())
+        dct.update(
+            self.json_dict(exclude_defaults=True, exclude={"name", "group", "version"})
+        )
+        return json.dumps(dct, indent=2)
 
     @classmethod
     def parse_info(cls, info, *, ep_name: str = ""):
@@ -125,6 +137,9 @@ class PluginPkgMeta(MetadataSchema):
     """Python package source location (pip-installable / git-clonable)."""
 
     plugins: Plugins = {}
+
+    def version_string(self):
+        return ".".join(map(str, self.version))
 
     @classmethod
     def for_package(cls, package_name: str) -> PluginPkgMeta:

@@ -137,6 +137,19 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         self._ENTRY_POINTS = entrypoints
         self.__post_init__()
 
+    def __repr__(self):
+        return f"<PluginGroup '{self.name}' {list(self.keys())}>"
+
+    def __str__(self):
+        def pg_line(name):
+            p = self.provider(name)
+            pkg = f"{p.name} {p.version_string()}"
+            pg = self._get_unsafe(name)
+            return f"\t'{name}' {pg.Plugin.version_string()} ({pkg})"
+
+        pgs = "\n".join(map(pg_line, self.keys()))
+        return f"Available '{self.name}' plugins:\n{pgs}"
+
     def __post_init__(self):
         if type(self) is PluginGroup:
             self._ENTRY_POINTS[PG_GROUP_NAME] = EntryPoint(
@@ -214,7 +227,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             cur_ver = ret.Plugin.ref(version=ret.Plugin.version)
             req_ver = ret.Plugin.ref(version=version)
             if not cur_ver.supports(req_ver):
-                msg = f"{ret.Plugin.name} {cur_ver} incompatible with required version {req_ver}!"
+                msg = f"{ret.Plugin.name}:\n\t{cur_ver}\nincompatible with required version\n\t{req_ver}"
                 raise RuntimeError(msg)
 
         if passed_str:

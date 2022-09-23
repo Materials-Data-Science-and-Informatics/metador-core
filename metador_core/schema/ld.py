@@ -1,7 +1,8 @@
 """Helpers to create pydantic models that parse into and (de-)serialize to JSON-LD."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, TypeVar, Union
+from collections import ChainMap
+from typing import Any, Dict, Mapping, Optional, TypeVar, Union
 
 from pydantic import Extra, Field
 from typing_extensions import Annotated, TypeAlias
@@ -11,25 +12,38 @@ from .decorators import add_const_fields
 from .types import NonEmptyStr
 
 
-def ld(**kwargs) -> Dict[str, Any]:
-    """Return dict where all passed argument names are prefixed with @."""
-    return {f"@{k}": v for k, v in kwargs.items() if v}
+def with_key_prefix(prefix: str, dct: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return new dict with all keys prefixed by `prefix`."""
+    return {f"{prefix}{k}": v for k, v in dct.items() if v is not None}
 
 
-def ld_type_decorator(context=None):
-    """Return LD schema decorator for given context.
+def ld_decorator(**presets):
+    """Return LD schema decorator with pre-set fields, e.g. `@context`.
 
-    By default will silently override any inherited `@context` and/or `@type`.
+    The returned decorator will attach the passed fields to a schema.
+
+    All additional fields passed to the decorator will also be added,
+    or override the default that is passed to this function.
+
+    Example usage:
+    Pass your `@context` as `context` to this decorator factory.
+    Use the returned decorator with `type` in order to
+    set both the `@context` and `@type` for a schema.
+
+    By default, will silently override any inherited
+    constant fields that already exist in the schema.
     """
 
-    def decorator(name: str, *, override: bool = True):
-        return add_const_fields(ld(context=context, type=name), override=override)
+    def decorator(schema=None, *, override: bool = True, **kwargs):
+        fields = with_key_prefix("@", ChainMap(kwargs, presets))
+        dec = add_const_fields(fields, override=override)
+        return dec if schema is None else dec(schema)
 
     return decorator
 
 
-ld_type = ld_type_decorator()
-"""Decorator to set @type without providing a context."""
+ld = ld_decorator()
+"""Decorator to add constant JSON-LD fields equal for all instances of a schema."""
 
 
 class LDIdRef(MetadataSchema):

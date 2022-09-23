@@ -16,7 +16,7 @@ from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
 
-from ..ld import LDOrRef, LDSchema, ld_type_decorator
+from ..ld import LDOrRef, LDSchema, ld_decorator
 from ..types import Duration, NonEmptyStr, Number
 
 URL = AnyHttpUrl
@@ -26,10 +26,10 @@ TimeOrDatetime = Union[time, datetime]
 
 CTX_URL_SCHEMAORG = "https://schema.org"
 
-schemaorg_type = ld_type_decorator(CTX_URL_SCHEMAORG)
+schemaorg = ld_decorator(context=CTX_URL_SCHEMAORG)
 
 
-@schemaorg_type("Thing")
+@schemaorg(type="Thing")
 class Thing(LDSchema):
     """See http://schema.org/Thing for field documentation."""
 
@@ -49,7 +49,7 @@ class Thing(LDSchema):
     """Description of the entity."""
 
 
-@schemaorg_type("QuantitativeValue")
+@schemaorg(type="QuantitativeValue")
 class QuantitativeValue(Thing):
     """See http://schema.org/QuantitativeValue for field documentation."""
 
@@ -75,7 +75,7 @@ class QuantitativeValue(Thing):
     Useful if no standard unitCode can be provided."""
 
 
-@schemaorg_type("Organization")
+@schemaorg(type="Organization")
 class Organization(Thing):
     """See http://schema.org/Organization for field documentation."""
 
@@ -83,7 +83,7 @@ class Organization(Thing):
     """Address of the organization."""
 
 
-@schemaorg_type("Person")
+@schemaorg(type="Person")
 class Person(Thing):
     """See http://schema.org/Person for field documentation."""
 
@@ -106,7 +106,7 @@ class Person(Thing):
 OrgOrPerson = Union[Person, Organization]
 
 
-@schemaorg_type("CreativeWork")
+@schemaorg(type="CreativeWork")
 class CreativeWork(Thing):
     """See http://schema.org/CreativeWork for field documentation."""
 
@@ -171,7 +171,7 @@ class CreativeWork(Thing):
     isBasedOn: Optional[Set[Union[URL, LDOrRef[CreativeWork]]]]
 
 
-@schemaorg_type("MediaObject")
+@schemaorg(type="MediaObject")
 class MediaObject(CreativeWork):
     """See http://schema.org/MediaObject for field documentation."""
 
@@ -204,7 +204,7 @@ class MediaObject(CreativeWork):
     """Physical ending time, e.g. of a recording or measurement."""
 
 
-@schemaorg_type("Dataset")
+@schemaorg(type="Dataset")
 class Dataset(CreativeWork):
     """See http://schema.org/Dataset for field documentation."""
 

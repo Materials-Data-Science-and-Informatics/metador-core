@@ -9,18 +9,18 @@ from typing import Set
 from pydantic import parse_obj_as, root_validator, validator
 
 from ..decorators import make_mandatory
-from ..ld import LDIdRef, ld_type_decorator
+from ..ld import LDIdRef, ld_decorator
 from ..types import MimeTypeStr
 from . import schemaorg
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
 
 
-rocrate_type = ld_type_decorator(CTX_URL_ROCRATE)
+rocrate = ld_decorator(context=CTX_URL_ROCRATE)
 
 
 @make_mandatory("contentSize", "sha256")
-@rocrate_type("File")
+@rocrate(type="File")
 class FileMeta(schemaorg.MediaObject):
     class Plugin:
         name = "core.file"
@@ -35,7 +35,7 @@ class FileMeta(schemaorg.MediaObject):
     """MIME type of the file."""
 
 
-@rocrate_type("Dataset")
+@rocrate(type="Dataset")
 class DirMeta(schemaorg.Dataset):
     class Plugin:
         name = "core.dir"
@@ -45,7 +45,7 @@ class DirMeta(schemaorg.Dataset):
     """References to (a subset of) contained files and subdirectories."""
 
 
-@rocrate_type("Organization")
+@rocrate(type="Organization")
 class Organization(schemaorg.Organization):
     @validator("id_")
     def check_id(cls, v):
@@ -56,7 +56,7 @@ class Organization(schemaorg.Organization):
         return parse_obj_as(schemaorg.URL, v)
 
 
-@rocrate_type("Person")
+@rocrate(type="Person")
 class Person(schemaorg.Person):
     @validator("id_")
     def check_id(cls, v):

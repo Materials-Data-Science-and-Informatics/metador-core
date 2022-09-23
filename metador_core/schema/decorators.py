@@ -52,14 +52,13 @@ def make_mandatory(*names: str):
 def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
     """Add constant fields to pydantic models.
 
-    Must be passed a dict of field names mapped to the default values (only default JSON types).
+    Must be passed a dict of field names and the constant values (only JSON-like types).
 
-    Annotated fields are optional during parsing and are added to a parsed instance.
-    If is present during parsing, they must have exactly the passed annotated value.
+    Constant fields are optional during input.
+    If present during parsing, they are be ignored and overriden with the constant.
+    Constant fields are included in serialization, unless `exclude_defaults` is set.
 
-    Annotation fields are included in serialization, unless exclude_defaults is set.
-
-    This can be used e.g. to make JSON data models semantic by attaching JSON-LD annotations.
+    This can be used e.g. to attach JSON-LD annotations to schemas.
     """
     _check_names_public(consts.keys())
 

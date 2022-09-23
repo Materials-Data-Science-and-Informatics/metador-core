@@ -110,6 +110,9 @@ class BaseModelPlus(
         # https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline
         return (self.json() + "\n").encode(encoding="utf-8")
 
+    def __str__(self) -> str:
+        return self.json(indent=2)
+
 
 class SchemaBase(BaseModelPlus):
     __constants__: ClassVar[Dict[str, Any]]
