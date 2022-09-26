@@ -64,6 +64,9 @@ widget = "metador_core.widget:PGWidget"
 'core.imagefile.dim' = "metador_core.harvester.common:ImageFileMetaHarvester"
 
 [tool.poetry.plugins.metador_widget]
+'core.file.json' = "metador_core.widget.common:JSONWidget"
+'core.file.markdown' = "metador_core.widget.common:MarkdownWidget"
+'core.file.html' = "metador_core.widget.common:HTMLWidget"
 'core.imagefile' = "metador_core.widget.common:ImageWidget"
 
 [tool.poetry.plugins.metador_packer]

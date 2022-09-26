@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import ChainMap
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
 
 from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
@@ -100,13 +101,19 @@ class PluginBase(BaseModelPlus):
 
     @classmethod
     def parse_info(cls, info, *, ep_name: str = ""):
+        if isinstance(info, cls):
+            return info  # nothing to do, already converted info class to PluginBase (sub)model
+
         ep_name = ep_name or info.name
         if ep_name != info.name:
             msg = f"{ep_name}: Plugin.name ('{info.name}') != entry point ('{ep_name}')"
             raise TypeError(msg)
         try:
+            fields = ChainMap(
+                *(c.__dict__ for c in info.__mro__)
+            )  # this will treat inheritance well
             # validate
-            public_attrs = {k: v for k, v in info.__dict__.items() if k[0] != "_"}
+            public_attrs = {k: v for k, v in fields.items() if k[0] != "_"}
             return cls(**public_attrs)
         except ValidationError as e:
             raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")

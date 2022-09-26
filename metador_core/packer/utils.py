@@ -82,7 +82,7 @@ def embed_file(
     if not metadata:
         # no metadata given -> harvest minimal information about a file
         hv_file = harvesters["core.file.generic"]
-        metadata = harvest(FileMeta, [hv_file(file_path=file_path)])
+        metadata = harvest(FileMeta, [hv_file(filepath=file_path)])
     else:
         metadata = metadata.copy()  # defensive copying!
 

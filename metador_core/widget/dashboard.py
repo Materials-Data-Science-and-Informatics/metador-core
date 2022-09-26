@@ -127,6 +127,9 @@ class Dashboard:
                 msg = f"Dashboard metadata contains incompatible schema: {container_schema}"
                 raise ValueError(msg)
         else:
+            # no desired schema selected -> pick any schema for which we have:
+            #   * a schema instance at the current node
+            #   * installed widget(s) that support it
             for attached_obj_schema in node.meta.find():
                 container_schema = self._container.toc.fullname(attached_obj_schema)
                 if container_schema in widgets.supported_schemas():
@@ -137,18 +140,31 @@ class Dashboard:
             msg = f"Cannot find schema suitable for known widgets for node: {node.name}"
             raise ValueError(msg)
 
+        # TODO: use parent_path of the CONTAINER schema (toc.schemas should be PluginRefs)
+        # this is not correct yet!
+        cand_schemas = list(
+            map(lambda n: schemas.fullname(n), schemas.parent_path(ret.metador_schema))
+        )
+
         container_schema_ref = self._container.toc.fullname(ret.metador_schema)
         if ret.metador_widget is not None:
             widget_class = widgets.get(ret.metador_widget)
             if widget_class is None:
                 raise ValueError(f"Could not find widget: {ret.metador_widget}")
-            if not widget_class.supports(container_schema_ref):
+            if not widget_class.supports(cand_schemas):
                 msg = f"Desired widget {ret.metador_widget} does not "
                 msg += f"support {container_schema_ref}"
                 raise ValueError(msg)
         else:
-            cand_widgets = widgets.widgets_for(container_schema_ref)
-            ret.metador_widget = next(iter(cand_widgets), None)
+            metaobj = node.meta[ret.metador_schema]
+            cand_widgets = chain(
+                *(iter(widgets.widgets_for(sref)) for sref in cand_schemas)
+            )
+            confirmed_widgets = filter(
+                lambda wname: widgets._get_unsafe(wname).supports_meta(metaobj),
+                cand_widgets,
+            )
+            ret.metador_widget = next(confirmed_widgets, None)
 
         if ret.metador_widget is None:
             msg = f"Could not find suitable widget for {ret.metador_schema} at node {node.name}"
