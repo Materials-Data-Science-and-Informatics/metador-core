@@ -4,13 +4,15 @@ Here we do impose certain constraints (make fields mandatory).
 
 See https://www.researchobject.org/ro-crate/1.1/
 """
+from __future__ import annotations
+
 from typing import Set
 
 from pydantic import parse_obj_as, root_validator, validator
 
 from ..decorators import make_mandatory
 from ..ld import LDIdRef, ld_decorator
-from ..types import MimeTypeStr
+from ..types import MimeTypeStr, Str
 from . import schemaorg
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
@@ -28,7 +30,7 @@ class FileMeta(schemaorg.MediaObject):
 
     # NOTE: We do not use `name` here because `name` is used semantically
     # like a title, which could also make sense for a file to have.
-    filename: str
+    filename: Str
     """Original name of the file in source directory."""
 
     encodingFormat: MimeTypeStr

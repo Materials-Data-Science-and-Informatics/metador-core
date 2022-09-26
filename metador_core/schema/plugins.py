@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
 
-from pydantic import AnyHttpUrl, ValidationError, create_model
+from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
 
 from .core import BaseModelPlus, MetadataSchema
 from .types import NonEmptyStr, SemVerTuple
@@ -25,9 +25,10 @@ class PluginRef(MetadataSchema):
     """
 
     class Config:
+        extra = Extra.forbid
         allow_mutation = True
 
-    group: str
+    group: NonEmptyStr
     """Metador pluggable group name, i.e. name of the entry point group."""
 
     name: NonEmptyStr

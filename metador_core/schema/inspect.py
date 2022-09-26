@@ -81,13 +81,22 @@ class FieldInspector:
 
     description: str  # declared for proper repr generation
 
+    def _get_description(self):
+        desc = get_attribute_docstring(self.origin, self.name).docstring_below
+        if not desc:
+            # if none set, try getting docstring from field type
+            if ths := getattr(self.origin, "_typehints", None):
+                th = ths[self.name]
+                if isinstance(th, type):  # it's a class-like thing?
+                    desc = th.__doc__
+
+        return desc
+
     @property  # type: ignore
     def description(self):
-        # look up on-demand, could be expensive (parses source)
+        # look up on-demand and cache, could be expensive (parses source)
         if not hasattr(self, "_description"):
-            self._description = get_attribute_docstring(
-                self.origin, self.name
-            ).docstring_below
+            self._description = self._get_description()
         return self._description
 
     def __init__(self, model: Type[BaseModel], name: str, hint: str):

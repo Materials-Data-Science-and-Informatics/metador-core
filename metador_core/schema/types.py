@@ -1,27 +1,84 @@
 """Useful types and validators for use in pydantic models."""
+from __future__ import annotations
 
-import re
-from typing import Tuple
+from typing import TYPE_CHECKING, Tuple
 
 import isodate
-import wrapt
 from phantom.re import FullMatch
 from pint import Quantity, UndefinedUnitError, Unit
-from pydantic import NonNegativeInt
+from pydantic import (
+    NonNegativeInt,
+    StrictBool,
+    StrictBytes,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+)
+from typing_extensions import TypeAlias
 
 from ..hashutils import _hash_alg
 from .encoder import json_encoder
 from .parser import BaseParser, ParserMixin
 
-SemVerTuple = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
+SemVerTuple: TypeAlias = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 """Type to be used for SemVer triples."""
 
 # ----
 
+# we want people to use the strict types,
+# coercing / normalization should be done explicitly!
+# furthermore, we use the fixes from https://github.com/pydantic/pydantic/issues/2329
+# using subclasses we also rename them, so nobody is confused.
 
-# we use that instead of NonEmpty[str] so we can subclass more flexibly:
+if TYPE_CHECKING:
+    Bool: TypeAlias = bool
+else:
+
+    class Bool(StrictBool):
+        # (type checker is wrong, StrictBool is not actually inheriting from bool)
+        def __new__(self, value=False):
+            return bool(value)
+
+
+class Int(StrictInt):
+    def __new__(cls, value=0):
+        if cls is Int:
+            return int(value)
+        else:
+            return super().__base__.__new__(cls, value)
+
+
+class Float(StrictFloat):
+    def __new__(cls, value=0.0):
+        if cls is Float:
+            return float(value)
+        else:
+            return super().__base__.__new__(cls, value)
+
+
+class Bytes(StrictBytes):
+    def __new__(cls, value=b""):
+        if cls is StrictBytes:
+            return bytes(value)
+        else:
+            return super().__base__.__new__(cls, value)
+
+
+class Str(StrictStr):
+    def __new__(cls, value=""):
+        if cls is Str:
+            return str(value)
+        else:
+            return super().__base__.__new__(cls, value)
+
+
+# ----
+
+# we prefer this over pydantic anystr config settings (non-local) and
+# we use that instead of NonEmpty[str] because we can also react to whitespace
+# and we can subclass it:
 class NonEmptyStr(FullMatch, pattern=r"\s*\S.*"):
-    """Non-empty string."""
+    """Non-empty string (contains non-whitespace characters)."""
 
 
 class MimeTypeStr(NonEmptyStr, pattern=r"[^ /;]+/[^ /;]+(;[^ /;]+)*"):
@@ -40,37 +97,6 @@ class QualHashsumStr(HashsumStr, pattern=_hashalg_regex + r":[0-9a-fA-F]+"):
 
 
 # ----
-
-
-class Number(ParserMixin, wrapt.ObjectProxy):
-    """Whole or floating point number.
-
-    Use this instead of Union[float, int] to get an int if there is no decimal.
-
-    NEVER use Union[int, float], because you will lose the decimal part of any float!
-    """
-
-    class Parser(BaseParser):
-        strict = False  # will return int or float, not a Number
-
-        schema_info = dict(
-            title="An integer or floating point number.",
-            type="number",
-        )
-
-        @classmethod
-        def parse(cls, _, v):
-            if isinstance(v, int) or isinstance(v, float):
-                return v
-            if isinstance(v, str):
-                if re.match("^[0-9]+$", v.strip()):
-                    return int(v)
-                else:
-                    return float(v)
-            raise TypeError("Expected int, float or str")
-
-    def __repr__(self):
-        return repr(self.__wrapped__)
 
 
 @json_encoder(isodate.duration_isoformat)

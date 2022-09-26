@@ -71,6 +71,18 @@ class BaseModelPlus(
         anystr_strip_whitespace = True
         min_anystr_length = 1
 
+        # add descriptions from docstrings if pydantic fails to attach a description
+        @staticmethod
+        def schema_extra(schema: Dict[str, Any], model: Type[BaseModelPlus]) -> None:
+            for fname, fjsdef in schema.get("properties", {}).items():
+                if not fjsdef.get("description"):
+                    print("no desc:", fname)
+                    try:
+                        if desc := model.Fields[fname].description:
+                            fjsdef["description"] = desc
+                    except KeyError:
+                        pass  # no field info for that field
+
     def dict(self, *args, **kwargs):
         """Return a dict.
 
@@ -488,7 +500,7 @@ def check_overrides(schema: Type[MetadataSchema]):
         hint, parent_hint = hints[fname], base_hints[fname]
         if not issubtype(hint, parent_hint):
             msg = f"""The type assigned to field '{fname}'
-in schema {schema}:
+in schema {repr(schema)}:
 
   {hint}
 

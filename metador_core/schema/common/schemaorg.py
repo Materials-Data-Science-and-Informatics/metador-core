@@ -15,12 +15,15 @@ from datetime import date, datetime, time
 from typing import List, Optional, Set, Union
 
 from pydantic import AnyHttpUrl, NonNegativeInt
+from typing_extensions import TypeAlias
 
 from ..ld import LDOrRef, LDSchema, ld_decorator
-from ..types import Duration, NonEmptyStr, Number
+from ..types import Bool, Duration, Float, Int, NonEmptyStr
 
-URL = AnyHttpUrl
-Text = NonEmptyStr
+URL: TypeAlias = AnyHttpUrl
+Text: TypeAlias = NonEmptyStr
+Number: TypeAlias = Union[Int, Float]
+
 DateOrDatetime = Union[date, datetime]
 TimeOrDatetime = Union[time, datetime]
 
@@ -53,7 +56,7 @@ class Thing(LDSchema):
 class QuantitativeValue(Thing):
     """See http://schema.org/QuantitativeValue for field documentation."""
 
-    value: Optional[Union[bool, Number, Text]]
+    value: Optional[Union[Bool, Number, Text]]
     # NOTE: this will coerce 1 to True and 0 to False...
     # if we want to avoid that, we might need to have a custom parser
     # using a similar or generalized approach like done for `Number`
@@ -158,7 +161,7 @@ class CreativeWork(Thing):
     # legal
 
     copyrightHolder: Optional[LDOrRef[OrgOrPerson]]
-    copyrightYear: Optional[int]
+    copyrightYear: Optional[Int]
     copyrightNotice: Optional[Text]
     license: Optional[Union[URL, LDOrRef[CreativeWork]]]
 
@@ -175,7 +178,7 @@ class CreativeWork(Thing):
 class MediaObject(CreativeWork):
     """See http://schema.org/MediaObject for field documentation."""
 
-    contentSize: Optional[int]
+    contentSize: Optional[Int]
     """Size of the object in bytes."""
 
     sha256: Optional[Text]
