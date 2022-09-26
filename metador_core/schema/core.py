@@ -9,7 +9,7 @@ from typing import Any, ClassVar, Dict, Optional, Set, Type, cast
 
 import wrapt
 from overrides import overrides
-from pydantic import BaseModel, root_validator
+from pydantic import BaseModel, Extra, root_validator
 from pydantic_yaml import YamlModelMixin
 from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
 
@@ -51,13 +51,25 @@ class BaseModelPlus(
     """
 
     class Config:
-        underscore_attrs_are_private = True  # make PrivateAttr not needed
-        use_enum_values = True  # serialize enums properly
+        # keep extra fields by default
+        extra = Extra.allow
+        # make PrivateAttr wrappers not always needed
+        underscore_attrs_are_private = True
+        # serialize enums properly
+        use_enum_values = True
         # when alias is set, still allow using field name
         # (we use aliases for invalid attribute names in Python)
         allow_population_by_field_name = True
         # users should jump through hoops to add invalid stuff
         validate_assignment = True
+        # defaults should also be validated
+        validate_all = True
+        # for JSON compat
+        allow_inf_nan = False
+        # pydantic anystr config: non-empty, non-whitespace
+        # (but we prefer NonEmptyStr anyway for inheritance)
+        anystr_strip_whitespace = True
+        min_anystr_length = 1
 
     def dict(self, *args, **kwargs):
         """Return a dict.
@@ -137,24 +149,59 @@ class SchemaBase(BaseModelPlus):
         return values
 
 
+ALLOWED_SCHEMA_CONFIG_FIELDS = {"title", "schema_extra", "extra", "allow_mutation"}
+"""Allowed pydantic Config fields to be overridden in Schemas."""
+
+
 class SchemaMagic(DynEncoderModelMetaclass):
     """Metaclass for doing some magic."""
 
     def __new__(cls, name, bases, dct):
-        for b in bases:
-            # only allow inheriting from other schemas:
-            if not issubclass(b, SchemaBase):
-                raise TypeError(f"Base class {b} is not a MetadataSchema!")
-
+        # enforce single inheritance
         if len(bases) > 1:
             raise TypeError("A schema can only have one parent schema!")
+        baseschema = bases[0]
 
-        # prevent user from defining special fields by hand
+        # only allow inheriting from other schemas:
+        if not issubclass(baseschema, SchemaBase):
+            raise TypeError(f"Base class {baseschema} is not a MetadataSchema!")
+
+        # prevent user from defining special schema fields by hand
         for atr in SchemaBase.__annotations__.keys():
             if atr in dct:
                 raise TypeError(f"{name}: Invalid attribute '{atr}'")
 
-        return super().__new__(cls, name, bases, dct)
+        # prevent most changes to pydantic config
+        if conf := dct.get("Config"):
+            for conffield in conf.__dict__:
+                if (
+                    conffield[0] != "_"
+                    and conffield not in ALLOWED_SCHEMA_CONFIG_FIELDS
+                ):
+                    raise TypeError(f"{name}: {conffield} must not be changed!")
+
+        # generate pydantic model of schema (further checks are easier that way)
+        # can't do these checks in __init__, because in __init__ the bases could be mangled
+        ret = super().__new__(cls, name, bases, dct)
+
+        # prevent parent-compat breaking change of extra handling / new fields:
+        parent_forbids_extras = baseschema.__config__.extra is Extra.forbid
+        if parent_forbids_extras:
+            # if parent forbids, child does not -> problem (child can parse, parent can't)
+            extra = ret.__config__.extra
+            if extra is not Extra.forbid:
+                raise TypeError(
+                    f"{name}: cannot {extra.value} extra fields if parent forbids them!"
+                )
+
+            # parent forbids extras, child has new fields -> same problem
+            new_fields = set(ret.__fields__.keys()) - set(baseschema.__fields__.keys())
+            if new_fields:
+                msg = f"{name}: Cannot define new fields {new_fields} if parent forbids extra fields!"
+                raise TypeError(msg)
+
+        # everything looks ok
+        return ret
 
     def __init__(self, name, bases, dct):
         # prevent implicit inheritance of class-specific stuff
@@ -181,6 +228,19 @@ class SchemaMagic(DynEncoderModelMetaclass):
         )
 
     # ---- for public use ----
+
+    def __str__(self):
+        """Show schema and field documentation."""
+        unwrapped = UndefVersion._unwrap(self)
+        schema = unwrapped or self
+        defstr = f"Schema {super().__str__()}"
+        defstr = f"{defstr}\n{'='*len(defstr)}"
+        descstr = ""
+        if schema.__doc__ is not None and schema.__doc__.strip():
+            desc = schema.__doc__
+            descstr = f"\nDescription:\n------------\n\t{desc}"
+        fieldsstr = f"Fields:\n-------\n\n{str(self.Fields)}"
+        return "\n".join([defstr, descstr, fieldsstr])
 
     @property
     def Fields(self: Any) -> Any:

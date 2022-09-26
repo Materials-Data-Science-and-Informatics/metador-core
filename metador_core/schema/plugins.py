@@ -25,7 +25,7 @@ class PluginRef(MetadataSchema):
     """
 
     class Config:
-        frozen = True
+        allow_mutation = True
 
     group: str
     """Metador pluggable group name, i.e. name of the entry point group."""
