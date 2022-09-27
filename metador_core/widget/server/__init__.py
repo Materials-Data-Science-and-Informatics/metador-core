@@ -126,7 +126,7 @@ class WidgetServer:
             return c
         raise NotFound(f"Container not found: '{uuid}'")
 
-    def file_url_for(self, node: MetadorNode):
+    def file_url_for(self, node: MetadorNode) -> str:
         return f"{self._flask_endpoint}/file/{str(node.container_uuid)}{node.name}"
 
     def set_flask_endpoint(self, uri: str):
@@ -134,7 +134,7 @@ class WidgetServer:
         self._flask_endpoint = uri.rstrip("/")
 
     def set_bokeh_endpoint(self, uri: str):
-        """Set URI where the blueprint from `get_flask_blueprint` is mounted."""
+        """Set URI where the bokeh server is running."""
         self._bokeh_endpoint = uri.rstrip("/")
 
     def get_script(

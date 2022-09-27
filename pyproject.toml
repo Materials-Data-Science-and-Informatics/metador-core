@@ -64,10 +64,15 @@ widget = "metador_core.widget:PGWidget"
 'core.imagefile.dim' = "metador_core.harvester.common:ImageFileMetaHarvester"
 
 [tool.poetry.plugins.metador_widget]
-'core.file.json' = "metador_core.widget.common:JSONWidget"
-'core.file.markdown' = "metador_core.widget.common:MarkdownWidget"
-'core.file.html' = "metador_core.widget.common:HTMLWidget"
-'core.imagefile' = "metador_core.widget.common:ImageWidget"
+'core.file.text.md'    = "metador_core.widget.common:MarkdownWidget"
+'core.file.text.html'  = "metador_core.widget.common:HTMLWidget"
+'core.file.text.code'  = "metador_core.widget.common:CodeWidget"
+'core.file.text'  = "metador_core.widget.common:TextWidget"
+'core.file.json'  = "metador_core.widget.common:JSONWidget"
+'core.file.pdf'   = "metador_core.widget.common:PDFWidget"
+'core.file.image' = "metador_core.widget.common:ImageWidget"
+'core.file.audio' = "metador_core.widget.common:AudioWidget"
+'core.file.video' = "metador_core.widget.common:VideoWidget"
 
 [tool.poetry.plugins.metador_packer]
 'core.generic' = "metador_core.packer.example:GenericPacker"
