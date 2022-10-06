@@ -81,15 +81,18 @@ class PluginBase(BaseModelPlus):
     version: SemVerTuple
     requires: List[str] = []
 
-    def version_string(self):
-        return ".".join(map(str, self.version))
-
     def ref(self, *, version: Optional[SemVerTuple] = None):
         from ..plugins import plugingroups
 
         return plugingroups[self.group].PluginRef(
             name=self.name, version=version or self.version
         )
+
+    def version_string(self):
+        return ".".join(map(str, self.version))
+
+    def plugin_string(self):
+        return f"metador.{self.group}.{self.name}.{self.version_string()}"
 
     def __str__(self) -> str:
         # pretty-print semver in user-facing representation

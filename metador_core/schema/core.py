@@ -16,11 +16,21 @@ from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
 from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
 from .encoder import DynEncoderModelMetaclass
 from .inspect import FieldInspector, LiftedRODict, make_field_inspector
+from .jsonschema import (
+    JSCHEMA_CONSTFIELDS_KEY,
+    JSCHEMA_DEFINITIONS,
+    JSCHEMA_DEFS,
+    JSCHEMA_HASH_KEY,
+    JSCHEMA_PG_KEY,
+    fixup_jsonschema,
+    jsonschema_id,
+)
 from .parser import ParserMixin
 from .partial import DeepPartialModel
 from .utils import (
     cache,
     field_model_types,
+    get_annotations,
     get_type_hints,
     is_classvar,
     is_instance_of,
@@ -70,18 +80,6 @@ class BaseModelPlus(
         # (but we prefer NonEmptyStr anyway for inheritance)
         anystr_strip_whitespace = True
         min_anystr_length = 1
-
-        # add descriptions from docstrings if pydantic fails to attach a description
-        @staticmethod
-        def schema_extra(schema: Dict[str, Any], model: Type[BaseModelPlus]) -> None:
-            for fname, fjsdef in schema.get("properties", {}).items():
-                if not fjsdef.get("description"):
-                    print("no desc:", fname)
-                    try:
-                        if desc := model.Fields[fname].description:
-                            fjsdef["description"] = desc
-                    except KeyError:
-                        pass  # no field info for that field
 
     def dict(self, *args, **kwargs):
         """Return a dict.
@@ -138,6 +136,64 @@ class BaseModelPlus(
         return self.json(indent=2)
 
 
+def add_missing_field_descriptions(schema, model):
+    """Add missing field descriptions from own Fields info, if possible."""
+    for fname, fjsdef in schema.get("properties", {}).items():
+        if not fjsdef.get("description"):
+            try:
+                if desc := model.Fields[fname].description:
+                    fjsdef["description"] = desc
+            except KeyError:
+                pass  # no field info for that field
+
+
+def split_model_inheritance(schema, model):
+    """Decompose a model into an allOf combination with a parent model.
+
+    This is ugly because pydantic does in-place wrangling and caching,
+    and we need to hack around it.
+    """
+    base_name = model.__base__.__name__
+    base_schema = dict(model.__base__.schema())
+
+    # NOTE: we link using the pydantic way, it will be remapped later
+    # otherwise we get circularity with the hashsum stuff
+    base_schema_ref = {"$ref": f"#/{JSCHEMA_DEFINITIONS}/{base_name}"}
+    base_defs = base_schema.pop(JSCHEMA_DEFS, None) or {}
+
+    # compute filtered properties / required section
+    schema_new = dict(schema)
+    ps = schema_new.pop("properties", None)
+    rq = schema_new.pop("required", None)
+
+    lst_fields = detect_field_overrides(model)
+    lst_fields.update(
+        set(model.__fields__.keys()) - set(model.__base__.__fields__.keys())
+    )
+    ps_new = {k: v for k, v in ps.items() if k in lst_fields}
+    rq_new = None if not rq else [k for k in rq if k in ps_new]
+    schema_this = {k: v for k, v in [("properties", ps_new), ("required", rq_new)] if v}
+
+    # construct new schema as combination of base schema and remainder schema
+    schema_new.update(
+        {
+            # "rdfs:subClassOf": f"/{base_id}",
+            "allOf": [base_schema_ref, schema_this],
+        }
+    )
+
+    # we need to add the definitions to/from the base schema as well
+    extra_defs = dict(base_defs)
+    extra_defs.update({base_name: base_schema})
+    if extra_defs:
+        if JSCHEMA_DEFS not in schema_new:
+            schema_new[JSCHEMA_DEFS] = {}
+        schema_new[JSCHEMA_DEFS].update(extra_defs)
+
+    schema.clear()
+    schema.update(schema_new)
+
+
 class SchemaBase(BaseModelPlus):
     __constants__: ClassVar[Dict[str, Any]]
     """Constant model fields, usually added with a decorator, ignored on input."""
@@ -150,6 +206,46 @@ class SchemaBase(BaseModelPlus):
 
     __types_checked__: ClassVar[bool]
     """Helper flag used by check_overrides to avoid re-checking."""
+
+    class Config:
+        @staticmethod
+        def schema_extra(schema: Dict[str, Any], model: Type[BaseModelPlus]) -> None:
+            # print("schema_extra", repr(model))
+            model = UndefVersion._unwrap(model) or model
+
+            # a schema should have a specified standard
+            schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+
+            # custom extra key to connect back to metador schema:
+            if pgi := getattr(model, "Plugin", None):
+                schema[JSCHEMA_PG_KEY] = pgi.ref().copy(exclude={"group"}).json_dict()
+
+            if model is not MetadataSchema:
+                add_missing_field_descriptions(schema, model)
+
+            if model.__constants__:
+                schema[JSCHEMA_CONSTFIELDS_KEY] = {}
+                for cname, cval in model.__constants__.items():
+                    # list them (so they are not rejected even with additionalProperties=False)
+                    schema["properties"][cname] = True
+                    # store the constant alongside the schema
+                    schema[JSCHEMA_CONSTFIELDS_KEY][cname] = cval
+
+            if (
+                model.__base__ is not MetadataSchema
+            ):  # tricky part: de-duplicate from parent class
+                split_model_inheritance(schema, model)
+
+            # do this last, because it needs everything else to compute:
+            schema[JSCHEMA_HASH_KEY] = f"{jsonschema_id(schema)}"
+            fixup_jsonschema(schema)
+
+    @classmethod
+    def schema(cls, *args, **kwargs):
+        # print("schema", repr(cls))
+        ret = dict(super().schema(*args, **kwargs))
+        fixup_jsonschema(ret)
+        return ret
 
     @root_validator(pre=True)
     def override_consts(cls, values):
@@ -297,6 +393,12 @@ class SchemaFieldInspector(FieldInspector):
 
     schemas: LiftedRODict
     _origin_name: str
+
+    def _get_description(self):
+        fld = self.origin._typehints[self.name]
+        if any(map(lambda x: fld is x, (None, type(None), bool, int, float, str))):
+            return None
+        return super()._get_description()
 
     def __init__(self, model: Type[MetadataSchema], name: str, hint: str):
         super().__init__(model, name, hint)
@@ -483,13 +585,19 @@ def infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]
     )
 
 
+def detect_field_overrides(schema: Type[MetadataSchema]):
+    anns = get_annotations(schema)
+    base_hints = cast(Any, schema._base_typehints)
+    new_hints = {n for n, h in anns.items() if is_pub_instance_field(schema, n, h)}
+    return set(base_hints.keys()).intersection(new_hints)
+
+
 def check_overrides(schema: Type[MetadataSchema]):
     """Check that fields are overridden to subtypes or explicitly declared as overridden."""
     hints = cast(Any, schema._typehints)
     base_hints = cast(Any, schema._base_typehints)
 
-    new_hints = {n for n, h in hints.items() if is_pub_instance_field(schema, n, h)}
-    actual_overrides = set(base_hints.keys()).intersection(new_hints)
+    actual_overrides = detect_field_overrides(schema)
     miss_override = schema.__overrides__ - actual_overrides
     undecl_override = actual_overrides - schema.__overrides__
     if miss_override:
