@@ -7,29 +7,30 @@ from pydantic.schema import schema as pyd_schemas
 from ..hashutils import hashsum
 from ..plugin.metaclass import UndefVersion
 
-JSCHEMA_DEFINITIONS = "definitions"
-REF_PREFIX = f"#/{JSCHEMA_DEFINITIONS}/"
+KEY_SCHEMA_DEFS = "$defs"
+"""JSON schema key to store subschema definitions."""
 
-JSCHEMA_DEFS = "$defs"
-# JSCHEMA_NDEFS_KEY = "$metador_nested_defs"
+KEY_SCHEMA_HASH = "$metador_hash"
+"""Custom key to store schema hashsum."""
 
-JSCHEMA_HASH_KEY = "$metador_hash"
-JSCHEMA_PG_KEY = "$metador_plugin"
-JSCHEMA_CONSTFIELDS_KEY = "$metador_constants"
-
+# ----
 
 JSONSCHEMA_STRIP = {
+    # these are meta-level keys that should not affect the hash:
     "title",
     "description",
-    "definitions",
     "examples",
     "$comment",
     "readOnly",
     "writeOnly",
     "deprecated",
     "$id",
-    JSCHEMA_DEFS,
-    JSCHEMA_HASH_KEY,
+    # subschemas have their own hashes, so if referenced schemas
+    # change, then the $refs change automatically.
+    "definitions",
+    KEY_SCHEMA_DEFS,
+    # we can't hash the hash, it cannot be part of the clean schema.
+    KEY_SCHEMA_HASH,
 }
 """Fields to strip for JSON Schema hashsum."""
 
@@ -61,45 +62,49 @@ def jsonschema_id(schema):
     return ret
 
 
-def renamed_defs(func, *args, **kwargs):
-    """Wrap a jsonschema pydantic function to put `definitions` into `$defs`."""
-    ref_template = kwargs.pop("ref_template", None) or "#/$defs/{model}"
-    ret = dict(func(*args, **kwargs, ref_template=ref_template))
-    if defs := ret.pop("definitions", None):
-        ret["$defs"] = defs
-    return ret
+# ----
 
 
 def lift_nested_defs(schema):
     """Flatten nested $defs ($defs -> key -> $defs)."""
-    if mydefs := schema.get(JSCHEMA_DEFS):
+    if mydefs := schema.get(KEY_SCHEMA_DEFS):
         inner = []
         for schema in mydefs.values():
             lift_nested_defs(schema)
-            if nested := schema.pop(JSCHEMA_DEFS, None):
+            if nested := schema.pop(KEY_SCHEMA_DEFS, None):
                 inner.append(nested)
         for nested in inner:
             mydefs.update(nested)
 
 
+KEY_PYD_DEFS = "definitions"
+"""key name where pydantic stores subschema definitions."""
+
+REF_PREFIX = f"#/{KEY_PYD_DEFS}/"
+"""default $refs prefix of pydantic."""
+
+
 def merge_nested_defs(schema):
     """Merge definitions."""
-    if defs := schema.pop(JSCHEMA_DEFINITIONS, None):
-        my_defs = schema.get(JSCHEMA_DEFS)
+    if defs := schema.pop(KEY_PYD_DEFS, None):
+        my_defs = schema.get(KEY_SCHEMA_DEFS)
         if not my_defs:
-            schema[JSCHEMA_DEFS] = {}
-            my_defs = schema[JSCHEMA_DEFS]
+            schema[KEY_SCHEMA_DEFS] = {}
+            my_defs = schema[KEY_SCHEMA_DEFS]
         # update, by preserve existing
         defs.update(my_defs)
         my_defs.update(defs)
+
+
+# ----
 
 
 def collect_defmap(defs):
     """Compute dict mapping current name in $defs to new name based on metador_hash."""
     defmap = {}
     for name, subschema in defs.items():
-        if JSCHEMA_HASH_KEY in subschema:
-            defmap[name] = subschema[JSCHEMA_HASH_KEY].strip("/")
+        if KEY_SCHEMA_HASH in subschema:
+            defmap[name] = subschema[KEY_SCHEMA_HASH].strip("/")
         else:
             print("no hashsum: ", name)
             defmap[name] = name
@@ -107,17 +112,22 @@ def collect_defmap(defs):
     return defmap
 
 
-def map_ref(defmap, refstr):
-    # print("remap", refstr)
+def map_ref(defmap, refstr: str):
+    """Update the `$ref` string based on defmap.
+
+    Will replace `#/definitions/orig`
+    with `#/$defs/mapped`.
+    """
     if refstr.startswith(REF_PREFIX):
+        # print("remap", refstr)
         plen = len(REF_PREFIX)
         if new_name := defmap.get(refstr[plen:]):
-            return f"#/{JSCHEMA_DEFS}/{new_name}"
+            return f"#/{KEY_SCHEMA_DEFS}/{new_name}"
     return refstr
 
 
 def update_refs(defmap, obj):
-    """Substitute $ref based on defmap."""
+    """Recursively update `$ref` in `obj` based on defmap."""
     if isinstance(obj, (type(None), bool, int, float, str)):
         return obj
     elif isinstance(obj, list):
@@ -133,19 +143,20 @@ def update_refs(defmap, obj):
 def remap_refs(schema):
     """Remap the $refs to use metador_hash-based keys.
 
-    Input must be a completed schema with a global $defs section
-    that all entities use for local references.
+    Input must be a completed schema with a global `$defs` section
+    that all nested entities use for local references.
     """
-    defs = schema.get(JSCHEMA_DEFS)
+    defs = schema.pop(KEY_SCHEMA_DEFS, None)
     if not defs:  # nothing to do
         return schema
 
+    # get name map, old -> new
     defmap = collect_defmap(defs)
-    # print(schema, defmap)
     # update refs
+    defs.update(update_refs(defmap, defs))
     schema.update(update_refs(defmap, schema))
     # rename defs
-    schema[JSCHEMA_DEFS] = {defmap[k]: v for k, v in defs.items()}
+    schema[KEY_SCHEMA_DEFS] = {defmap[k]: v for k, v in defs.items()}
 
 
 # ----

@@ -17,13 +17,11 @@ from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
 from .encoder import DynEncoderModelMetaclass
 from .inspect import FieldInspector, LiftedRODict, make_field_inspector
 from .jsonschema import (
-    JSCHEMA_CONSTFIELDS_KEY,
-    JSCHEMA_DEFINITIONS,
-    JSCHEMA_DEFS,
-    JSCHEMA_HASH_KEY,
-    JSCHEMA_PG_KEY,
+    KEY_SCHEMA_DEFS,
+    KEY_SCHEMA_HASH,
     fixup_jsonschema,
     jsonschema_id,
+    schema_of,
 )
 from .parser import ParserMixin
 from .partial import DeepPartialModel
@@ -153,13 +151,12 @@ def split_model_inheritance(schema, model):
     This is ugly because pydantic does in-place wrangling and caching,
     and we need to hack around it.
     """
-    base_name = model.__base__.__name__
-    base_schema = dict(model.__base__.schema())
-
-    # NOTE: we link using the pydantic way, it will be remapped later
-    # otherwise we get circularity with the hashsum stuff
-    base_schema_ref = {"$ref": f"#/{JSCHEMA_DEFINITIONS}/{base_name}"}
-    base_defs = base_schema.pop(JSCHEMA_DEFS, None) or {}
+    # NOTE: important - we assume to get the standard for of a $ref + $defs
+    # so that the $defs contain the actual definition of the base_schema
+    # and everything it needs.
+    # simply calling schema() is different for recursive and non-recursive schemas,
+    # schema_of is consistent in its output.
+    base_schema = schema_of(model.__base__)
 
     # compute filtered properties / required section
     schema_new = dict(schema)
@@ -178,20 +175,24 @@ def split_model_inheritance(schema, model):
     schema_new.update(
         {
             # "rdfs:subClassOf": f"/{base_id}",
-            "allOf": [base_schema_ref, schema_this],
+            "allOf": [{"$ref": base_schema["$ref"]}, schema_this],
         }
     )
 
     # we need to add the definitions to/from the base schema as well
-    extra_defs = dict(base_defs)
-    extra_defs.update({base_name: base_schema})
-    if extra_defs:
-        if JSCHEMA_DEFS not in schema_new:
-            schema_new[JSCHEMA_DEFS] = {}
-        schema_new[JSCHEMA_DEFS].update(extra_defs)
+    if KEY_SCHEMA_DEFS not in schema_new:
+        schema_new[KEY_SCHEMA_DEFS] = {}
+    schema_new[KEY_SCHEMA_DEFS].update(base_schema.get(KEY_SCHEMA_DEFS, {}))
 
     schema.clear()
     schema.update(schema_new)
+
+
+KEY_SCHEMA_PG = "$metador_plugin"
+"""Key in JSON schema to put metador plugin name an version."""
+
+KEY_SCHEMA_CONSTFLDS = "$metador_constants"
+"""Key in JSON schema to put metador 'constant fields'."""
 
 
 class SchemaBase(BaseModelPlus):
@@ -218,18 +219,18 @@ class SchemaBase(BaseModelPlus):
 
             # custom extra key to connect back to metador schema:
             if pgi := getattr(model, "Plugin", None):
-                schema[JSCHEMA_PG_KEY] = pgi.ref().copy(exclude={"group"}).json_dict()
+                schema[KEY_SCHEMA_PG] = pgi.ref().copy(exclude={"group"}).json_dict()
 
             if model is not MetadataSchema:
                 add_missing_field_descriptions(schema, model)
 
             if model.__constants__:
-                schema[JSCHEMA_CONSTFIELDS_KEY] = {}
+                schema[KEY_SCHEMA_CONSTFLDS] = {}
                 for cname, cval in model.__constants__.items():
                     # list them (so they are not rejected even with additionalProperties=False)
                     schema["properties"][cname] = True
                     # store the constant alongside the schema
-                    schema[JSCHEMA_CONSTFIELDS_KEY][cname] = cval
+                    schema[KEY_SCHEMA_CONSTFLDS][cname] = cval
 
             if (
                 model.__base__ is not MetadataSchema
@@ -237,13 +238,15 @@ class SchemaBase(BaseModelPlus):
                 split_model_inheritance(schema, model)
 
             # do this last, because it needs everything else to compute:
-            schema[JSCHEMA_HASH_KEY] = f"{jsonschema_id(schema)}"
+            schema[KEY_SCHEMA_HASH] = f"{jsonschema_id(schema)}"
             fixup_jsonschema(schema)
 
     @classmethod
     def schema(cls, *args, **kwargs):
         # print("schema", repr(cls))
         ret = dict(super().schema(*args, **kwargs))
+        # from pprint import pprint
+        # pprint(ret)
         fixup_jsonschema(ret)
         return ret
 
