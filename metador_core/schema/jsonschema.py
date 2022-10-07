@@ -159,10 +159,27 @@ def remap_refs(schema):
     schema[KEY_SCHEMA_DEFS] = {defmap[k]: v for k, v in defs.items()}
 
 
+def eliminate_true(obj, in_properties: bool = False):
+    """Replace `true` with `{}`."""
+    if isinstance(obj, (type(None), bool, int, float, str)):
+        return obj
+    elif isinstance(obj, list):
+        return list(map(eliminate_true, obj))
+    elif isinstance(obj, dict):
+        return {
+            k: {}
+            if v == True and in_properties
+            else eliminate_true(v, k == "properties")
+            for k, v in obj.items()
+        }
+    raise ValueError(f"Object {obj} not of a JSON type: {type(obj)}")
+
+
 # ----
 
 
 def fixup_jsonschema(schema):
+    schema.update(eliminate_true(schema))
     merge_nested_defs(schema)  # move `definitions` into `$defs`
     lift_nested_defs(schema)  # move nested `$defs` to top level `$defs`
     remap_refs(schema)  # "rename" defs from model name to metador hashsum
