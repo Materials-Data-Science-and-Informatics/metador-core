@@ -186,7 +186,6 @@ class PDFWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        print(self.file_url())
         return pn.pane.PDF(self.file_url(), width=self._w, height=self._h)
 
 

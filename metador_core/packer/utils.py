@@ -56,7 +56,7 @@ FileMeta = schemas.get("core.file", (0, 1, 0))
 def embed_file(
     node: Union[MetadorContainer, MetadorGroup],
     node_path: str,
-    file_path: Path,
+    file_path: Union[Path, str],
     *,
     metadata: Optional[MetadataSchema] = None,
 ) -> MetadorDataset:
@@ -73,6 +73,8 @@ def embed_file(
     Returns:
         Dataset of new embedded file.
     """
+    file_path = Path(file_path)
+
     # check container and file
     if node_path in node:
         raise ValueError(f"Path '{node}' already exists in given container or group!")

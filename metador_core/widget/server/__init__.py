@@ -3,8 +3,6 @@ from typing import Dict, Optional, Union
 from uuid import UUID
 
 import numpy as np
-
-# import panel as pn
 from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from bokeh.embed import server_document
@@ -14,9 +12,11 @@ from tornado.ioloop import IOLoop
 from typing_extensions import Literal
 from werkzeug.exceptions import BadRequest, NotFound
 
-from metador_core.container import MetadorContainer, MetadorNode
-
-from .util import ContainerIndex
+from metador_core.container import (
+    MetadorContainer,
+    MetadorContainerProvider,
+    MetadorNode,
+)
 
 
 def get_arg(args, name) -> Optional[str]:
@@ -32,7 +32,7 @@ class WidgetServer:
     See: https://docs.bokeh.org/en/latest/docs/user_guide/server.html#embedding-bokeh-server-as-a-library
     """
 
-    def __init__(self, containers: ContainerIndex, populate: bool = True):
+    def __init__(self, containers: MetadorContainerProvider, populate: bool = True):
         """Widget server to serve widget- and dashboard-like bokeh entities.
 
         If populate is True (default), will load and serve all installed widgets
@@ -102,9 +102,11 @@ class WidgetServer:
 
         from ..dashboard import Dashboard
 
-        for wname, wclass in widgets.items():
-            self.register_widget(wname, self.make_bokeh_app(wclass))
         self.register_dashboard("generic", self.make_bokeh_app(Dashboard))
+        for wclass in widgets.values():
+            self.register_widget(
+                wclass.Plugin.plugin_string(), self.make_bokeh_app(wclass)
+            )
 
     def run(self, **kwargs):
         """Run bokeh server with the registered apps (will block)."""
@@ -127,7 +129,7 @@ class WidgetServer:
         raise NotFound(f"Container not found: '{uuid}'")
 
     def file_url_for(self, node: MetadorNode) -> str:
-        return f"{self._flask_endpoint}/file/{str(node.container_uuid)}{node.name}"
+        return f"{self._flask_endpoint}/file/{node.container_info.uuid}{node.name}"
 
     def set_flask_endpoint(self, uri: str):
         """Set URI where the blueprint from `get_flask_blueprint` is mounted."""
@@ -168,14 +170,15 @@ class WidgetServer:
 
         @api.route("/")
         def index():
+            """Return list of registered widgets (node-based) and dashboards (container-based)."""
             return {
-                "containers": list(self._containers.keys()),
                 "widgets": list(self._reg_widgets),
                 "dashboards": list(self._reg_dashboards),
             }
 
         @api.route("/file/<record_uuid>/<path:record_path>")
         def download(record_uuid, record_path):
+            """Return file download of embedded file in the container."""
             uuid = UUID(record_uuid)
             container = self._containers.get(uuid)
             if container is None:
@@ -204,6 +207,7 @@ class WidgetServer:
         @api.route("/<viewable_type>/<name>/<container_uuid>/")
         @api.route("/<viewable_type>/<name>/<container_uuid>/<path:container_path>")
         def get_script(*args, **kwargs):
+            """Return script tag that auto-loads the desired widget/dashboard."""
             return self.get_script(*args, **kwargs)
 
         return api

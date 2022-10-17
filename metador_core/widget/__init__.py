@@ -55,7 +55,7 @@ class Widget(ABC):
         if server is not None:
             srv = server
         else:
-            from .server.standalone import widget_server
+            from .jupyter.standalone import widget_server
 
             srv = widget_server()
 
