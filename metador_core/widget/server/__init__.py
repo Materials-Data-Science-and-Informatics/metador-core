@@ -12,11 +12,7 @@ from tornado.ioloop import IOLoop
 from typing_extensions import Literal
 from werkzeug.exceptions import BadRequest, NotFound
 
-from metador_core.container import (
-    MetadorContainer,
-    MetadorContainerProvider,
-    MetadorNode,
-)
+from metador_core.container import ContainerProxy, MetadorContainer, MetadorNode
 
 
 def get_arg(args, name) -> Optional[str]:
@@ -32,7 +28,7 @@ class WidgetServer:
     See: https://docs.bokeh.org/en/latest/docs/user_guide/server.html#embedding-bokeh-server-as-a-library
     """
 
-    def __init__(self, containers: MetadorContainerProvider, populate: bool = True):
+    def __init__(self, containers: ContainerProxy, populate: bool = True):
         """Widget server to serve widget- and dashboard-like bokeh entities.
 
         If populate is True (default), will load and serve all installed widgets

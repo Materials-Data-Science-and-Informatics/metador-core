@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
 from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
 
 from .core import BaseModelPlus, MetadataSchema
-from .types import NonEmptyStr, SemVerTuple
+from .types import NonEmptyStr, SemVerTuple, semver_str
 
 
 class IsPlugin(Protocol):
@@ -27,7 +27,7 @@ class PluginRef(MetadataSchema):
 
     class Config:
         extra = Extra.forbid
-        allow_mutation = True
+        allow_mutation = False
 
     group: NonEmptyStr
     """Metador pluggable group name, i.e. name of the entry point group."""
@@ -79,7 +79,7 @@ class PluginBase(BaseModelPlus):
     # for type checking (mirrors Fields)
     name: str
     version: SemVerTuple
-    requires: List[str] = []
+    requires: List[PluginRef] = []
 
     def ref(self, *, version: Optional[SemVerTuple] = None):
         from ..plugins import plugingroups
@@ -88,15 +88,12 @@ class PluginBase(BaseModelPlus):
             name=self.name, version=version or self.version
         )
 
-    def version_string(self):
-        return ".".join(map(str, self.version))
-
     def plugin_string(self):
-        return f"metador.{self.group}.{self.name}.{self.version_string()}"
+        return f"metador.{self.group}.{self.name}.{semver_str(self.version)}"
 
     def __str__(self) -> str:
         # pretty-print semver in user-facing representation
-        dct = dict(group=self.group, name=self.name, version=self.version_string())
+        dct = dict(group=self.group, name=self.name, version=semver_str(self.version))
         dct.update(
             self.json_dict(exclude_defaults=True, exclude={"name", "group", "version"})
         )
@@ -107,9 +104,10 @@ class PluginBase(BaseModelPlus):
         if isinstance(info, cls):
             return info  # nothing to do, already converted info class to PluginBase (sub)model
 
-        ep_name = ep_name or info.name
-        if ep_name != info.name:
-            msg = f"{ep_name}: Plugin.name ('{info.name}') != entry point ('{ep_name}')"
+        expected_ep_name = f"{info.name}__{semver_str(info.version)}"
+        ep_name = ep_name or expected_ep_name
+        if ep_name != expected_ep_name:
+            msg = f"{ep_name}: Based on plugin info, entrypoint must be called '{expected_ep_name}'!"
             raise TypeError(msg)
         try:
             fields = ChainMap(
@@ -126,13 +124,8 @@ class PluginLike(Protocol):
     Plugin: PluginBase
 
 
-# NOTE: if we would like pluginrefs with versions, this would force loading all plugins
-# and as this sucks we just don't do it and only list entry points
-# Plugins = Dict[str, Dict[str, PluginRef]]
-# """Dict from metador plugin groups to list of entrypoint names (provided plugins)."""
-
-Plugins = Dict[str, Set[str]]
-"""Dict from group name to entry point names."""
+PkgPlugins = Dict[str, Set[PluginRef]]
+"""Dict from plugin group name to plugins provided by a package."""
 
 
 class PluginPkgMeta(MetadataSchema):
@@ -147,10 +140,7 @@ class PluginPkgMeta(MetadataSchema):
     repository_url: Optional[AnyHttpUrl] = None
     """Python package source location (pip-installable / git-clonable)."""
 
-    plugins: Plugins = {}
-
-    def version_string(self):
-        return ".".join(map(str, self.version))
+    plugins: PkgPlugins = {}
 
     @classmethod
     def for_package(cls, package_name: str) -> PluginPkgMeta:
@@ -159,15 +149,17 @@ class PluginPkgMeta(MetadataSchema):
         from importlib_metadata import distribution
 
         from ..plugin.entrypoints import DistMeta, distmeta_for
+        from ..plugin.interface import _from_ep_name
 
         dm: DistMeta = distmeta_for(distribution(package_name))
-        # from ..plugin import plugingroups
 
-        plugins: Plugins = {}
-        for group, names in dm.plugins.items():
-            plugins[group] = set(names)
-            # for name in names:
-            #     plugins[group][name] = plugingroups[group].fullname(name)
+        plugins: PkgPlugins = {}
+        for group, ep_names in dm.plugins.items():
+            plugins[group] = set()
+            for ep_name in ep_names:
+                name, version = _from_ep_name(ep_name)
+                ref = PluginRef(group=group, name=name, version=version)
+                plugins[group].add(ref)
 
         return cls(
             name=dm.name,

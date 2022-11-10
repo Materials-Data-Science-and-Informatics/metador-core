@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set, Type
 
 from ..plugin import interface as pg
+from ..plugins import plugingroups
 from .core import MetadataSchema, PartialSchema, check_types, infer_parent
 from .plugins import PluginBase
+from .plugins import PluginRef as AnyPluginRef
+from .types import SemVerTuple
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
 
@@ -121,7 +124,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
     class Plugin:
         name = SCHEMA_GROUP_NAME
         version = (0, 1, 0)
-        requires = [pg.PG_GROUP_NAME]
+        requires = [plugingroups.Plugin.ref()]
         plugin_class = MetadataSchema
         plugin_info_class = SchemaPlugin
 
@@ -129,8 +132,8 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._parent_schema: Dict[
             Type[MetadataSchema], Optional[Type[MetadataSchema]]
         ] = {}
-        self._parents: Dict[str, List[str]] = {}  # base plugins
-        self._children: Dict[str, Set[str]] = {}  # subclass plugins
+        self._parents: Dict[AnyPluginRef, List[AnyPluginRef]] = {}  # base plugins
+        self._children: Dict[AnyPluginRef, Set[AnyPluginRef]] = {}  # subclass plugins
 
         # used schemas inside schemas
         self._field_types: Dict[
@@ -148,48 +151,57 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # overrides of inherited fields are valid?
         check_types(plugin)
 
-    def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[str]:
-        # NOTE: schemas must be already loaded
-        schema_name = plugin.Plugin.name
-        ret = [schema_name]
+    def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[AnyPluginRef]:
+        ref = plugin.Plugin.ref()
+        ret = [ref]
         curr = plugin
         parent = self._parent_schema[curr]
         while parent is not None:
-            ret.append(parent.Plugin.name)
-            curr = self._get_unsafe(parent.Plugin.name)
+            p_ref = parent.Plugin.ref()
+            ret.append(p_ref)
+            curr = self._get_unsafe(p_ref.name, p_ref.version)
             parent = self._parent_schema[curr]
 
         ret.reverse()
         return ret
 
-    def init_plugin(self, name, plugin):
+    def init_plugin(self, plugin):
         # pre-compute parent schema path
-        self._parents[name] = self._compute_parent_path(plugin)
-        if name not in self._children:
-            self._children[name] = set()
+        ref = plugin.Plugin.ref()
+        self._parents[ref] = self._compute_parent_path(plugin)
+        if ref not in self._children:
+            self._children[ref] = set()
 
-        # collect children schema set
-        parents = self._parents[name][:-1]
+        # collect children schema set for all parents
+        parents = self._parents[ref][:-1]
         for parent in parents:
             if parent not in self._children:
                 self._children[parent] = set()
-            self._children[parent].add(name)
+            self._children[parent].add(ref)
 
     # ----
 
-    def parent_path(self, schema_name: str) -> List[str]:
-        """Get sequence of registered parent schema names leading to the given schema.
+    def parent_path(
+        self, name: str, version: Optional[SemVerTuple] = None
+    ) -> List[AnyPluginRef]:
+        """Get sequence of registered parent schema plugins leading to the given schema.
 
         This sequence can be a subset of the parent sequences in the actual class
         hierarchy (not every subclass must be registered as a plugin).
         """
-        self._ensure_is_loaded(schema_name)
-        return list(self._parents[schema_name])
+        version = version or self.resolve(name).version  # latest if no passed
+        ref = self.PluginRef(name=name, version=version)
+        self._ensure_is_loaded(ref)
+        return list(self._parents[ref])
 
-    def children(self, schema_name: str) -> Set[str]:
+    def children(
+        self, name: str, version: Optional[SemVerTuple] = None
+    ) -> Set[AnyPluginRef]:
         """Get set of names of registered (strict) child schemas."""
-        self._ensure_is_loaded(schema_name)
-        return set(self._children[schema_name])
+        version = version or self.resolve(name).version  # latest if no passed
+        ref = self.PluginRef(name=name, version=version)
+        self._ensure_is_loaded(ref)
+        return set(self._children[ref])
 
 
 SchemaPlugin.update_forward_refs()

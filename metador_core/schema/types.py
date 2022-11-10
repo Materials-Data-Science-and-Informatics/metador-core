@@ -23,6 +23,11 @@ from .parser import BaseParser, ParserMixin
 SemVerTuple: TypeAlias = Tuple[NonNegativeInt, NonNegativeInt, NonNegativeInt]
 """Type to be used for SemVer triples."""
 
+
+def semver_str(ver: SemVerTuple):
+    return ".".join(map(str, ver))
+
+
 # ----
 
 # we want people to use the strict types,

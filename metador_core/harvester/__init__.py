@@ -206,7 +206,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
     class Plugin:
         name = HARVESTER_GROUP_NAME
         version = (0, 1, 0)
-        requires = [schemas.name]
+        requires = [PluginRef(group="plugingroup", name="schema", version=(0, 1, 0))]
         plugin_class = Harvester
         plugin_info_class = HarvesterPlugin
 
@@ -215,24 +215,24 @@ class PGHarvester(pg.PluginGroup[Harvester]):
 
     def plugin_deps(self, plugin):
         if p := plugin.Plugin.returns:
-            return {(schemas.name, p.name)}
+            return {(schemas.name, p)}
 
     @overrides
-    def check_plugin(self, name: str, plugin: Type[Harvester]):
+    def check_plugin(self, ep_name: str, plugin: Type[Harvester]):
         hv_ref = plugin.Plugin.returns
 
         schema_name = hv_ref.name
         schema = schemas[schema_name]
         if not schema:
-            raise TypeError(f"{name}: Schema '{schema_name}' not installed!")
+            raise TypeError(f"{ep_name}: Schema '{schema_name}' not installed!")
 
-        inst_ref = schemas.fullname(schema_name)
+        inst_ref = schema.Plugin.ref()
         if not inst_ref.supports(hv_ref):
-            msg = f"{name}: Installed schema {inst_ref} incompatible with harvester schema {hv_ref}!"
+            msg = f"{ep_name}: Installed schema {inst_ref} incompatible with harvester schema {hv_ref}!"
             raise TypeError(msg)
 
     @overrides
-    def init_plugin(self, name, plugin):
+    def init_plugin(self, plugin):
         """Add harvester to harvester lookup table."""
         h_name = plugin.Plugin.name
         schema = plugin.Plugin.returns

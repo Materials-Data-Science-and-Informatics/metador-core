@@ -194,12 +194,13 @@ class PackerInfo(MetadataSchema):
     """Directory skeleton with hashsums of files at the time of packing."""
 
     @classmethod
-    def for_packer(cls, packer_name: str) -> PackerInfo:
+    def for_packer(cls, packer_name: str, packer_version=None) -> PackerInfo:
         from ..plugins import packers
 
+        p_ref = packers.resolve(packer_name, packer_version)
         return PackerInfo(
-            packer=packers.fullname(packer_name),
-            pkg=packers.provider(packer_name),
+            packer=p_ref,
+            pkg=packers.provider(p_ref),
         )
 
 
@@ -240,12 +241,12 @@ class PGPacker(pg.PluginGroup[Packer]):
     _PACKER_INFO_NAME = PackerInfo.Plugin.name
 
     @overrides
-    def check_plugin(self, name: str, plugin: Type[Packer]):
-        pg.check_implements_method(name, plugin, Packer.check_dir)
+    def check_plugin(self, ep_name: str, plugin: Type[Packer]):
+        pg.check_implements_method(ep_name, plugin, Packer.check_dir)
         missing_pack = pg.test_implements_method(plugin, Packer.pack)
         missing_update = pg.test_implements_method(plugin, Packer.update)
         if missing_pack and missing_update:
-            raise TypeError(f"{name}: Neither pack nor update are implemented!")
+            raise TypeError(f"{ep_name}: Neither pack nor update are implemented!")
 
     # ----
 
@@ -306,7 +307,7 @@ class PGPacker(pg.PluginGroup[Packer]):
         pinfo = container.meta.get(self._PACKER_INFO_NAME)
         if not pinfo:
             msg = f"Container does not have {self._PACKER_INFO_NAME} metadata!"
-        curr_ref = self.fullname(packer_name)
+        curr_ref = self.resolve(packer_name)
         if not curr_ref.supports(pinfo.packer):
             msg = f"{curr_ref} (installed) does not support {pinfo.packer} (container)!"
             raise ValueError(msg)

@@ -9,7 +9,7 @@ from panel.viewable import Viewable
 from pydantic import Field
 from typing_extensions import Annotated, TypeAlias
 
-from ..container import MetadorNode
+from ..container import MetadorDataset, MetadorNode
 from ..plugin import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
@@ -21,9 +21,16 @@ class Widget(ABC):
     """Base class for metador widgets."""
 
     _args: Dict[str, Any]
+    """Additional passed arguments (e.g. from the dashboard)."""
+
     _node: MetadorNode
+    """Container node passed to the widget."""
+
     _meta: MetadataSchema
+    """Metadata object to be used as the starting point (e.g. widget config)."""
+
     _server: WidgetServer
+    """Widget-backing server object to use (e.g. to access container files from frontend)."""
 
     Plugin: ClassVar[WidgetPlugin]
 
@@ -47,27 +54,32 @@ class Widget(ABC):
         If a metadata object is passed explicitly, it will be used instead of trying to
         retrieve one from the node.
         """
-        self._node = node
-        self._w = max_width
-        self._h = max_height
+        # NOTE: we restrict the node so that widgets don't try to escape their scope
+        self._node = node.restrict(read_only=True, local_only=True)
 
+        # if no server passed, we're in Jupyter mode - use standalone
         srv: WidgetServer
         if server is not None:
             srv = server
         else:
-            from .jupyter.standalone import widget_server
+            from .jupyter.standalone import running, widget_server
 
+            if not running():
+                raise ValueError(
+                    "No widget server passed and standalone server not running!"
+                )
             srv = widget_server()
-
-        if srv is None:
-            raise ValueError("No widget server passed and standalone launch failed!")
         self._server = srv
 
+        # maximal width and height to use / try to fill
+        self._w = max_width
+        self._h = max_height
+
+        # setup correct metadata
         if metadata is not None:
             if not self.supports_meta(metadata):
-                raise ValueError(
-                    "Passed metadata is not instance of a supported schema!"
-                )
+                msg = "Passed metadata is not instance of a supported schema!"
+                raise ValueError(msg)
             self._meta = metadata
         else:
             if not schema_name:
@@ -83,16 +95,31 @@ class Widget(ABC):
             else:
                 raise ValueError("The node does not contain '{schema_name}' metadata!")
 
+        # widget-specific setup hook
         self.setup()
 
-    def file_data(self, node: Optional[MetadorNode] = None) -> bytes:
-        """Return data at node as bytes."""
+    def file_data(self, node: Optional[MetadorDataset] = None) -> bytes:
+        """Return data at passed dataset node as bytes.
+
+        If no node passed, will use the widget root node (if it is a dataset).
+        """
         node = node or self._node
+        if not isinstance(node, MetadorDataset):
+            raise ValueError(
+                f"Passed node {node.name} does not look like a dataset node!"
+            )
         return node[()].tolist()
 
     def file_url(self, node: Optional[MetadorNode] = None) -> str:
-        """Return URL resolving to the data at node."""
+        """Return URL resolving to the data at given node.
+
+        If no node passed, will use the widget root node (if it is a dataset).
+        """
         node = node or self._node
+        if not isinstance(node, MetadorDataset):
+            raise ValueError(
+                f"Passed node {node.name} does not look like a dataset node!"
+            )
         return self._server.file_url_for(node)
 
     @classmethod
@@ -170,14 +197,14 @@ class PGWidget(pg.PluginGroup[Widget]):
         name = WIDGET_GROUP_NAME
         version = (0, 1, 0)
 
-        requires = [schemas.name]
+        requires = [PluginRef(group="plugingroup", name="schema", version=(0, 1, 0))]
 
         plugin_class = Widget
         plugin_info_class = WidgetPlugin
 
     @overrides
-    def check_plugin(self, name: str, plugin: Type[Widget]):
-        pg.check_implements_method(name, plugin, Widget.show)
+    def check_plugin(self, ep_name: str, plugin: Type[Widget]):
+        pg.check_implements_method(ep_name, plugin, Widget.show)
 
     def plugin_deps(self, plugin):
         return set(map(lambda r: (schemas.name, r.name), plugin.Plugin.supports))
@@ -191,8 +218,8 @@ class PGWidget(pg.PluginGroup[Widget]):
         for w in self.values():
             for sref in w.Plugin.supports:
                 supported.add(sref)
-                for cs_name in schemas.children(sref.name):
-                    supported.add(schemas.fullname(cs_name))
+                for cs_ref in schemas.children(sref.name, sref.version):
+                    supported.add(cs_ref)
 
         return supported
 

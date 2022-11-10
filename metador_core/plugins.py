@@ -47,18 +47,20 @@ plugingroups: PGPluginGroup = PGPluginGroup()
 plugingroup_classes = plugingroups.__wrapped__
 
 # help mypy (obviously only for groups in this package):
+# NOTE: this would be better: https://github.com/python/mypy/issues/13643
 if TYPE_CHECKING:
-    from ..harvester import PGHarvester
-    from ..packer import PGPacker
-    from ..schema.pg import PGSchema
-    from ..widget import PGWidget
+    from .harvester import PGHarvester
+    from .packer import PGPacker
+    from .schema.pg import PGSchema
+    from .widget import PGWidget
 
     schemas: PGSchema
     harvesters: PGHarvester
     widgets: PGWidget
     packers: PGPacker
 
-# some magic to lift all other groups to module level,
+# ----
+# Now some magic to lift all other groups to module level,
 # this allows to import like: from metador_core.plugins import schemas
 
 # define what to import with *

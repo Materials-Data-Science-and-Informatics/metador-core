@@ -25,6 +25,7 @@ from .jsonschema import (
 )
 from .parser import ParserMixin
 from .partial import DeepPartialModel
+from .types import semver_str
 from .utils import (
     cache,
     field_model_types,
@@ -411,7 +412,7 @@ class SchemaFieldInspector(FieldInspector):
         self._origin_name = f"{og.__module__}.{og.__qualname__}"
         if og.is_plugin:
             self._origin_name += (
-                f" (plugin: {og.Plugin.name} {og.Plugin.version_string()})"
+                f" (plugin: {og.Plugin.name} {semver_str(og.Plugin.version)})"
             )
 
         # access to sub-entities/schemas:

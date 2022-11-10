@@ -1,5 +1,7 @@
 """This module defines a metaclass that should be used for all plugin types."""
 
+from ..schema.types import semver_str
+
 
 class MarkerMixin:
     """Base class for Metador-internal marker mixins.
@@ -96,7 +98,7 @@ class PluginMetaclassMixin(type):
             pg_str = ""
             if self.is_plugin:
                 pgi = self.Plugin
-                pg_str = f" ({pgi.name} {pgi.version_string()})"
+                pg_str = f" ({pgi.name} {semver_str(pgi.version)})"
 
             return f"{super().__repr__()}{pg_str}"
 

@@ -151,6 +151,8 @@ class IH5UserBlock(BaseModel):
 
 
 OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
+"""User open modes that can be passed during initialization."""
+
 _OPEN_MODES = list(get_args(OpenMode))
 
 

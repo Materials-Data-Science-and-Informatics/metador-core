@@ -11,6 +11,7 @@ from typing import (
     Generic,
     Iterable,
     KeysView,
+    List,
     Optional,
     Tuple,
     Type,
@@ -22,7 +23,7 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
-from metador_core.schema.types import SemVerTuple
+from metador_core.schema.types import SemVerTuple, semver_str
 
 from ..schema.plugins import IsPlugin, PluginBase, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
@@ -33,10 +34,16 @@ PG_GROUP_NAME = "plugingroup"
 
 # helpers for checking plugins (also to be used in PluginGroup subclasses):
 
+PLUGIN_NAME_REGEX = r"[A-Za-z0-9._-]+"
+"""Regular expression that all metador plugins must match."""
 
-def _check_plugin_name(name: str):
-    if not re.fullmatch("[A-Za-z0-9._-]+", name):
-        msg = f"{name}: Invalid plugin name! Only use: A-z, a-z, 0-9, _ - and ."
+ENTRYPOINT_NAME_REGEX = rf"{PLUGIN_NAME_REGEX}__\d+\.\d+\.\d+"
+"""Regular expression that all metador plugin entry points must match."""
+
+
+def _check_name(name: str, pat: str):
+    if not re.fullmatch(pat, name):
+        msg = f"{name}: Invalid name, must match {pat}"
         raise TypeError(msg)
 
 
@@ -84,6 +91,26 @@ def is_plugin(p_cls, *, group: str = ""):
 # ----
 
 
+EP_NAME_VER_SEP: str = "__"
+"""Separator between plugin name and semantic version in entry point name."""
+
+
+def _to_ep_name(p_name: str, p_version: Optional[SemVerTuple] = None) -> str:
+    """Return canonical entrypoint name `PLUGIN_NAME__MAJ.MIN.FIX`."""
+    return f"{p_name}{EP_NAME_VER_SEP}{semver_str(p_version)}"
+
+
+def _from_ep_name(ep_name: str) -> Tuple[str, SemVerTuple]:
+    """Split entrypoint name into `(PLUGIN_NAME, (MAJ,MIN,FIX))`."""
+    _check_name(ep_name, ENTRYPOINT_NAME_REGEX)
+    pname, pverstr = ep_name.split(EP_NAME_VER_SEP)
+    pver: SemVerTuple = cast(Any, tuple(map(int, pverstr.split("."))))
+    return (pname, pver)
+
+
+# ----
+
+
 class PGPlugin(PluginBase):
     group = PG_GROUP_NAME
     plugin_info_class: Type[PluginBase]
@@ -126,42 +153,54 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         plugin_class: Type
         # plugin_class = PluginGroup  # can't set that -> check manually
 
-    _ENTRY_POINTS: Dict[str, Any]
-    """Dict of entry points (not loaded)."""
+    _ENTRY_POINTS: Dict[str, EntryPoint]
+    """Dict of entry points of versioned plugins (not loaded)."""
 
-    _LOADED_PLUGINS: Dict[str, Type[T]]
+    _VERSIONS: Dict[str, List[AnyPluginRef]]
+    """Mapping from plugin name to pluginrefs."""
+
+    _LOADED_PLUGINS: Dict[AnyPluginRef, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
 
+    def _add_ep(self, ep_name: str, ep_obj: EntryPoint):
+        self._ENTRY_POINTS[ep_name] = ep_obj
+
+        name, version = _from_ep_name(ep_name)
+        p_ref = AnyPluginRef(group=self.name, name=name, version=version)
+
+        if name not in self._VERSIONS:
+            self._VERSIONS[name] = []
+        self._VERSIONS[name].append(p_ref)
+        self._VERSIONS[name].sort()
+
     def __init__(self, entrypoints):
+        self._ENTRY_POINTS = {}
+        self._VERSIONS = {}
+
+        for k, v in entrypoints.values():
+            self._add_ep(k, v)
+
         self._LOADED_PLUGINS = {}
-        self._ENTRY_POINTS = entrypoints
         self.__post_init__()
-
-    def __repr__(self):
-        return f"<PluginGroup '{self.name}' {list(self.keys())}>"
-
-    def __str__(self):
-        def pg_line(name):
-            p = self.provider(name)
-            pkg = f"{p.name} {p.version_string()}"
-            pg = self._get_unsafe(name)
-            return f"\t'{name}' {pg.Plugin.version_string()} ({pkg})"
-
-        pgs = "\n".join(map(pg_line, self.keys()))
-        return f"Available '{self.name}' plugins:\n{pgs}"
 
     def __post_init__(self):
         if type(self) is PluginGroup:
-            self._ENTRY_POINTS[PG_GROUP_NAME] = EntryPoint(
-                PG_GROUP_NAME,
-                f"{type(self).__module__}:{type(self).__name__}",
-                PG_GROUP_NAME,
+            # make the magic plugingroup plugin add itself for consistency
+            ep_name = f"{self.Plugin.name}__{semver_str(self.Plugin.version)}"
+            ep = EntryPoint(
+                ep_name, f"{type(self).__module__}:{type(self).__name__}", self.name
             )
-            self._LOADED_PLUGINS[PG_GROUP_NAME] = self
-            self.provider(PG_GROUP_NAME).plugins[PG_GROUP_NAME].add(PG_GROUP_NAME)
+            self._add_ep(ep_name, ep)
+
+            ref = AnyPluginRef(
+                group=self.name, name=self.Plugin.name, version=self.Plugin.version
+            )
+            self._LOADED_PLUGINS[ref] = self
+            self.provider(ref).plugins[self.name].add(ref)
 
     @property
     def name(self) -> str:
+        """Return name of the plugin group."""
         return self.Plugin.name
 
     @property
@@ -169,37 +208,87 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         """Return metadata of all packages providing metador plugins."""
         return dict(self._PKG_META)
 
-    def fullname(self, ep_name: str) -> PluginRef:
-        plugin = self._get_unsafe(ep_name)
-        return self.PluginRef(name=ep_name, version=plugin.Plugin.version)
+    def versions(
+        self, p_name: str, version: Optional[SemVerTuple] = None
+    ) -> List[AnyPluginRef]:
+        """Return installed versions of a plugin (compatible with given version)."""
+        refs = list(self._VERSIONS.get(p_name) or [])
+        if version is None:
+            return refs
+        requested = self.PluginRef(name=p_name, version=version)
+        return [ref for ref in refs if ref.supports(requested)]
 
-    def provider(self, ep_name: str) -> PluginPkgMeta:
+    def resolve(
+        self, p_name: str, version: Optional[SemVerTuple] = None
+    ) -> Optional[AnyPluginRef]:
+        """Return most recent compatible version of a plugin."""
+        if refs := self.versions(p_name, version):
+            return refs[-1]  # latest (compatible) version
+        return None
+
+    def provider(self, ref: AnyPluginRef) -> PluginPkgMeta:
         """Return package metadata of Python package providing this plugin."""
-        if type(self) is PluginGroup and ep_name == PG_GROUP_NAME:
-            return self.provider("schema")
+        if type(self) is PluginGroup and ref.name == PG_GROUP_NAME:
+            # special case - the mother plugingroup plugin is not an EP,
+            # so we cheat a bit (schema is in same package, but is an EP)
+            return self.provider(self.resolve("schema"))
 
-        ep = self._ENTRY_POINTS[ep_name]
-        return self._PKG_META[ep.dist.name]
+        ep = self._ENTRY_POINTS[_to_ep_name(ref.name, ref.version)]
+        return self._PKG_META[cast(Any, ep).dist.name]
+
+    # ----
+
+    def __repr__(self):
+        return f"<PluginGroup '{self.name}' {list(self.keys())}>"
+
+    def __str__(self):
+        def pg_line(name):
+            p = self.provider(name)
+            pkg = f"{p.name} {semver_str(p.version)}"
+            pg = self._get_unsafe(name)
+            return f"\t'{name}' {semver_str(pg.Plugin.version)} ({pkg})"
+
+        pgs = "\n".join(map(pg_line, self.keys()))
+        return f"Available '{self.name}' plugins:\n{pgs}"
+
+    # ----
+    # dict-like interface will provide latest versions of plugins by default
 
     def __contains__(self, key: str) -> bool:
-        return key in self._ENTRY_POINTS
+        return key in self._VERSIONS
 
     def keys(self) -> KeysView[str]:
         """Return all names of all plugins."""
-        return self._ENTRY_POINTS.keys()
+        return self._VERSIONS.keys()
 
     def values(self) -> Iterable[Type[T]]:
-        """Return all plugins (THIS LOADS ALL PLUGINS!)."""
+        """Return latest versions of all plugins (THIS LOADS ALL PLUGINS!)."""
         return map(self.__getitem__, self.keys())
 
     def items(self) -> Iterable[Tuple[str, Type[T]]]:
-        """Return pairs of names and plugins (THIS LOADS ALL PLUGINS!)."""
+        """Return pairs of plugin name and latest installed version (THIS LOADS ALL PLUGINS!)."""
         return map(lambda k: (k, self[k]), self.keys())
 
     def __getitem__(self, key: str) -> Type[T]:
         if key not in self:
             raise KeyError(f"{self.name} not found: {key}")
         return self.get(key)
+
+    # ----
+
+    def _get_unsafe(self, p_name: str, version: Optional[SemVerTuple] = None):
+        """Return most recent compatible version of given plugin name, without safety rails.
+
+        For internal use only!
+        """
+        if ref := self.resolve(p_name, version):
+            self._ensure_is_loaded(ref)
+            return self._LOADED_PLUGINS[ref]
+        else:
+            msg = f"{p_name}"
+            if version:
+                msg += f": no installed version is compatible with {version}"
+            raise KeyError(msg)
 
     # inspired by this nice trick: https://stackoverflow.com/a/60362860
     PRX = TypeVar("PRX", bound="Type[T]")  # type: ignore
@@ -215,40 +304,37 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def get(
         self, key: Union[str, PRX], version: Optional[SemVerTuple] = None
     ) -> Union[Type[T], PRX, None]:
-        passed_str = isinstance(key, str)
-        key_: str = key if passed_str else key.Plugin.name  # type: ignore
-
-        ret = self._get_unsafe(key_)
-
-        if not version:
-            ret = UndefVersion._mark_class(ret)
+        if isinstance(key, str):
+            key_: str = key
         else:
-            # check for version compatibility:
-            cur_ver = ret.Plugin.ref(version=ret.Plugin.version)
-            req_ver = ret.Plugin.ref(version=version)
-            if not cur_ver.supports(req_ver):
-                msg = f"{ret.Plugin.name}:\n\t{cur_ver}\nincompatible with required version\n\t{req_ver}"
-                raise RuntimeError(msg)
+            # if a plugin class is passed, use its name + version
+            key_: str = key.Plugin.name  # type: ignore
+            version = version or key.Plugin.version  # use if no version passed
 
-        if passed_str:
+        # retrieve compatible plugin
+        ret = self._get_unsafe(key_, version)
+        if ret is not None and version is None:
+            # no version constraint was passed or inferred -> mark it
+            ret = UndefVersion._mark_class(ret)
+
+        if isinstance(key, str):
             return cast(Type[T], ret)
         else:
             return ret
 
-    def _get_unsafe(self, key: str):
-        # returns any version that is installed
-        if key not in self:
-            return None  # no such plugin installed
-        self._ensure_is_loaded(key)
-        return self._LOADED_PLUGINS[key]
+    # ----
 
-    def _ensure_is_loaded(self, key: str):
-        """Load plugin from entrypoint if it is not loaded yet."""
-        if key in self._LOADED_PLUGINS:
+    def _ensure_is_loaded(self, ref: AnyPluginRef):
+        """Load plugin from entrypoint, if it is not loaded yet."""
+        assert ref.group == self.name
+        if ref in self._LOADED_PLUGINS:
             return  # already loaded, all good
-        ret = self._ENTRY_POINTS[key].load()
-        self._LOADED_PLUGINS[key] = ret
-        self._load_plugin(key, ret)
+
+        ep_name = _to_ep_name(ref.name, ref.version)
+        ret = self._ENTRY_POINTS[ep_name].load()
+        self._LOADED_PLUGINS[ref] = ret
+
+        self._load_plugin(ep_name, ret)
 
     def _explicit_plugin_deps(self, plugin):
         """Return all plugin dependencies that must be taken into account."""
@@ -261,43 +347,43 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def plugin_deps(self, plugin):
         """Return additional automatically inferred dependencies for a plugin."""
 
-    def _load_plugin(self, name: str, plugin):
+    def _load_plugin(self, ep_name: str, plugin):
         """Run checks and finalize loaded plugin."""
         # print("load", self.name, name, plugin)
         from ..plugins import plugingroups
 
         # run inner Plugin class checks (with possibly new Fields cls)
         if not plugin.__dict__.get("Plugin"):
-            raise TypeError(f"{name}: {plugin} is missing Plugin inner class!")
+            raise TypeError(f"{ep_name}: {plugin} is missing Plugin inner class!")
         plugin.Plugin = self.Plugin.plugin_info_class.parse_info(
-            plugin.Plugin, ep_name=name
+            plugin.Plugin, ep_name=ep_name
         )
 
         # do general checks first, if they fail no need to continue
-        self._check_common(name, plugin)
-        self.check_plugin(name, plugin)
+        self._check_common(ep_name, plugin)
+        self.check_plugin(ep_name, plugin)
 
-        for depgroup, depname in self._explicit_plugin_deps(plugin):
+        for dep_grp, dep_ref in self._explicit_plugin_deps(plugin):
+            dep_grp = plugingroups[dep_grp]
             # print("check dep", depgroup, depname)
-            plugingroups[depgroup]._ensure_is_loaded(depname)
+            dep_grp._ensure_is_loaded(dep_ref)
 
-        # print("init", self.name, name)
-        self.init_plugin(name, plugin)
+        self.init_plugin(plugin)
 
-    def _check_common(self, name: str, plugin):
+    def _check_common(self, ep_name: str, plugin):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
         """
-        _check_plugin_name(name)
+        _check_name(ep_name, PLUGIN_NAME_REGEX)
         if type(self) is not PluginGroup:
-            _check_plugin_name_prefix(name)
+            _check_plugin_name_prefix(ep_name)
 
         # check correct base class of plugin, if stated
         if self.Plugin.plugin_class:
-            check_is_subclass(name, plugin, self.Plugin.plugin_class)
+            check_is_subclass(ep_name, plugin, self.Plugin.plugin_class)
 
-    def check_plugin(self, name: str, plugin: Type[T]):
+    def check_plugin(self, ep_name: str, plugin: Type[T]):
         """Perform plugin group specific checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -313,23 +399,23 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
         # these are the checks done for other plugin group plugins:
 
-        check_is_subclass(name, plugin, PluginGroup)
-        check_is_subclass(name, self.Plugin.plugin_info_class, PluginBase)
+        check_is_subclass(ep_name, plugin, PluginGroup)
+        check_is_subclass(ep_name, self.Plugin.plugin_info_class, PluginBase)
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
-            check_implements_method(name, plugin, PluginGroup.check_plugin)
+            check_implements_method(ep_name, plugin, PluginGroup.check_plugin)
 
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
         ppgi_cls = plugin.Plugin.plugin_info_class
         if not ppgi_cls.group:
-            raise TypeError(f"{name}: {ppgi_cls} is missing 'group' attribute!")
+            raise TypeError(f"{ep_name}: {ppgi_cls} is missing 'group' attribute!")
         if not ppgi_cls.group == plugin.Plugin.name:
-            msg = f"{name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
+            msg = f"{ep_name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
             raise TypeError(msg)
 
-    def init_plugin(self, name: str, plugin: Type[T]):
-        """Do something after plugin has been checked."""
+    def init_plugin(self, plugin: Type[T]):
+        """Override this to do something after the plugin has been checked."""
         if type(self) is not PluginGroup:
             return  # is not the "plugingroup" group itself
         create_pg(plugin)  # create plugin group if it does not exist

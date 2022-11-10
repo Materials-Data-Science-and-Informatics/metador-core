@@ -41,41 +41,41 @@ pdoc = "^10.0.3"
 # Metador supports defining custom validated plugin groups.
 # Here we define the default entities used in Metador.
 # For each declared group, plugins can be defined via entrypoints.
-schema = "metador_core.schema.pg:PGSchema"
-harvester = "metador_core.harvester:PGHarvester"
-packer = "metador_core.packer:PGPacker"
-widget = "metador_core.widget:PGWidget"
+'schema__0.1.0' = "metador_core.schema.pg:PGSchema"
+'harvester__0.1.0' = "metador_core.harvester:PGHarvester"
+'packer__0.1.0' = "metador_core.packer:PGPacker"
+'widget__0.1.0' = "metador_core.widget:PGWidget"
 
 [tool.poetry.plugins.metador_schema]
 # Metador is build around pluggable metadata schemas.
 # This one is mandatory for containers packed by a packer plugin:
-'core.packerinfo' = "metador_core.packer:PackerInfo"
+'core.packerinfo__0.1.0' = "metador_core.packer:PackerInfo"
 # These are optional and can be used freely, e.g. by some packer:
-'core.file' = "metador_core.schema.common.rocrate:FileMeta"
-'core.dir' = "metador_core.schema.common.rocrate:DirMeta"
-'core.bib' = "metador_core.schema.common:BibMeta"
-'core.imagefile' = "metador_core.schema.common:ImageFileMeta"
-'core.table' = "metador_core.schema.common:TableMeta"
+'core.file__0.1.0' = "metador_core.schema.common.rocrate:FileMeta"
+'core.dir__0.1.0' = "metador_core.schema.common.rocrate:DirMeta"
+'core.bib__0.1.0' = "metador_core.schema.common:BibMeta"
+'core.imagefile__0.1.0' = "metador_core.schema.common:ImageFileMeta"
+'core.table__0.1.0' = "metador_core.schema.common:TableMeta"
 # This one needed for configuring the generic dashboard for a container:
-'core.dashboard' = "metador_core.widget.dashboard:DashboardMeta"
+'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardMeta"
 
 [tool.poetry.plugins.metador_harvester]
-'core.file.generic' = "metador_core.harvester.common:FileMetaHarvester"
-'core.imagefile.dim' = "metador_core.harvester.common:ImageFileMetaHarvester"
+'core.file.generic__0.1.0' = "metador_core.harvester.common:FileMetaHarvester"
+'core.imagefile.dim__0.1.0' = "metador_core.harvester.common:ImageFileMetaHarvester"
 
 [tool.poetry.plugins.metador_widget]
-'core.file.text.md'    = "metador_core.widget.common:MarkdownWidget"
-'core.file.text.html'  = "metador_core.widget.common:HTMLWidget"
-'core.file.text.code'  = "metador_core.widget.common:CodeWidget"
-'core.file.text'  = "metador_core.widget.common:TextWidget"
-'core.file.json'  = "metador_core.widget.common:JSONWidget"
-'core.file.pdf'   = "metador_core.widget.common:PDFWidget"
-'core.file.image' = "metador_core.widget.common:ImageWidget"
-'core.file.audio' = "metador_core.widget.common:AudioWidget"
-'core.file.video' = "metador_core.widget.common:VideoWidget"
+'core.file.text.md__0.1.0'    = "metador_core.widget.common:MarkdownWidget"
+'core.file.text.html__0.1.0'  = "metador_core.widget.common:HTMLWidget"
+'core.file.text.code__0.1.0'  = "metador_core.widget.common:CodeWidget"
+'core.file.text__0.1.0'  = "metador_core.widget.common:TextWidget"
+'core.file.json__0.1.0'  = "metador_core.widget.common:JSONWidget"
+'core.file.pdf__0.1.0'   = "metador_core.widget.common:PDFWidget"
+'core.file.image__0.1.0' = "metador_core.widget.common:ImageWidget"
+'core.file.audio__0.1.0' = "metador_core.widget.common:AudioWidget"
+'core.file.video__0.1.0' = "metador_core.widget.common:VideoWidget"
 
 [tool.poetry.plugins.metador_packer]
-'core.generic' = "metador_core.packer.example:GenericPacker"
+'core.generic__0.1.0' = "metador_core.packer.example:GenericPacker"
 
 
 [tool.poetry.group.dev.dependencies]
