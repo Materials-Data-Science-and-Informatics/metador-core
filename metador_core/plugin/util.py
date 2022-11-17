@@ -1,7 +1,7 @@
 """General utitilies with relevance for plugins."""
 from typing import Optional, Type, TypeVar
 
-from .interface import IsPlugin, PluginGroup
+from .interface import PluginGroup, PluginLike, _to_ep_name
 
 
 def is_notebook() -> bool:
@@ -20,11 +20,11 @@ def is_notebook() -> bool:
         return False  # Probably standard Python interpreter
 
 
-T = TypeVar("T", bound=IsPlugin)
+T = TypeVar("T", bound=PluginLike)
 
 
 def register_in_group(
-    pgroup: PluginGroup[T], plugin: Optional[Type[T]] = None, violently: bool = False
+    pgroup: PluginGroup[T], plugin: Optional[Type[T]] = None, *, violently: bool = False
 ):
     """Register and load a plugin manually, without defining an entry point."""
     if not violently and not is_notebook():
@@ -32,9 +32,16 @@ def register_in_group(
 
     def manual_register(plugin: Type[T]) -> Type[T]:
         pginfo = plugin.Plugin
-        pgroup._ENTRY_POINTS[pginfo.name] = None
-        pgroup._LOADED_PLUGINS[pginfo.name] = plugin
-        pgroup._load_plugin(pginfo.name, plugin)
+        ep_name = _to_ep_name(pginfo.name, pginfo.version)
+        pgroup._ENTRY_POINTS[ep_name] = None
+
+        pg_ref = pgroup.PluginRef(name=pginfo.name, version=pginfo.version)
+        pgroup._LOADED_PLUGINS[pg_ref] = plugin
+        if pg_ref.name not in pgroup._VERSIONS:
+            pgroup._VERSIONS[pg_ref.name] = []
+        pgroup._VERSIONS[pg_ref.name].append(pg_ref)
+
+        pgroup._load_plugin(ep_name, plugin)
         print(f"Notebook: Plugin '{pginfo.name}' registered in '{pgroup.name}' group!")
         return plugin
 

@@ -28,6 +28,12 @@ def semver_str(ver: SemVerTuple):
     return ".".join(map(str, ver))
 
 
+def from_semver_str(ver: str) -> SemVerTuple:
+    nums = tuple(map(int, ver.split(".")))
+    assert len(nums) == 3
+    return nums  # type: ignore
+
+
 # ----
 
 # we want people to use the strict types,

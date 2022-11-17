@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,6 +12,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -19,10 +22,13 @@ from typing import (
 )
 from uuid import UUID, uuid1
 
+from typing_extensions import TypeAlias
+
 from ..plugin.interface import _from_ep_name, _to_ep_name
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.plugins import PluginPkgMeta, PluginRef
+from ..schema.plugins import PluginPkgMeta, PluginRef, plugin_args
+from ..schema.types import SemVerTuple
 from . import utils as M
 from .drivers import (
     METADOR_DRIVERS,
@@ -31,7 +37,7 @@ from .drivers import (
     get_driver_type,
     get_source,
 )
-from .types import H5DatasetLike, H5GroupLike
+from .types import H5DatasetLike, H5FileLike, H5GroupLike
 
 if TYPE_CHECKING:
     from .wrappers import MetadorContainer, MetadorNode
@@ -39,15 +45,780 @@ if TYPE_CHECKING:
 S = TypeVar("S", bound=MetadataSchema)
 
 
-class MetadorContainerInfo:
-    """Initializes and provides MetadorContainer technical metadata structure."""
+@dataclass
+class StoredMetadata:
+    """Information about a metadata schema instance stored at a node."""
 
-    def __init__(self, mc: MetadorContainer):
-        self._raw: MetadorDriver = mc.__wrapped__
-        self._driver_type: MetadorDriverEnum = get_driver_type(self._raw)
+    uuid: UUID
+    """UUID identifying the metadata object in the container.
+
+    Used for bookkeeping, i.e. keeping the container TOC in sync.
+    """
+
+    schema: PluginRef
+    """Schema the object is an instance of."""
+
+    node: H5DatasetLike
+    """Node with serialized metadata object."""
+
+    def to_path(self):
+        prefix = self.node.parent.name
+        ep_name = _to_ep_name(self.schema.name, self.schema.version)
+        return f"{prefix}/{ep_name}={self.uuid}"
+
+    @staticmethod
+    def from_node(obj: H5DatasetLike):
+        path = obj.name
+        segs = path.lstrip("/").split("/")
+        ep_name, uuid_str = segs.pop().split("=")
+        s_name, s_vers = _from_ep_name(ep_name)
+        uuid = UUID(uuid_str)
+        s_ref = schemas.PluginRef(name=s_name, version=s_vers)
+        return StoredMetadata(uuid=uuid, schema=s_ref, node=obj)
+
+
+def _schema_ref_for(ep_name: str) -> PluginRef:
+    s_name, s_ver = _from_ep_name(ep_name)
+    return schemas.PluginRef(name=s_name, version=s_ver)
+
+
+def _ep_name_for(s_ref: PluginRef) -> str:
+    return _to_ep_name(s_ref.name, s_ref.version)
+
+
+class MetadorMeta:
+    """Interface to Metador metadata objects stored at a single HDF5 node."""
+
+    # helpers for __getitem__ and __setitem__
+
+    @staticmethod
+    def _require_schema(
+        schema_name: str, schema_ver: Optional[SemVerTuple]
+    ) -> Type[MetadataSchema]:
+        """Return compatible installed schema class, if possible.
+
+        Raises KeyError if no suitable schema was found.
+
+        Raises TypeError if an auxiliary schema is requested.
+        """
+        schema_class = schemas._get_unsafe(
+            schema_name, schema_ver
+        )  # can raise KeyError
+        if schema_class.Plugin.auxiliary:  # reject auxiliary schemas in container
+            msg = f"Cannot attach instances of auxiliary schema '{schema_name}' to a node!"
+            raise TypeError(msg)
+        return schema_class
+
+    @staticmethod
+    def _parse_obj(
+        schema: Type[S], obj: Union[str, bytes, Dict[str, Any], MetadataSchema]
+    ) -> S:
+        """Return original object if it is an instance of passed schema, or else parse it.
+
+        Raises ValidationError if parsing fails.
+        """
+        if isinstance(obj, schema):
+            return obj  # skip validation, already correct model!
+        # try to convert/parse it:
+        if isinstance(obj, (str, bytes)):
+            return schema.parse_raw(obj)
+        if isinstance(obj, MetadataSchema):
+            return schema.parse_obj(obj.dict())
+        else:  # dict
+            return schema.parse_obj(obj)
+
+    # raw getters and setters don't care about the environment,
+    # they work only based on what objects are available and compatible
+    # and do not perform validation etc.
+
+    def _get_raw(
+        self, schema_name: str, version: Optional[SemVerTuple] = None
+    ) -> Optional[StoredMetadata]:
+        """Return stored metadata for given schema at this node (or None).
+
+        If a version is passed, the stored version must also be compatible.
+        """
+        # retrieve stored instance (if suitable)
+        req_ref: Optional[PluginRef] = None
+        ret: Optional[StoredMetadata] = self._objs.get(schema_name)
+        if not version:
+            return ret  # no specified version -> anything goes
+        # otherwise: only return if it is compatible
+        req_ref = schemas.PluginRef(name=schema_name, version=version)
+        return ret if ret and req_ref.supports(ret.schema) else None
+
+    def _set_raw(self, schema_ref: PluginRef, obj: MetadataSchema) -> None:
+        """Store metadata object as instance of passed schema at this node."""
+        # reserve UUID, construct dataset path and store metadata object
+        obj_uuid = self._mc.metador._links.fresh_uuid()
+        obj_path = f"{self._base_dir}/{_ep_name_for(schema_ref)}={str(obj_uuid)}"
+        # store object
+        self._mc.__wrapped__[obj_path] = bytes(obj)
+        obj_node = self._mc.__wrapped__[obj_path]
+        stored_obj = StoredMetadata(uuid=obj_uuid, schema=schema_ref, node=obj_node)
+        self._objs[schema_ref] = stored_obj
+        # update TOC
+        self._mc.metador._links.register(stored_obj)
+
+    def _del_raw(self, schema_name: str, *, _unlink: bool = True) -> None:
+        """Delete stored metadata for given schema at this node."""
+        # NOTE: _unlink is only for the destroy method
+        stored_obj = self._objs[schema_name]
+        # unregister in TOC (will also trigger clean up there)
+        if _unlink:
+            self._mc.metador._links.unregister(stored_obj.uuid)
+        # remove metadata object
+        del self._objs[stored_obj.schema.name]
+        del self._mc.__wrapped__[stored_obj.node.name]
+        # no metadata objects left -> remove metadata dir
+        if not self._objs:
+            del self._mc.__wrapped__[self._base_dir]
+
+    # helpers for container-level opertions (move, copy, delete etc)
+
+    def _destroy(self, *, _unlink: bool = True):
+        """Unregister and delete all metadata objects attached to this node."""
+        # NOTE: _unlink is only set to false for node copy without metadata
+        for schema_name in list(self.keys()):
+            self._del_raw(schema_name, _unlink=_unlink)
+
+    # ----
+
+    def __init__(self, node: MetadorNode):
+        self._mc: MetadorContainer = node._self_container
+        """Underlying container (for convenience)."""
+
+        self._node: MetadorNode = node
+        """Underlying actual user node."""
+
+        is_dataset = isinstance(node, H5DatasetLike)
+        self._base_dir: str = M.to_meta_base_path(node.name, is_dataset)
+        """Path of this metador metadata group node.
+
+        Actual node exists iff any metadata is stored for the node.
+        """
+
+        self._objs: Dict[str, StoredMetadata] = {}
+        """Information about available metadata objects."""
+
+        # load available object metadata encoded in the node names
+        meta_grp = cast(H5GroupLike, self._mc.__wrapped__.get(self._base_dir, {}))
+        for obj_node in meta_grp.values():
+            obj = StoredMetadata.from_node(obj_node)
+            self._objs[obj.schema.name] = obj
+
+    # ----
+
+    def keys(self) -> KeysView[str]:
+        """Return names of explicitly attached metadata objects.
+
+        Transitive parent schemas are not included.
+        """
+        return self._objs.keys()  # type: ignore
+
+    def values(self) -> ValuesView[MetadataSchema]:
+        self._node._guard_skel_only()
+        return self._objs.values()  # type: ignore
+
+    def items(self) -> ItemsView[str, MetadataSchema]:
+        self._node._guard_skel_only()
+        return self._objs.items()  # type: ignore
+
+    # ----
+
+    def __len__(self) -> int:
+        """Return number of explicitly attached metadata objects.
+
+        Transitive parent schemas are not counted.
+        """
+        return len(self.keys())
+
+    def __iter__(self) -> Iterator[str]:
+        """Iterate listing schema names of all actually attached metadata objects.
+
+        Transitive parent schemas are not included.
+        """
+        return iter(self.keys())
+
+    # ----
+
+    def query(
+        self,
+        schema: Union[str, Type[MetadataSchema]] = "",
+        version: Optional[SemVerTuple] = None,
+    ) -> Iterator[str]:
+        """Return schema names for which objects at this node are compatible with passed schema.
+
+        Will also consider compatible child schema instances.
+
+        Returned iterator will yield passed schema first, if an object is available.
+        Otherwise, the order is not specified.
+        """
+        schema_name, schema_ver = plugin_args(schema, version)
+        # no schema selected -> anything goes
+        if not schema_name:
+            yield from self.keys()
+            return
+
+        # try exact schema (in any compatible version, if version specified)
+        if obj := self._get_raw(schema_name, schema_ver):
+            yield schema_name
+
+        # next, try schemas compatible with any child schemas
+        compat = self._mc.metador.schemas.children(schema_name, schema_ver)
+        avail = {self._get_raw(s).schema for s in self.keys()}
+        for obj in avail.intersection(compat):
+            yield obj.name
+
+    def __contains__(self, schema: Union[str, MetadataSchema]) -> bool:
+        """Check whether a compatible metadata object for given schema exists.
+
+        Will also consider compatible child schema instances.
+        """
+        if schema == "":
+            return False
+        return next(self.query(schema), None) is not None
+
+    @overload
+    def __getitem__(self, schema: str) -> MetadataSchema:
+        ...
+
+    @overload
+    def __getitem__(self, schema: Type[S]) -> S:
+        ...
+
+    def __getitem__(self, schema: Union[str, Type[S]]) -> Union[S, MetadataSchema]:
+        """Like get, but will raise KeyError on failure."""
+        if ret := self.get(schema):
+            return ret
+        raise KeyError(schema)
+
+    @overload
+    def get(
+        self, schema: str, version: Optional[SemVerTuple] = None
+    ) -> Optional[MetadataSchema]:
+        ...
+
+    @overload
+    def get(
+        self, schema: Type[S], version: Optional[SemVerTuple] = None
+    ) -> Optional[S]:
+        ...
+
+    def get(
+        self, schema: Union[str, Type[S]], version: Optional[SemVerTuple] = None
+    ) -> Optional[Union[MetadataSchema, S]]:
+        """Get a parsed metadata object matching the given schema (if it exists).
+
+        Will also consider compatible child schema instances.
+        """
+        self._node._guard_skel_only()
+        schema_name, schema_ver = plugin_args(schema, version)
+
+        compat_schema = next(self.query(schema_name, schema_ver), None)
+        if not compat_schema:
+            return None
+
+        schema_class = self._require_schema(schema_name, schema_ver)
+        obj = self._get_raw(compat_schema).node[()]
+        return cast(S, self._parse_obj(schema_class, obj))
+
+    def __setitem__(
+        self, schema: Union[str, Type[S]], value: Union[Dict[str, Any], MetadataSchema]
+    ) -> None:
+        """Store metadata object as instance of given schema.
+
+        Raises KeyError if passed schema is not installed in environment.
+
+        Raises TypeError if passed schema is marked auxiliary.
+
+        Raises ValueError if an object for the schema already exists.
+
+        Raises ValidationError if passed object is not valid for the schema.
+        """
+        self._node._guard_read_only()
+        schema_name, schema_ver = plugin_args(schema)
+
+        # if self.get(schema_name, schema_ver):  # <- also subclass schemas
+        # NOTE: for practical reasons let's be more lenient here and allow redundancy
+        # hence only check if exact schema (modulo version) is already there
+        if self._get_raw(schema_name):  # <- only same schema
+            msg = f"Metadata object for schema {schema_name} already exists!"
+            raise ValueError(msg)
+
+        schema_class = self._require_schema(schema_name, schema_ver)
+        checked_obj = self._parse_obj(schema_class, value)
+        self._set_raw(schema_class.Plugin.ref(), checked_obj)
+
+    def __delitem__(self, schema: Union[str, Type[MetadataSchema]]) -> None:
+        """Delete metadata object explicitly stored for the passed schema.
+
+        If a schema class is passed, its version is ignored,
+        as each node may contain at most one explicit instance per schema.
+
+        Raises KeyError if no metadata object for that schema exists.
+        """
+        self._node._guard_read_only()
+        schema_name, _ = plugin_args(schema)
+
+        if self._get_raw(schema_name) is None:
+            raise KeyError(schema_name)  # no (explicit) metadata object
+
+        self._del_raw(schema_name)
+
+
+# ----
+
+
+class TOCLinks:
+    """Link management for synchronizing metadata objects and container TOC."""
+
+    # NOTE: This is not exposed to the end-user
+
+    @staticmethod
+    def _link_path_for(schema_ref: PluginRef) -> str:
+        return f"{M.METADOR_LINKS_PATH}/{_ep_name_for(schema_ref)}"
+
+    def __init__(self, raw_cont: H5FileLike, toc_schemas: TOCSchemas):
+        self._raw: H5FileLike = raw_cont
+        """Raw underlying container (for quick access)."""
+
+        self._toc_schemas = toc_schemas
+        """Schemas used in container (to (un)register)."""
+
+        self._toc_path: Dict[UUID, str] = {}
+        """Maps metadata object UUIDs to paths of respective pseudo-symlink in TOC."""
+
+        # load links into memory
+        if M.METADOR_LINKS_PATH in self._raw:
+            link_grp = self._raw.require_group(M.METADOR_LINKS_PATH)
+            assert isinstance(link_grp, H5GroupLike)
+            for schema_link_grp in link_grp.values():
+                assert isinstance(schema_link_grp, H5GroupLike)
+                for uuid, link_node in schema_link_grp.items():
+                    assert isinstance(link_node, H5DatasetLike)
+                    self._toc_path[UUID(uuid)] = link_node.name
+
+    def fresh_uuid(self) -> UUID:
+        """Return a UUID string not used for a metadata object in the container yet."""
+        fresh = False
+        ret: UUID
+        # NOTE: here a very unlikely race condition is present if parallelized
+        while not fresh:
+            ret = uuid1()
+            fresh = ret not in self._toc_path
+        self._toc_path[ret] = None  # not assigned yet, but "reserved"
+        # ----
+        return ret
+
+    def resolve(self, uuid: UUID) -> str:
+        """Get the path a UUID in the TOC points to."""
+        link_path = self._toc_path[uuid]
+        link_node = cast(H5DatasetLike, self._raw[link_path])
+        return link_node[()].decode("utf-8")
+
+    def update(self, uuid: UUID, new_target: str):
+        """Update target of an existing link to point to a new location."""
+        link_path = self._toc_path[uuid]
+        del self._raw[link_path]
+        self._raw[link_path] = new_target
+
+    def register(self, obj: StoredMetadata) -> None:
+        """Create a link for a metadata object in container TOC.
+
+        The link points to the metadata object.
+        """
+        self._toc_schemas._register(obj.schema)
+
+        toc_path = f"{self._link_path_for(obj.schema)}/{obj.uuid}"
+        self._toc_path[obj.uuid] = toc_path
+        self._raw[toc_path] = str(obj.node.name)
+
+    def unregister(self, uuid: UUID) -> None:
+        """Unregister metadata object in TOC given its UUID.
+
+        Will remove the object and clean up empty directories in the TOC.
+        """
+        # delete the link itself and free the UUID
+        toc_path = self._toc_path[uuid]
+
+        schema_group = self._raw[toc_path].parent
+        assert isinstance(schema_group, H5GroupLike)
+        link_group = schema_group.parent
+        assert link_group.name == M.METADOR_LINKS_PATH
+
+        del self._raw[toc_path]
+        del self._toc_path[uuid]
+        if len(schema_group):
+            return  # schema still has instances
+
+        s_name_vers: str = schema_group.name.split("/")[-1]
+        # delete empty group for schema
+        del self._raw[schema_group.name]
+        # notify schema manager (cleans up schema + package info)
+        self._toc_schemas._unregister(_schema_ref_for(s_name_vers))
+
+        if len(link_group.keys()):
+            return  # container still has metadata
+        else:
+            # remove the link dir itself (no known metadata in container left)
+            del self._raw[link_group.name]
+
+    # ----
+
+    def find_broken(self, repair: bool = False) -> List[UUID]:
+        """Return list of UUIDs in TOC not pointing to an existing metadata object.
+
+        Will use loaded cache of UUIDs and check them, without scanning the container.
+
+        If repair is set, will remove those broken links.
+        """
+        broken = []
+        for uuid in self._toc_path.keys():
+            target = self.resolve(uuid)
+            if target not in self._raw:
+                broken.append(uuid)
+        if repair:
+            for uuid in broken:
+                self.unregister(uuid)
+        return broken
+
+    def find_missing(self, path: H5GroupLike) -> List[H5DatasetLike]:
+        """Return list of metadata objects not listed in TOC."""
+        missing = []
+
+        def collect_missing(_, node):
+            if not M.is_internal_path(node.name, M.METADOR_META_PREF):
+                return  # not a metador metadata path
+
+            obj = StoredMetadata.from_node(node)
+            known = obj.uuid in self._toc_path
+            # check UUID collision: i.e., used in TOC, but points elsewhere
+            # (requires fixing up the name of this object / new UUID)
+            # implies that THIS object IS missing in the TOC
+            collision = known and self.resolve(obj.uuid) != node.name
+            if not known or collision:
+                missing.append(node)
+
+        # ensure its a group and collect
+        self._raw.require_group(path.name).visititems(collect_missing)
+        return missing
+
+    def repair_missing(
+        self, missing: List[H5DatasetLike], update: bool = False
+    ) -> None:
+        """Repair links (objects get new UUIDs, unless update is true)."""
+        # NOTE: needed for correct copy and move of nodes with their metadata
+        for node in missing:
+            obj = StoredMetadata.from_node(node)
+            if update and obj.uuid in self._toc_path:
+                # update target of existing link (e.g. for move)
+                self.update(obj.uuid, node.name)
+            else:
+                # assign new UUID (e.g. for copy)
+                obj.uuid = self.fresh_uuid()
+                new_path = obj.to_path()
+                self._raw.move(node.name, new_path)
+                self.register(obj)
+
+
+class TOCSchemas:
+    """Schema management for schemas used in the container.
+
+    Interface is made to mimic PGSchema wherever it makes sense.
+    """
+
+    @classmethod
+    def _schema_path_for(cls, s_ref: PluginRef) -> str:
+        return f"{M.METADOR_SCHEMAS_PATH}/{_to_ep_name(s_ref.name, s_ref.version)}"
+
+    @classmethod
+    def _jsonschema_path_for(cls, s_ref: PluginRef) -> str:
+        return f"{cls._schema_path_for(s_ref)}/jsonschema.json"
+
+    @staticmethod
+    def _load_json(node: H5DatasetLike):
+        return json.loads(node[()].decode("utf-8"))
+
+    def _update_parents_children(
+        self, schema_ref: PluginRef, parents: Optional[List[PluginRef]]
+    ):
+        if parents is None:  # remove schema
+            for parent in self._parents[schema_ref]:
+                if parent in self._schemas:
+                    self._children[parent].remove(schema_ref)
+                elif all(
+                    (child not in self._schemas for child in self._children[parent])
+                ):
+                    del self._parents[parent]
+                    del self._children[parent]
+        else:  # add schema
+            for i, parent in enumerate(parents):
+                if parent not in self._parents:
+                    self._parents[parent] = parents[: i + 1]
+                if parent not in self._children:
+                    self._children[parent] = set()
+                if parent != schema_ref:
+                    self._children[parent].add(schema_ref)
+
+    def _register(self, schema_ref: PluginRef):
+        """Notify that a schema is used in the container (metadata object is created/updated).
+
+        If the schema has not been used before in the container, will store metadata about it.
+        """
+        if schema_ref in self._schemas:
+            return  # nothing to do
+
+        # store json schema
+        schema_cls = schemas.get(schema_ref.name, schema_ref.version)
+        jsonschema_dat = schema_cls.schema_json().encode("utf-8")
+        jsonschema_path = self._jsonschema_path_for(schema_ref)
+        self._raw[jsonschema_path] = jsonschema_dat
+
+        # store parent schema refs
+        compat_path = f"{self._schema_path_for(schema_ref)}/compat"
+        parents = schemas.parent_path(schema_ref.name, schema_ref.version)
+        parents_dat: bytes = json.dumps(list(map(lambda x: x.dict(), parents))).encode(
+            "utf-8"
+        )
+
+        self._raw[compat_path] = parents_dat
+        self._schemas.add(schema_ref)
+        self._update_parents_children(schema_ref, parents)
+
+        # add providing package (if no stored package provides it)
+        if not self._pkgs._providers.get(schema_ref, []):
+            env_pkg_info: PluginPkgMeta = schemas.provider(schema_cls.Plugin.ref())
+            pkg_name_ver = (str(env_pkg_info.name), env_pkg_info.version)
+            self._pkgs._register(pkg_name_ver, env_pkg_info)
+            self._used[pkg_name_ver] = set()
+
+        # update used schemas tracker for all packages providing this schema
+        for pkg in self._pkgs._providers[schema_ref]:
+            self._used[pkg].add(schema_ref)
+
+    def _unregister(self, schema_ref: PluginRef):
+        """Notify that a schema is not used at any container node anymore.
+
+        If after that no schema of a listed dep package is used,
+        this dependency will be removed from the container.
+        """
+        del self._raw[self._schema_path_for(schema_ref)]
+        self._schemas.remove(schema_ref)
+        self._update_parents_children(schema_ref, None)
+
+        providers = set(self._pkgs._providers[schema_ref])
+        for pkg in providers:
+            pkg_used = self._used[pkg]
+            if schema_ref in pkg_used:
+                # remove schema from list of used schemas of pkg
+                pkg_used.remove(schema_ref)
+            if not len(pkg_used):
+                # package not used anymore in container -> clean up
+                self._pkgs._unregister(pkg)
+
+        # remove schemas group if it is empty (no schemas used in container)
+        if not self._raw.require_group(M.METADOR_SCHEMAS_PATH).keys():
+            del self._raw[M.METADOR_SCHEMAS_PATH]
+
+    def __init__(self, raw_cont: H5FileLike, toc_packages: TOCPackages):
+        self._raw: H5FileLike = raw_cont
+        """Raw underlying container (for quick access)."""
+
+        self._pkgs = toc_packages
+        """TOC package metadata manager object."""
+
+        self._schemas: Set[PluginRef] = set()
+        """Stored JSON Schemas of used schemas."""
+
+        self._parents: Dict[PluginRef, List[PluginRef]] = {}
+        """Parents of a used json schema (i.e. other partially compatible schemas)."""
+
+        self._children: Dict[PluginRef, Set[PluginRef]] = {}
+        """Children of a used json schema (i.e. other fully compatible schemas)."""
+
+        self._used: Dict[PythonDep, Set[PluginRef]] = {}
+        """package name + version -> name of schemas used in container"""
+
+        for pkg in self._pkgs.keys():
+            self._used[pkg] = set()
+
+        if M.METADOR_SCHEMAS_PATH in self._raw:
+            schema_grp = self._raw.require_group(M.METADOR_SCHEMAS_PATH)
+            for name, node in schema_grp.items():
+                s_ref: PluginRef = _schema_ref_for(name)
+                assert isinstance(node, H5GroupLike)
+                compat = node["compat"]
+                assert isinstance(compat, H5DatasetLike)
+
+                reflist = json.loads(compat[()].decode("utf-8"))
+                parents = list(map(PluginRef.parse_obj, reflist))
+
+                self._schemas.add(s_ref)
+                self._update_parents_children(s_ref, parents)
+                for pkg in self._pkgs._providers[s_ref]:
+                    self._used[pkg].add(s_ref)
+
+    @property
+    def packages(self) -> TOCPackages:
+        """Like PluginGroup.packages, but with respect to schemas used in container."""
+        return self._pkgs
+
+    def provider(self, schema_ref: PluginRef) -> PluginPkgMeta:
+        """Like PluginGroup.provider, but with respect to container deps."""
+        pkg_name_ver = next(iter(self._pkgs._providers.get(schema_ref, [])), None)
+        if pkg_name_ver is None:
+            msg = f"Did not find metadata of a package providing schema: '{schema_ref}'"
+            raise KeyError(msg)
+        return self._pkgs[pkg_name_ver]
+
+    def parent_path(
+        self, schema, version: Optional[SemVerTuple] = None
+    ) -> List[PluginRef]:
+        """Like PGSchema.parent_path, but with respect to container deps."""
+        name, vers = plugin_args(schema, version, require_version=True)
+        s_ref = schemas.PluginRef(name=name, version=vers)
+        return self._parents[s_ref]
+
+    def children(self, schema, version: Optional[SemVerTuple] = None) -> Set[PluginRef]:
+        """Like PGSchema.children, but with respect to container deps."""
+        name, vers = plugin_args(schema, version)
+        if vers is not None:
+            s_refs = [schemas.PluginRef(name=name, version=vers)]
+        else:
+            # if no version is given, collect all possibilities
+            s_refs = [ref for ref in self._children.keys() if ref.name == name]
+        return set.union(set(), *map(self._children.__getitem__, s_refs))
+
+    # ----
+
+    def __len__(self):
+        return len(self._schemas)
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __contains__(self, schema_ref: PluginRef):
+        return schema_ref in self._schemas
+
+    def __getitem__(self, schema_ref: PluginRef):
+        node_path = self._jsonschema_path_for(schema_ref)
+        assert node_path in self._raw
+        return self._load_json(self._raw.require_dataset(node_path))
+
+    def get(self, schema_ref: PluginRef):
+        try:
+            self[schema_ref]
+        except KeyError:
+            return None
+
+    def keys(self):
+        return set(self._schemas)
+
+    def values(self):
+        return [self[k] for k in self.keys()]
+
+    def items(self):
+        return [(k, self[k]) for k in self.keys()]
+
+
+PythonDep: TypeAlias = Tuple[str, SemVerTuple]
+
+
+class TOCPackages:
+    """Package metadata management for schemas used in the container.
+
+    The container will always store for each schema used in the
+    information about one package providing that schema.
+
+    If there are multiple providers of the same schema,
+    the first/existing one is preferred.
+    """
+
+    @staticmethod
+    def _pkginfo_path_for(pkg_name: str, pkg_version: SemVerTuple) -> str:
+        return f"{M.METADOR_PACKAGES_PATH}/{_to_ep_name(pkg_name, pkg_version)}"
+
+    def _add_providers(self, pkg: PythonDep, pkginfo: PluginPkgMeta):
+        # fill schema -> package lookup table for provided package
+        for schema_ref in pkginfo.plugins[schemas.name]:
+            if schema_ref not in self._providers:
+                self._providers[schema_ref] = set()
+            self._providers[schema_ref].add(pkg)
+
+    def _register(self, pkg: PythonDep, info: PluginPkgMeta):
+        pkg_path = self._pkginfo_path_for(*pkg)
+        self._raw[pkg_path] = bytes(info)
+        self._pkginfos[pkg] = info
+        self._add_providers(pkg, info)
+
+    def _unregister(self, pkg: PythonDep):
+        pkg_path = self._pkginfo_path_for(*pkg)
+        del self._raw[pkg_path]
+        info = self._pkginfos.pop(pkg)
+        # unregister providers
+        for schema_ref in info.plugins[schemas.name]:
+            providers = self._providers[schema_ref]
+            providers.remove(pkg)
+            if not providers:  # schema not provided by any package
+                del self._providers[schema_ref]
+
+        # remove schemas group if it is empty (no schemas used in container)
+        if not self._raw.require_group(M.METADOR_PACKAGES_PATH).keys():
+            del self._raw[M.METADOR_PACKAGES_PATH]
+
+    def __init__(self, raw_container: H5FileLike):
+        self._raw: H5FileLike = raw_container
+        """Raw underlying container (for quick access)."""
+
+        self._pkginfos: Dict[PythonDep, PluginPkgMeta] = {}
+        """Package name + version -> package info"""
+
+        self._providers: Dict[PluginRef, Set[PythonDep]] = {}
+        """schema reference -> package name + version"""
+
+        # parse package infos if they exist
+        if M.METADOR_PACKAGES_PATH in self._raw:
+            deps_grp = self._raw.require_group(M.METADOR_PACKAGES_PATH)
+            for name, node in deps_grp.items():
+                pkg: PythonDep = _from_ep_name(name)
+                info = PluginPkgMeta.parse_raw(cast(H5DatasetLike, node)[()])
+                self._pkginfos[pkg] = info
+                self._add_providers(pkg, info)
+
+    # ----
+
+    def __len__(self):
+        return len(self._pkginfos)
+
+    def __iter__(self):
+        return iter(self._pkginfos)
+
+    def __contains__(self, pkg: PythonDep):
+        return pkg in self._pkginfos
+
+    def __getitem__(self, pkg: PythonDep):
+        return self._pkginfos[pkg]
+
+    def keys(self):
+        return self._pkginfos.keys()
+
+    def values(self):
+        return self._pkginfos.values()
+
+    def items(self):
+        return self._pkginfos.items()
+
+
+class MetadorContainerTOC:
+    """Interface to the Metador metadata index (table of contents) of a container."""
+
+    def __init__(self, container: MetadorContainer):
+        self._container = container
+        self._raw = self._container.__wrapped__
 
         ver = self.spec_version if M.METADOR_VERSION_PATH in self._raw else None
-        if ver is None and mc.mode == "r":
+        if ver is None and self._container.mode == "r":
             msg = "Container is read-only and does not look like a Metador container! "
             msg += "Please open in writable mode to initialize Metador structures!"
             raise ValueError(msg)
@@ -59,6 +830,16 @@ class MetadorContainerInfo:
         if ver is None:
             self._raw[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION
             self._raw[M.METADOR_UUID_PATH] = str(uuid1())
+        # if we're here, we have a prepared container TOC structure
+
+        # proceed to initialize TOC
+        self._driver_type: MetadorDriverEnum = get_driver_type(self._raw)
+
+        self._packages = TOCPackages(self._raw)
+        self._schemas = TOCSchemas(self._raw, self._packages)
+        self._links = TOCLinks(self._raw, self._schemas)
+
+    # ----
 
     @property
     def driver_type(self) -> MetadorDriverEnum:
@@ -75,8 +856,10 @@ class MetadorContainerInfo:
         """Return data underlying thes container (file, set of files, etc. used with the driver)."""
         return get_source(self._raw, self.driver_type)
 
+    # ----
+
     @property
-    def uuid(self) -> UUID:
+    def container_uuid(self) -> UUID:
         """Return UUID of the container."""
         uuid = self._raw[M.METADOR_UUID_PATH]
         uuid_ds = cast(H5DatasetLike, uuid)
@@ -88,620 +871,34 @@ class MetadorContainerInfo:
         ver = cast(H5DatasetLike, self._raw[M.METADOR_VERSION_PATH])
         return list(map(int, ver[()].decode("utf-8").split(".")))
 
-
-# ----
-
-
-class MetadorMeta:
-    """Interface to Metador metadata objects stored at a single HDF5 node."""
-
-    def __init__(self, node: MetadorNode):
-        self._mc = node._self_container  # needed for read/write access
-        self._read_only = node.read_only  # inherited from node marker
-        self._skel_only = node.skel_only  # inherited from node marker
-        # used all over the place, so precompute once:
-        self._base_dir = M.to_meta_base_path(
-            node.name, is_dataset=isinstance(node, H5DatasetLike)
-        )
-
-    def _destroy(self, unlink_in_toc: bool = True):
-        """Unregister and delete all metadata objects attached to this node."""
-        for schema_name in iter(self):
-            self._delitem(schema_name, unlink_in_toc)
-
-    def _meta_schema_dir(self, schema_name: str = "") -> Optional[str]:
-        """Return full hierarchical path to a schema name."""
-        if not schema_name:
-            return self._base_dir
-        # try to resolve parent path based on found structure
-        pp: str = self._mc.toc._parent_path(schema_name) or ""
-        return self._base_dir + "/" + pp
-
-    def _get_raw(self, schema_name: str):
-        """Return raw dataset node for an exact schema name."""
-        dir_path = self._meta_schema_dir(schema_name)
-        if dir_path is None:
-            return None  # unknown schema
-        dir = self._mc.__wrapped__.get(dir_path)  # RAW
-        if dir is None:
-            return None  # non-existing metadata
-
-        assert isinstance(dir, H5GroupLike)
-        for name, node in dir.items():
-            if name[0] == "=":  # metadata dataset byte objects start with =
-                return node  # return first match
-
-    def _is_unknown_schema(self, schema_name: str) -> bool:
-        # we have no such schema in our plugin environment
-        unknown_nonexisting: bool = schema_name not in schemas.keys()
-        # we may have such a schema with that name, but its not the right one!
-        unknown_but_existing: bool = schema_name in self._mc.toc.unknown_schemas
-        return unknown_nonexisting or unknown_but_existing
-
-    def _guard_unknown_schema(self, schema_name: str):
-        if self._is_unknown_schema(schema_name):
-            raise ValueError(f"Unknown or incompatible schema: {schema_name}")
-
-    def _guard_read_only(self):
-        if self._read_only:
-            raise ValueError("This node is marked as read_only!")
-
-    def _guard_skel_only(self):
-        if self._skel_only:
-            raise ValueError("This node is marked as skel_only!")
-
-    # public interface:
-
-    def get_bytes(self, schema_name: str) -> Optional[bytes]:
-        """Get bytes for an object belonging (exactly!) to the given schema, if present.
-
-        This also works for unknown schemas (we can retrieve, but cannot parse those).
-        """
-        self._guard_skel_only()
-        if (ret := self._get_raw(schema_name)) is not None:
-            return ret[()]
-        return None
-
-    def find(self, schema_name: str = "", **kwargs) -> Set[str]:
-        """List schema names of all attached metadata objects with given schema as a base.
-
-        This will include possibly unknown schema names.
-
-        Only the physically embedded instances are included.
-        For transitive closure, add schema names along the parent_path of the schemas.
-        """
-        include_parents = kwargs.pop("include_parents", False)
-        if kwargs:
-            raise ValueError(f"Unknown keyword arguments: {kwargs}")
-
-        basepath = self._meta_schema_dir(schema_name)
-        if not basepath or basepath not in self._mc.__wrapped__:  # RAW
-            # no metadata subdirectory -> no objects (important case!)
-            return set()
-        grp = self._mc.__wrapped__.require_group(basepath)  # RAW
-
-        entries: Set[str] = set()
-
-        def collect(path):
-            # path is relative to basepath
-            segs = path.split("/")
-            # = is marker for object, use to distinguish from a group
-            # (entry points may not contain = symbols by setuptools spec)
-            if segs[-1][0] == "=":
-                matching_schema = segs[-2] if len(segs) > 1 else schema_name
-                entries.add(matching_schema)
-                if include_parents:
-                    entries.update(segs[:-1])
-                    if schema_name:
-                        entries.add(schema_name)
-
-        grp.visit(collect)  # RAW
-        return entries
-
-    def _delitem(self, schema_name: str, unlink_in_toc: bool = True):
-        self._guard_read_only()
-        node = self._get_raw(schema_name)
-        if node is None:
-            raise KeyError(schema_name)
-
-        # unregister in TOC (will also clean up empty dirs and deps there
-        uuid = M.split_meta_obj_path(node.name)[-1]
-        if unlink_in_toc:
-            self._mc.toc._unregister_link(uuid)
-
-        # clean up empty dirs at the in the node metadata dir
-        parent_node = node.parent
-        del self._mc.__wrapped__[node.name]  # RAW
-        while parent_node.name != self._base_dir:
-            if len(parent_node):
-                break  # non-empty
-            empty_group_path = parent_node.name
-            parent_node = parent_node.parent
-            del self._mc.__wrapped__[empty_group_path]  # RAW
-        # remove the base dir itself, if empty
-        if parent_node.name == self._base_dir and not len(parent_node):
-            del self._mc.__wrapped__[self._base_dir]  # RAW
-
-    # start with methods having non-transitive semantics (considers exact schemas)
-
-    def __iter__(self) -> Iterator[str]:
-        """Iterate listing schema names of all actually attached metadata objects.
-
-        This means, no transitive parent schemas are included.
-        """
-        return iter(self.find())
-
-    def __len__(self) -> int:
-        """Return number of all actually attached metadata objects.
-
-        This means, transitive parent schemas are not counted.
-        """
-        return len(self.find())
-
-    def keys(self) -> KeysView[str]:
-        return self.find()  # type: ignore
-
-    def values(self) -> ValuesView[MetadataSchema]:
-        self._guard_skel_only()
-        return set(map(lambda x: x[1], self.items()))  # type: ignore
-
-    def items(self) -> ItemsView[str, MetadataSchema]:
-        self._guard_skel_only()
-        return {name: self.get[name] for name in self.find()}  # type: ignore
-
-    def __delitem__(self, schema: Union[str, MetadataSchema]):
-        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
-        return self._delitem(schema_name, unlink_in_toc=True)
-
-    # all following only work with known (i.e. registered/correct) schema:
-
-    def __setitem__(
-        self, schema: Union[str, Type[S]], value: Union[Dict[str, Any], MetadataSchema]
-    ):
-        self._guard_read_only()
-        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
-        self._guard_unknown_schema(schema_name)
-        if self._get_raw(schema_name):
-            raise ValueError(
-                f"Metadata object for schema {schema_name} already exists!"
-            )
-
-        # get the correct installed plugin class (don't trust the user class!)
-        schema_class: Type[MetadataSchema] = schemas._get_unsafe(schema_name)
-
-        # reject auxiliary schemas
-        if schema_class.Plugin.auxiliary:
-            msg = f"Cannot attach instances of auxiliary schema '{schema_name}' to a node!"
-            raise TypeError(msg)
-
-        # handle and check the passed metadata
-        if isinstance(value, schema_class):
-            validated = value  # skip validation, already correct model
-        else:
-            # try to convert/parse it:
-            val = value.dict() if isinstance(value, MetadataSchema) else value
-            # let ValidationError be raised (if it happens)
-            validated = schema_class.parse_obj(val)
-
-        # all good -> store it
-        obj_path = self._mc.toc._register_link(self._base_dir, schema_name)
-        self._mc.__wrapped__[obj_path] = bytes(validated)  # RAW
-
-        # notify TOC dependency tracking to register possibly new dependency.
-        # we do it here instead of in toc._register_link, because _register_link
-        # is also used in cases where we might not have the schema installed,
-        # e.g. when fixing the TOC.
-        # here, adding new metadata only works with a properly installed schema
-        # so we can get all required information.
-        self._mc.toc._notify_used_schema(schema_class.ref())
-
-    # following have transitive semantics (i.e. logic also works with parent schemas)
-
-    @overload
-    def get(self, schema: str) -> Optional[MetadataSchema]:
-        ...
-
-    @overload
-    def get(self, schema: Type[S]) -> Optional[S]:
-        ...
-
-    def get(self, schema: Union[str, Type[S]]) -> Optional[Union[MetadataSchema, S]]:
-        """Get a parsed metadata object (if it exists) matching the given known schema.
-
-        Will also accept a child schema object and parse it as the parent schema.
-        If multiple suitable objects are found, picks the alphabetically first to parse it.
-        """
-        self._guard_skel_only()
-        schema_name: str = schema if isinstance(schema, str) else schema.Plugin.name
-        self._guard_unknown_schema(schema_name)
-        # don't include parents, because we need to parse some physical instance
-        candidates = self.find(schema_name)
-        if not candidates:
-            return None
-        # NOTE: here we might get also data from an unknown child schema
-        # but as the requested schema is known and compatible, we know it must work!
-        dat: Optional[bytes] = self.get_bytes(next(iter(sorted(candidates))))
-        assert dat is not None  # getting bytes of a found candidate!
-        # parse with the correct schema and return the instance object
-        return cast(S, schemas[schema_name].parse_raw(dat))
-
-    @overload
-    def __getitem__(self, schema: str) -> MetadataSchema:
-        ...
-
-    @overload
-    def __getitem__(self, schema: Type[S]) -> S:
-        ...
-
-    def __getitem__(self, schema: Union[str, Type[S]]) -> Union[S, MetadataSchema]:
-        """Like get, but will raise KeyError on failure."""
-        ret = self.get(schema)
-        if ret is None:
-            raise KeyError(schema)
-        return ret
-
-    def __contains__(self, schema_name: str) -> bool:
-        """Check whether a suitable metadata object for given known schema exists."""
-        self._guard_unknown_schema(schema_name)
-        return bool(self.find(schema_name, include_parents=True))
-
-
-class MetadorContainerTOC:
-    """Interface to the Metador metadata index of a container."""
-
-    def _find_broken_links(self, repair: bool = False) -> List[str]:
-        """Return list of UUIDs in TOC not pointing to an existing metadata object.
-
-        Will use loaded cache of UUIDs and check them, without scanning the container.
-
-        If repair is set, will remove those broken links.
-        """
-        broken = []
-        for uuid in self._toc_path_from_uuid.keys():
-            target = self._resolve_link(uuid)
-            if target not in self._container.__wrapped__:  # RAW
-                broken.append(uuid)
-        if repair:
-            for uuid in broken:
-                self._unregister_link(uuid)
-        return broken
-
-    def _find_missing_links(
-        self, path: str, repair: bool = False, update: bool = False
-    ) -> List[str]:
-        """Return list of paths to metadata objects not listed in TOC.
-
-        Path must point to a group.
-
-        If repair is set, will create missing entries in TOC.
-
-        If update is set, will reassign existing UUID if possible (this only makes
-        sense when objects have been moved, otherwise it simply breaks the other link)
-        """
-        missing = []
-
-        def collect_missing(name, node):
-            if not M.is_internal_path(node.name, M.METADOR_META_PREF):
-                return  # not a metador metadata path
-            leaf = name.split("/")[-1]
-            if not leaf[0] == "=":
-                return  # metadata objects are named =SOME_UUID
-            uuid = leaf[1:]
-
-            known = uuid in self._toc_path_from_uuid
-            # UUID collision - used in TOC, but points to other object
-            # (requires fixing up the name of this object / new UUID)
-            # but technically THIS object IS missing in the TOC!
-            collision = known and self._resolve_link(uuid) != node.name
-
-            if not known or collision:
-                missing.append(node.name)  # absolute paths!
-
-        rawcont = self._container.__wrapped__
-        rawcont[path]  # raises exception if not existing  # RAW
-        grp = rawcont.require_group(path)  # ensure its a group # RAW
-        grp.visititems(collect_missing)  # RAW
-
-        if not repair:
-            return missing
-
-        # Repair links (objects get new UUIDs, unless update is true)
-        for path in missing:
-            meta_dir, schema_path, schema_name, uuid = M.split_meta_obj_path(path)
-
-            if self._parent_path(schema_name) is None:  # schema not in lookup table?
-                # add the unknown schema parent path based on inferred info
-                self._parent_paths[schema_path] = schema_name
-                self._unknown_schemas.add(schema_name)
-
-            if update and uuid in self._toc_path_from_uuid:
-                self._update_link(uuid, path)  # update target for existing UUID
-            else:  # link the object with a new UUID
-                target_path = self._register_link(meta_dir, schema_name)
-                self._container.__wrapped__.move(path, target_path)  # RAW
-
-        return missing
-
-    # ---- link management ----
-
-    def _parent_path(self, schema_name: str) -> Optional[str]:
-        """Like PGSchema.parent_path, but works also with unknown schemas in container.
-
-        Only used for internal plumbing.
-        """
-        pp: Optional[str] = self._parent_paths.get(schema_name)
-        if pp is None and schema_name in schemas.keys():
-            pp = "/".join(schemas.parent_path(schema_name))
-        return pp
-
-    def _fresh_uuid(self) -> str:
-        """Return a UUID string not used for a metadata object in the container yet."""
-        fresh = False
-        ret = ""
-        # NOTE: here a very unlikely race condition is present if parallelized
-        while not fresh:
-            ret = str(uuid1())
-            fresh = ret not in self._toc_path_from_uuid
-        self._toc_path_from_uuid[ret] = ""  # not assigned yet, but blocked
-        return ret
-
-    def _register_link(self, node_meta_base: str, schema_name: str) -> str:
-        """Create a link for a metadata object, returning its target location.
-
-        The link points to the returned path (object must be placed there).
-        """
-        schema_path = self._parent_path(schema_name)
-        assert schema_path is not None
-        link_name = self._fresh_uuid()
-        toc_path = f"{M.METADOR_TOC_PATH}/{schema_path}/={link_name}"
-        target_path = f"{node_meta_base}/{schema_path}/={link_name}"
-        self._toc_path_from_uuid[link_name] = toc_path
-        # create (broken) link
-        self._container.__wrapped__[toc_path] = target_path  # RAW
-        return target_path
-
-    def _unregister_link(self, uuid: str):
-        """Unregister metadata object in TOC given its UUID.
-
-        Will remove the object and clean up empty directories in the TOC.
-        """
-        # delete the link itself
-        toc_link_path = self._toc_path_from_uuid[uuid]
-        link_node = self._container.__wrapped__[toc_link_path]  # RAW
-        parent_node = link_node.parent
-        del self._container.__wrapped__[toc_link_path]  # RAW
-
-        # clean up empty groups
-        while parent_node.name != M.METADOR_TOC_PATH:
-            if len(parent_node):
-                break  # non-empty
-            empty_group = parent_node.name
-            parent_node = parent_node.parent
-            del self._container.__wrapped__[empty_group]  # RAW
-
-            # notify dep manager to prune deps if no schema they provide is used
-            # do it here because the TOC tracks globally all object metadata
-            # so it sees here when its not used anymore.
-            name, version = _from_ep_name(empty_group.split("/")[-1])
-            self._notify_unused_schema(schemas.PluginRef(name=name, version=version))
-
-        # remove the TOC dir itself, if empty
-        if parent_node.name == M.METADOR_TOC_PATH and not len(parent_node):
-            del self._container.__wrapped__[M.METADOR_TOC_PATH]  # RAW
-        # now the uuid counts as "free" again
-        del self._toc_path_from_uuid[uuid]
-
-    def _resolve_link(self, uuid: str) -> str:
-        """Get the path a uuid in the TOC points to."""
-        toc_link_path = self._toc_path_from_uuid[uuid]
-        dataset = cast(H5DatasetLike, self._container.__wrapped__[toc_link_path])
-        return dataset[()].decode("utf-8")  # RAW
-
-    def _update_link(self, uuid: str, new_target: str):
-        """Update target of an existing link to point to a new location."""
-        toc_link_path = self._toc_path_from_uuid[uuid]
-        del self._container.__wrapped__[toc_link_path]  # RAW
-        self._container.__wrapped__[toc_link_path] = new_target  # RAW
-
-    # ---- schema provider package dependency management ----
-
-    @classmethod
-    def _dep_node_path(cls, pkg_name: str) -> str:
-        return f"{M.METADOR_PKGS_PATH}/{pkg_name}"
-
-    def _ref_node_path(cls, schema_ref: PluginRef) -> str:
-        return f"{M.METADOR_SCHEMAS_PATH}/{_to_ep_name(schema_ref)}"
-
-    def _notify_used_schema(self, schema_ref: PluginRef):
-        """Notify that a schema is used in the container (metadata object is created/updated).
-
-        If no dependency is tracked yet, will add it. If it is, will update to the one
-        from the environment.
-
-        This assumes that the already existing schemas and the new one are compatible!
-        """
-        # store plugin ref (if not added yet)
-        ref_node_path = self._ref_node_path(schema_ref)
-        if ref_node_path not in self._container.__wrapped__:
-            self._container.__wrapped__[ref_node_path] = (
-                schemas.get(schema_ref.name, schema_ref.version)
-                .schema_json()
-                .encode("utf-8")
-            )
-
-        # update/create providing package
-        env_pkg_info: PluginPkgMeta = schemas.provider(schema_ref)
-        pkg_name = str(env_pkg_info.name)
-
-        curr_info = self._pkginfos.get(pkg_name)
-
-        if curr_info != env_pkg_info:
-            pkg_node_path = self._dep_node_path(pkg_name)
-            if curr_info is not None:
-                # remove old dep metadata first
-                del self._container.__wrapped__[pkg_node_path]
-            # add new dep metadata to container
-            self._container.__wrapped__[pkg_node_path] = bytes(env_pkg_info)
-
-        # update/create dependency in cache
-        self._pkginfos[pkg_name] = env_pkg_info
-        self._provider[schema_ref] = pkg_name
-
-        # make sure schema is tracked as "used"
-        if curr_info is None:
-            self._used[pkg_name] = set()
-        self._used[pkg_name].add(schema_ref)
-        if schema_ref not in self._parent_paths:
-            ppath = "/".join(schemas.parent_path(schema_ref))
-            self._parent_paths[schema_ref] = ppath
-
-    def _notify_unused_schema(self, schema_ref: PluginRef):
-        """Notify that a schema is not used at any container node anymore.
-
-        If after that no schema of a listed dep package is used,
-        this dependency will be removed from the container.
-        """
-        rawcont = self._container.__wrapped__
-        pkg_name = self._provider.get(schema_ref)
-        if pkg_name is None:
-            # apparently container has no package info for that schema
-            # this is not allowed, but we can just ignore it to handle
-            # slightly broken containers
-            return
-
-        del self._provider[schema_ref]
-        self._used[pkg_name].remove(schema_ref)
-        if schema_ref in self._used_schemas:
-            del self._used_schemas[schema_ref]
-            del rawcont[self._ref_node_path(schema_ref)]
-
-        if not self._used[pkg_name]:
-            # no schemas of its providing package are used anymore.
-            # -> kill this dep in cache and in container
-            del self._used[pkg_name]
-            del self._pkginfos[pkg_name]
-            del rawcont[self._dep_node_path(pkg_name)]
-
-        deps_grp = cast(H5GroupLike, rawcont[M.METADOR_PKGS_PATH])
-        if not len(deps_grp):  # RAW
-            # no package metadata -> can kill dir
-            del rawcont[M.METADOR_PKGS_PATH]  # RAW
-
-    # ---- public API ----
-
-    def __init__(self, container: MetadorContainer):
-        self._container = container
-        rawcont = self._container.__wrapped__
-
-        # 1. compute parent paths based on present TOC structure
-        # (we need it to efficiently traverse possibly unknown schemas/objects)
-        # 2. collect metadata object uuids
-
-        # refs for actually embedded schema instances
-        self._used_schemas: Dict[str, PluginRef] = {}
-
-        if M.METADOR_SCHEMAS_PATH in rawcont:  # RAW
-            refs_grp = rawcont.require_group(M.METADOR_SCHEMAS_PATH)  # RAW
-            for name, node in refs_grp.items():  # RAW
-                ref = schemas.PluginRef.parse_raw(cast(H5DatasetLike, node)[()])  # RAW
-                self._used_schemas[name] = ref
-
-        # schema name -> full/registered/parent/sequence
-        self._parent_paths: Dict[str, str] = {}
-        # uuid -> path in dataset
-        self._toc_path_from_uuid: Dict[str, str] = {}
-
-        def scan_schemas(path):
-            path_segs = path.split("/")
-            schema_name = path_segs[-1]
-            if schema_name[0] == "=":  # links/metadata entries start with =
-                uuid_str = schema_name[1:]
-                self._toc_path_from_uuid[uuid_str] = f"{M.METADOR_TOC_PATH}/{path}"
-            else:  # a schema name -> infer parent relationship
-                self._parent_paths[schema_name] = path
-
-        if M.METADOR_TOC_PATH in rawcont:  # RAW
-            toc_grp = rawcont.require_group(M.METADOR_TOC_PATH)  # RAW
-            toc_grp.visit(scan_schemas)  # RAW
-
-        # 3. init structure tracking schema dependencies
-
-        # package name -> package info:
-        self._pkginfos: Dict[str, PluginPkgMeta] = {}
-        # schema name -> package name:
-        self._provider: Dict[str, str] = {}
-        # package name -> names of its schemas used in container
-        self._used: Dict[str, Set[str]] = {}
-
-        # parse package infos if they exist
-        if M.METADOR_PKGS_PATH in rawcont:  # RAW
-            deps_grp = rawcont.require_group(M.METADOR_PKGS_PATH)  # RAW
-            for name, node in deps_grp.items():  # RAW
-                info = PluginPkgMeta.parse_raw(cast(H5DatasetLike, node)[()])  # RAW
-                self._pkginfos[name] = info
-                self._used[name] = set()
-                # lookup for schema -> used package
-                for schema in info.plugins[schemas.name]:
-                    self._provider[schema] = name
-
-        # initialize tracking of used schemas
-        for schema_name in self.schemas():
-            # we assume that each schema has a provider dep!
-            pkg_name = self._provider[schema_name]
-            # add schema to list of actually used schemas provided by this dep
-            self._used[pkg_name].add(schema_name)
-
-        # 3. collect the schemas that we don't know already
-        self._unknown_schemas = set(self._parent_paths.keys()) - set(schemas.keys())
-
-    def schemas(self, *, include_parents: bool = True) -> Set[str]:
-        """Return names of all schemas used in the container."""
-        if include_parents:
-            schemas = map(lambda p: set(p.split("/")), self._parent_paths.values())
-            return set.union(set(), *schemas)
-        else:
-            return set(self._used_schemas.keys())
-
     @property
-    def deps(self) -> Set[str]:
-        """Return names of all packages used to provide schemas in the container."""
-        return set(self._pkginfos.keys())
-
-    @property
-    def unknown_schemas(self) -> Set[str]:
-        """Return set of schema names that are unknown or incompatible.
-
-        Here, unknown means that a plugin is missing providing that schema name,
-        whereas incompatible means that the installed plugin providing that name
-        is not suitable for the embedded data using a schema of the same name.
-        """
-        return set(self._unknown_schemas)
-
-    def provider(self, schema_name: str) -> PluginPkgMeta:
-        """Like PluginGroup.provider, but with respect to container deps."""
-        pkg_name = self._provider.get(schema_name)
-        if pkg_name is None:
-            msg = f"Did not find metadata of package providing schema: '{schema_name}'"
-            raise KeyError(msg)
-        return self._pkginfos[pkg_name]
+    def schemas(self):
+        """Information about all schemas used for metadata objects in this container."""
+        return self._schemas
 
     @overload
-    def query(self, schema: str) -> Dict[MetadorNode, MetadataSchema]:
+    def query(
+        self, schema: str, version: Optional[SemVerTuple] = None
+    ) -> Dict[MetadorNode, MetadataSchema]:
         ...
 
     @overload
-    def query(self, schema: Type[S]) -> Dict[MetadorNode, S]:
+    def query(
+        self, schema: Type[S], version: Optional[SemVerTuple] = None
+    ) -> Dict[MetadorNode, S]:
         ...
 
     def query(
-        self, schema: Union[str, Type[S]] = ""
+        self, schema: Union[str, Type[S]] = "", version: Optional[SemVerTuple] = None
     ) -> Dict[MetadorNode, Union[MetadataSchema, S]]:
         """Return nodes that contain a metadata object valid for the given schema."""
-        schema_name = schema if isinstance(schema, str) else schema.Plugin.name
+        schema_name, schema_ver = plugin_args(schema, version)
         ret = {}
+        if obj := self._container.meta.get(schema_name, schema_ver):
+            ret[self._container["/"]] = obj
 
-        def collect_nodes(_, node):
-            if (obj := node.meta.get(schema_name)) is not None:
+        def collect_nodes(_, node: MetadorNode):
+            if obj := node.meta.get(schema_name, schema_ver):
                 ret[node] = obj
 
         self._container.visititems(collect_nodes)

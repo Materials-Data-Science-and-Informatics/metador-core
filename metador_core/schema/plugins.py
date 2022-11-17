@@ -3,7 +3,17 @@ from __future__ import annotations
 
 import json
 from collections import ChainMap
-from typing import Any, ClassVar, Dict, List, Literal, Optional, Protocol, Set
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    runtime_checkable,
+)
 
 from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
 
@@ -11,10 +21,11 @@ from .core import BaseModelPlus, MetadataSchema
 from .types import NonEmptyStr, SemVerTuple, semver_str
 
 
-class IsPlugin(Protocol):
+@runtime_checkable
+class PluginLike(Protocol):
     """A Plugin has a Plugin inner class with plugin infos."""
 
-    Plugin: ClassVar[Any]
+    Plugin: ClassVar[Any]  # actually its PluginBase, but this happens at runtime
 
 
 class PluginRef(MetadataSchema):
@@ -71,6 +82,34 @@ class PluginRef(MetadataSchema):
         return create_model(f"PG{group.capitalize()}.PluginRef", __base__=cls, group=(Literal[group], group))  # type: ignore
 
 
+def plugin_args(
+    plugin="",  # actually: Union[str, PluginRef, PluginLike]
+    version: Optional[SemVerTuple] = None,
+    *,
+    require_version: bool = False,
+    # group: Optional[str]
+) -> Tuple[str, Optional[SemVerTuple]]:
+    """Return requested plugin name and version based on passed arguments.
+
+    Helper for function argument parsing.
+    """
+    name: str
+    vers: Optional[SemVerTuple] = version
+    if isinstance(plugin, str):
+        name = plugin
+    elif isinstance(plugin, PluginRef):
+        name = plugin.name
+        if not vers:
+            vers = plugin.version
+    elif isinstance(plugin, PluginLike):
+        name = plugin.Plugin.name
+        if not vers:
+            vers = plugin.Plugin.version
+    if require_version and vers is None:
+        raise ValueError(f"No version of {name} specified, but is required!")
+    return (name, vers)
+
+
 class PluginBase(BaseModelPlus):
     """All Plugin inner classes must be called `Plugin` and inherit from this class."""
 
@@ -120,11 +159,7 @@ class PluginBase(BaseModelPlus):
             raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")
 
 
-class PluginLike(Protocol):
-    Plugin: PluginBase
-
-
-PkgPlugins = Dict[str, Set[PluginRef]]
+PkgPlugins = Dict[str, List[PluginRef]]
 """Dict from plugin group name to plugins provided by a package."""
 
 
@@ -155,11 +190,11 @@ class PluginPkgMeta(MetadataSchema):
 
         plugins: PkgPlugins = {}
         for group, ep_names in dm.plugins.items():
-            plugins[group] = set()
+            plugins[group] = []
             for ep_name in ep_names:
                 name, version = _from_ep_name(ep_name)
                 ref = PluginRef(group=group, name=name, version=version)
-                plugins[group].add(ref)
+                plugins[group].append(ref)
 
         return cls(
             name=dm.name,

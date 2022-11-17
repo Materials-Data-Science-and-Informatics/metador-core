@@ -1,34 +1,17 @@
 from __future__ import annotations
 
 from itertools import takewhile
-from typing import (
-    Any,
-    Dict,
-    List,
-    MutableMapping,
-    Optional,
-    Set,
-    Type,
-    Union,
-)
-from typing_extensions import Final
+from typing import Any, Dict, MutableMapping, Optional, Set, Type, Union
 
 import h5py
 import wrapt
+from typing_extensions import Final
 
 from ..ih5.overlay import H5Type, node_h5type
-
-from .types import (
-    H5DatasetLike,
-    H5FileLike,
-    H5GroupLike,
-    H5NodeLike,
-    OpenMode,
-)
-from .drivers import to_h5filelike, MetadorDriver
-from .interface import MetadorMeta, MetadorContainerInfo, MetadorContainerTOC
 from . import utils as M
-
+from .drivers import MetadorDriver, to_h5filelike
+from .interface import MetadorContainerTOC, MetadorMeta
+from .types import H5DatasetLike, H5FileLike, H5GroupLike, H5NodeLike, OpenMode
 
 RO_FLAG: Final[str] = "read_only"
 LO_FLAG: Final[str] = "local_only"
@@ -61,7 +44,9 @@ class WrappedAttributeManager(wrapt.ObjectProxy):
             self._self_allowed = set()  # this means everything is allowed
 
     def _raise_illegal_op(self, flag: str):
-        raise RuntimeError(f"This attribute set belongs to a node marked as {flag}!")
+        raise UnsupportedOperationError(
+            f"This attribute set belongs to a node marked as {flag}!"
+        )
 
     def __getattr__(self, key: str):
         # NOTE: this will not restrict __contains__ because its a special method, which is desired behavior.
@@ -101,7 +86,7 @@ class MetadorNode(wrapt.ObjectProxy):
 
     In addition to the Metadata management, also provides helpers to reduce possible
     mistakes in implementing interfaces by allowing to mark nodes as
-    
+
     * read_only (regardless of the writability of the underlying opened container) and
     * local_only (preventing access to (meta)data above this node)
 
@@ -136,10 +121,7 @@ class MetadorNode(wrapt.ObjectProxy):
 
         Ensures that {read,skel,local}_only status is passed down correctly.
         """
-        return {
-            "local_parent": self if self.local_only else None,
-            **self._self_flags
-        }
+        return {"local_parent": self if self.local_only else None, **self._self_flags}
 
     def restrict(self, **kwargs) -> MetadorNode:
         """Restrict this object to be local_only or read_only.
@@ -194,16 +176,15 @@ class MetadorNode(wrapt.ObjectProxy):
             msg = f"Node is marked as local_only, cannot use absolute path '{path}'!"
             raise ValueError(msg)
 
-
     def _guard_read_only(self, method: str = "this method"):
         if self.read_only:
-            msg = f"Cannot use method '{method}', the node is marked as read_only!"
-            raise RuntimeError(msg)
+            msg = f"Cannot use {method}, the node is marked as read_only!"
+            raise UnsupportedOperationError(msg)
 
     def _guard_skel_only(self, method: str = "this method"):
         if self.skel_only:
-            msg = f"Cannot use method '{method}', the node is marked as skel_only!"
-            raise RuntimeError(msg)
+            msg = f"Cannot use {method}, the node is marked as skel_only!"
+            raise UnsupportedOperationError(msg)
 
     # helpers
 
@@ -213,13 +194,15 @@ class MetadorNode(wrapt.ObjectProxy):
         if ntype == H5Type.group:
             return MetadorGroup(self._self_container, val, **self._child_node_kwargs())
         elif ntype == H5Type.dataset:
-            return MetadorDataset(self._self_container, val, **self._child_node_kwargs())
+            return MetadorDataset(
+                self._self_container, val, **self._child_node_kwargs()
+            )
         else:
             return val
 
-    def _destroy_meta(self, unlink_in_toc: bool = True):
+    def _destroy_meta(self, _unlink: bool = True):
         """Destroy all attached metadata at and below this node."""
-        self.meta._destroy(unlink_in_toc=unlink_in_toc)
+        self.meta._destroy(_unlink=_unlink)
 
     # need that to add our new methods
 
@@ -245,9 +228,9 @@ class MetadorNode(wrapt.ObjectProxy):
         return MetadorMeta(self)
 
     @property
-    def container_info(self) -> MetadorContainerInfo:
+    def container_info(self) -> MetadorContainerTOC:
         """Access the info about the container this node belongs to."""
-        return self._self_container.info
+        return self._self_container.metador
 
     # wrap existing methods as needed
 
@@ -259,10 +242,11 @@ class MetadorNode(wrapt.ObjectProxy):
     def attrs(self):
         if self.read_only or self.skel_only:
             return WrappedAttributeManager(
-                self.__wrapped__.attrs, **{
-                RO_FLAG: self.read_only,
-                SO_FLAG: self.skel_only,
-                }
+                self.__wrapped__.attrs,
+                **{
+                    RO_FLAG: self.read_only,
+                    SO_FLAG: self.skel_only,
+                },
             )
         return self.__wrapped__.attrs
 
@@ -350,22 +334,11 @@ class MetadorGroup(MetadorNode):
 
     __wrapped__: H5GroupLike
 
-    def _destroy_meta(self, unlink_in_toc: bool = True):
+    def _destroy_meta(self, _unlink: bool = True):
         """Destroy all attached metadata at and below this node (recursively)."""
-        # destroy metadata at this node (group itself)
-        super()._destroy_meta(unlink_in_toc=unlink_in_toc)
-
-        # recurse down the group.
-        # must collect first, then delete (otherwise delete during iteration issue)
-        nodes_with_meta: List[MetadorNode] = []
-
-        def collect_meta(_, nd):
-            if len(nd.meta):
-                nodes_with_meta.append(nd)
-
-        self.visititems(collect_meta)
-        for nd in nodes_with_meta:
-            nd.meta._destroy(unlink_in_toc=unlink_in_toc)
+        super()._destroy_meta(_unlink=_unlink)  # this node
+        for child in self.values():  # recurse
+            child._destroy_meta(_unlink=_unlink)
 
     # these access entities in read-only way:
 
@@ -473,10 +446,10 @@ class MetadorGroup(MetadorNode):
             meta_base = dst_node.name
 
         # re-link metadata object TOC links
-        if meta_base in self.__wrapped__:  # RAW
-            self._self_container.toc._find_missing_links(
-                meta_base, repair=True, update=True
-            )
+        if meta_base_node := self.__wrapped__.get(meta_base):
+            assert isinstance(meta_base_node, H5GroupLike)
+            missing = self._self_container.metador._links.find_missing(meta_base_node)
+            self._self_container.metador._links.repair_missing(missing, update=True)
 
     def copy(
         self,
@@ -534,15 +507,19 @@ class MetadorGroup(MetadorNode):
             dst_meta: str = dst_node.meta._base_dir  # will not exist yet
             self.__wrapped__.copy(src_meta, dst_meta, **copy_kwargs)  # RAW
             # register in TOC
-            self._self_container.toc._find_missing_links(dst_meta, repair=True)
+            dst_meta_node = self.__wrapped__[dst_meta]
+            assert isinstance(dst_meta_node, H5GroupLike)
+            missing = self._self_container.metador._links.find_missing(dst_meta_node)
+            self._self_container.metador._links.repair_missing(missing)
         if not src_is_dataset:
             if without_meta:
                 # need to destroy copied metadata copied with the source group
                 # but keep TOC links (they point to original copy!)
-                dst_node._destroy_meta(unlink_in_toc=False)
+                dst_node._destroy_meta(_unlink=False)
             else:
                 # register copied metadata objects under new uuids
-                self._self_container.toc._find_missing_links(dst_path, repair=True)
+                missing = self._self_container.metador._links.find_missing(dst_node)
+                self._self_container.metador._links.repair_missing(missing)
 
     def __getattr__(self, key):
         if hasattr(self.__wrapped__, key):
@@ -573,16 +550,10 @@ class MetadorContainer(MetadorGroup):
 
     # ---- new container-level interface ----
 
-    _self_info: MetadorContainerInfo
     _self_toc: MetadorContainerTOC
 
     @property
-    def info(self) -> MetadorContainerInfo:
-        """Access interface to Metador metadata object index."""
-        return self._self_info
-
-    @property
-    def toc(self) -> MetadorContainerTOC:
+    def metador(self) -> MetadorContainerTOC:
         """Access interface to Metador metadata object index."""
         return self._self_toc
 
@@ -594,43 +565,41 @@ class MetadorContainer(MetadorGroup):
         # NOTE: driver takes class instead of enum to also allow subclasses
         driver: Optional[Type[MetadorDriver]] = None,
     ):
-
         # wrap the h5file-like object (will set self.__wrapped__)
         super().__init__(self, to_h5filelike(name_or_obj, mode, driver=driver))
-
         # initialize metador-specific stuff
-        self._self_info = MetadorContainerInfo(self)
         self._self_toc = MetadorContainerTOC(self)
 
     # not clear if we want these in the public interface. keep this private for now:
 
-    def _find_orphan_meta(self) -> List[str]:
-        """Return list of paths to metadata that has no corresponding user node anymore."""
-        ret: List[str] = []
+    # def _find_orphan_meta(self) -> List[str]:
+    #     """Return list of paths to metadata that has no corresponding user node anymore."""
+    #     ret: List[str] = []
 
-        def collect_orphans(name: str):
-            if M.is_meta_base_path(name):
-                if M.to_data_node_path(name) not in self:
-                    ret.append(name)
+    #     def collect_orphans(name: str):
+    #         if M.is_meta_base_path(name):
+    #             if M.to_data_node_path(name) not in self:
+    #                 ret.append(name)
 
-        self.__wrapped__.visit(collect_orphans)
-        return ret
+    #     self.__wrapped__.visit(collect_orphans)
+    #     return ret
 
-    def _repair(self, remove_orphans: bool = False):
-        """Repair container structure on best-effort basis.
+    # def _repair(self, remove_orphans: bool = False):
+    #     """Repair container structure on best-effort basis.
 
-        This will ensure that the TOC points to existing metadata objects
-        and that all metadata objects are listed in the TOC.
+    #     This will ensure that the TOC points to existing metadata objects
+    #     and that all metadata objects are listed in the TOC.
 
-        If remove_orphans is set, will erase metadata not belonging to an existing node.
+    #     If remove_orphans is set, will erase metadata not belonging to an existing node.
 
-        Notice that missing schema plugin dependency metadata cannot be restored.
-        """
-        if remove_orphans:
-            for path in self._find_orphan_meta():
-                del self.__wrapped__[path]
-        self.toc._find_broken_links(repair=True)
-        self.toc._find_missing_links("/", repair=True)
+    #     Notice that missing schema plugin dependency metadata cannot be restored.
+    #     """
+    #     if remove_orphans:
+    #         for path in self._find_orphan_meta():
+    #             del self.__wrapped__[path]
+    #     self.toc._links.find_broken(repair=True)
+    #     missing = self.toc._links._find_missing("/")
+    #     self.toc._links.repair_missing(missing)
 
     # ---- pass through HDF5 group methods to a wrapped root group instance ----
 

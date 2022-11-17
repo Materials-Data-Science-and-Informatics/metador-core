@@ -1,10 +1,9 @@
-from typing import Any, Optional, Type, Union, cast
 from enum import Enum, auto
+from typing import Any, Optional, Type, Union, cast
 
 import h5py
 
 from ..ih5.container import IH5Record
-
 from .types import H5FileLike, OpenMode
 
 
@@ -40,7 +39,7 @@ def to_h5filelike(
     *,
     # NOTE: driver takes class instead of enum to also allow subclasses
     driver: Optional[Type[MetadorDriver]] = None,
-    ) -> H5FileLike:
+) -> H5FileLike:
     if isinstance(name_or_obj, METADOR_DRIVER_CLASSES):
         # user h5file-like object already
         return cast(H5FileLike, name_or_obj)

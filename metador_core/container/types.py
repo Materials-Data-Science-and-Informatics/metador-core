@@ -14,10 +14,10 @@ from typing import (
     MutableMapping,
     Optional,
     Protocol,
-    ValuesView,
     TypeVar,
-    runtime_checkable,
     Union,
+    ValuesView,
+    runtime_checkable,
 )
 
 from typing_extensions import Literal
@@ -49,7 +49,7 @@ class H5NodeLike(Protocol):
 @runtime_checkable
 class H5DatasetLike(H5NodeLike, Protocol):
     """Datasets provide numpy-style indexing into data.
-    
+
     Metador containers use it for storing bytes,
     and for getting bytes out again using [()].
     """
@@ -66,7 +66,7 @@ class H5DatasetLike(H5NodeLike, Protocol):
         """Numpy-style dimensionality."""
 
 
-CallbackResult = TypeVar('CallbackResult')
+CallbackResult = TypeVar("CallbackResult")
 VisititemsCallback = Callable[[str, H5NodeLike], Optional[CallbackResult]]
 VisitCallback = Callable[[str], Optional[CallbackResult]]
 
@@ -159,5 +159,6 @@ class H5FileLike(H5GroupLike, Protocol):
 
     def __exit__(self, ex_type, ex_value, ex_traceback) -> None:
         ...
+
 
 __all__ = ["H5FileLike", "H5GroupLike", "H5DatasetLike", "H5NodeLike", "OpenMode"]

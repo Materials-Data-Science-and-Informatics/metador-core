@@ -116,7 +116,7 @@ class PluginMetaclassMixin(type):
 
             from ..plugins import plugingroups
 
-            return plugingroups[info.group]._get_unsafe(info.name) is c
+            return plugingroups[info.group]._get_unsafe(info.name, info.version) is c
         else:
             return False
 

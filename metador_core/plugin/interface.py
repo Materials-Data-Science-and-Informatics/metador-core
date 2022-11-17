@@ -23,10 +23,11 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
-from metador_core.schema.types import SemVerTuple, semver_str
+from metador_core.schema.types import SemVerTuple, from_semver_str, semver_str
 
-from ..schema.plugins import IsPlugin, PluginBase, PluginPkgMeta
+from ..schema.plugins import PluginBase, PluginLike, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
+from ..schema.plugins import plugin_args
 from .entrypoints import get_group, pkg_meta
 from .metaclass import UndefVersion
 
@@ -95,7 +96,7 @@ EP_NAME_VER_SEP: str = "__"
 """Separator between plugin name and semantic version in entry point name."""
 
 
-def _to_ep_name(p_name: str, p_version: Optional[SemVerTuple] = None) -> str:
+def _to_ep_name(p_name: str, p_version: SemVerTuple) -> str:
     """Return canonical entrypoint name `PLUGIN_NAME__MAJ.MIN.FIX`."""
     return f"{p_name}{EP_NAME_VER_SEP}{semver_str(p_version)}"
 
@@ -104,8 +105,7 @@ def _from_ep_name(ep_name: str) -> Tuple[str, SemVerTuple]:
     """Split entrypoint name into `(PLUGIN_NAME, (MAJ,MIN,FIX))`."""
     _check_name(ep_name, ENTRYPOINT_NAME_REGEX)
     pname, pverstr = ep_name.split(EP_NAME_VER_SEP)
-    pver: SemVerTuple = cast(Any, tuple(map(int, pverstr.split("."))))
-    return (pname, pver)
+    return (pname, from_semver_str(pverstr))
 
 
 # ----
@@ -126,7 +126,7 @@ class PluginGroupMeta(ABCMeta):
         self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
 
 
-T = TypeVar("T", bound=IsPlugin)
+T = TypeVar("T", bound=PluginLike)
 
 
 class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
@@ -192,11 +192,11 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             )
             self._add_ep(ep_name, ep)
 
-            ref = AnyPluginRef(
+            self_ref = AnyPluginRef(
                 group=self.name, name=self.Plugin.name, version=self.Plugin.version
             )
-            self._LOADED_PLUGINS[ref] = self
-            self.provider(ref).plugins[self.name].add(ref)
+            self._LOADED_PLUGINS[self_ref] = self_ref
+            self.provider(self_ref).plugins[self.name].append(self_ref)
 
     @property
     def name(self) -> str:
@@ -242,42 +242,53 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         return f"<PluginGroup '{self.name}' {list(self.keys())}>"
 
     def __str__(self):
-        def pg_line(name):
-            p = self.provider(name)
-            pkg = f"{p.name} {semver_str(p.version)}"
-            pg = self._get_unsafe(name)
-            return f"\t'{name}' {semver_str(pg.Plugin.version)} ({pkg})"
+        def pg_line(name_refs):
+            name, refs = name_refs
+            vs = list(map(lambda x: semver_str(x.version), refs))
+            # p = self.provider(pg_ref.name)
+            # pkg = f"{p.name} {semver_str(p.version)}"
+            return f"\t'{name}' ({', '.join(vs)})"
 
-        pgs = "\n".join(map(pg_line, self.keys()))
+        pgs = "\n".join(map(pg_line, self._VERSIONS.items()))
         return f"Available '{self.name}' plugins:\n{pgs}"
 
     # ----
     # dict-like interface will provide latest versions of plugins by default
 
-    def __contains__(self, key: str) -> bool:
-        return key in self._VERSIONS
+    def __contains__(self, key) -> bool:
+        name, version = plugin_args(key)
+        pg_versions = self._VERSIONS.get(name)
+        if pg_versions:
+            if not version:
+                return True
+            else:
+                pg = self.PluginRef(name=name, version=version)
+                return pg in pg_versions
 
-    def keys(self) -> KeysView[str]:
+    def __getitem__(self, key) -> Type[T]:
+        if key not in self:
+            raise KeyError(f"{self.name} not found: {key}")
+        return self.get(key)
+
+    def keys(self) -> KeysView[AnyPluginRef]:
         """Return all names of all plugins."""
-        return self._VERSIONS.keys()
+        for pgs in self._VERSIONS.values():
+            yield from pgs
 
     def values(self) -> Iterable[Type[T]]:
         """Return latest versions of all plugins (THIS LOADS ALL PLUGINS!)."""
         return map(self.__getitem__, self.keys())
 
-    def items(self) -> Iterable[Tuple[str, Type[T]]]:
+    def items(self) -> Iterable[Tuple[AnyPluginRef, Type[T]]]:
         """Return pairs of plugin name and latest installed version (THIS LOADS ALL PLUGINS!)."""
         return map(lambda k: (k, self[k]), self.keys())
-
-    def __getitem__(self, key: str) -> Type[T]:
-        if key not in self:
-            raise KeyError(f"{self.name} not found: {key}")
-        return self.get(key)
 
     # ----
 
     def _get_unsafe(self, p_name: str, version: Optional[SemVerTuple] = None):
         """Return most recent compatible version of given plugin name, without safety rails.
+
+        Raises KeyError if no (compatible) schema found.
 
         For internal use only!
         """
@@ -304,6 +315,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def get(
         self, key: Union[str, PRX], version: Optional[SemVerTuple] = None
     ) -> Union[Type[T], PRX, None]:
+        key, version = plugin_args(key, version)
+
         if isinstance(key, str):
             key_: str = key
         else:

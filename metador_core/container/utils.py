@@ -3,8 +3,6 @@ Constants and helper functions.
 
 Provides syntactic path transformations to implement the Metador container layout.
 """
-from itertools import dropwhile
-from typing import Tuple
 
 from typing_extensions import Final
 
@@ -18,20 +16,23 @@ METADOR_PREF: Final[str] = "metador_"
 METADOR_META_PREF: Final[str] = METADOR_PREF + "meta_"
 """Sub-prefix for group that stores group or dataset metadata."""
 
-METADOR_VERSION_PATH: Final[str] = f"/{METADOR_PREF}version"
-"""Path of dataset with the Metador container version of the container."""
-
-METADOR_UUID_PATH: Final[str] = f"/{METADOR_PREF}container_uuid"
-"""Path of dataset with the Metador container version of the container."""
-
-METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}container_toc"
+METADOR_TOC_PATH: Final[str] = f"/{METADOR_PREF}container"
 """Path of group with the Metador metadata index structure of the container."""
 
-METADOR_PKGS_PATH: Final[str] = f"/{METADOR_PREF}container_pkgs"
+METADOR_VERSION_PATH: Final[str] = f"{METADOR_TOC_PATH}/version"
+"""Path of dataset with the Metador container spec version of the container."""
+
+METADOR_UUID_PATH: Final[str] = f"{METADOR_TOC_PATH}/uuid"
+"""Path of dataset with the Metador container version of the container."""
+
+METADOR_PACKAGES_PATH: Final[str] = f"{METADOR_TOC_PATH}/packages"
 """Path of group with package info of packages providing used schemas in the container."""
 
-METADOR_SCHEMAS_PATH: Final[str] = f"/{METADOR_PREF}container_schemas"
-"""Path of group with schema plugin refs of used schemas in the container."""
+METADOR_SCHEMAS_PATH: Final[str] = f"{METADOR_TOC_PATH}/schemas"
+"""Path of group with info about used schemas in the container."""
+
+METADOR_LINKS_PATH: Final[str] = f"{METADOR_TOC_PATH}/links"
+"""Path of group with links to schema instances in the container."""
 
 
 def is_internal_path(path: str, pref: str = METADOR_PREF) -> bool:
@@ -75,53 +76,3 @@ def to_data_node_path(meta_dir_path: str) -> str:
     if segs[-1] == "" and (len(segs) > 2 or segs[0] != ""):
         segs.pop()
     return "/".join(segs)
-
-
-# Transforming from/to paths of stored metadata objects
-
-
-def meta_obj_to_meta_path(metaobj_path: str) -> str:
-    """Given a path to a stored metadata object, return the base path prefix."""
-    # do we need this? jumping up the raw node parents would be quicker
-    # e.g. when going through TOC results
-
-
-def meta_obj_to_toc_path(metaobj_path: str) -> str:
-    """Return correct path in TOC for the given metadata object path."""
-    # NOTE: can't be inverted, but link at the returned path will point back to the arg.!
-    segs = list(
-        dropwhile(
-            lambda x: not x.startswith(METADOR_META_PREF), metaobj_path.split("/")
-        )
-    )
-    segs[0] = METADOR_TOC_PATH
-    return "/".join(segs)
-
-
-def split_meta_obj_path(metaobj_path: str) -> Tuple[str, str, str, str]:
-    """Split full path of a metadata object inside the metadata directory of a node.
-
-    Returns tuple with:
-        Path to metadata base directory
-        full schema parent path
-        schema name
-        object uuid
-
-    "/some/path/to/metador_meta_something/schema/subschema/=uuid" results in:
-    ('/some/path/to/metador_meta_something', 'schema/subschema', 'subschema', 'uuid')
-    """
-    segs = metaobj_path.lstrip("/").split("/")
-    uuid = segs.pop()[1:]
-    node_meta_base = ""
-    schema_path = ""
-    schema_name = ""
-    found_meta_base = False
-    for seg in segs:
-        if found_meta_base:
-            schema_path += f"/{seg}"
-            schema_name = seg
-        else:
-            node_meta_base += f"/{seg}"
-        if seg.startswith(METADOR_META_PREF):
-            found_meta_base = True
-    return (node_meta_base, schema_path[1:], schema_name, uuid)
