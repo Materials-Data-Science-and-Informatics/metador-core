@@ -67,7 +67,7 @@ class StoredMetadata:
         return f"{prefix}/{ep_name}={self.uuid}"
 
     @staticmethod
-    def from_node(obj: H5DatasetLike):
+    def from_node(obj: H5DatasetLike) -> StoredMetadata:
         path = obj.name
         segs = path.lstrip("/").split("/")
         ep_name, uuid_str = segs.pop().split("=")
@@ -139,11 +139,11 @@ class MetadorMeta:
         If a version is passed, the stored version must also be compatible.
         """
         # retrieve stored instance (if suitable)
-        req_ref: Optional[PluginRef] = None
         ret: Optional[StoredMetadata] = self._objs.get(schema_name)
         if not version:
             return ret  # no specified version -> anything goes
         # otherwise: only return if it is compatible
+        req_ref: Optional[PluginRef] = None
         req_ref = schemas.PluginRef(name=schema_name, version=version)
         return ret if ret and req_ref.supports(ret.schema) else None
 
@@ -155,10 +155,12 @@ class MetadorMeta:
         # store object
         self._mc.__wrapped__[obj_path] = bytes(obj)
         obj_node = self._mc.__wrapped__[obj_path]
+        assert isinstance(obj_node, H5DatasetLike)
         stored_obj = StoredMetadata(uuid=obj_uuid, schema=schema_ref, node=obj_node)
         self._objs[schema_ref] = stored_obj
         # update TOC
         self._mc.metador._links.register(stored_obj)
+        return
 
     def _del_raw(self, schema_name: str, *, _unlink: bool = True) -> None:
         """Delete stored metadata for given schema at this node."""
@@ -173,6 +175,7 @@ class MetadorMeta:
         # no metadata objects left -> remove metadata dir
         if not self._objs:
             del self._mc.__wrapped__[self._base_dir]
+        return
 
     # helpers for container-level opertions (move, copy, delete etc)
 
@@ -204,6 +207,7 @@ class MetadorMeta:
         # load available object metadata encoded in the node names
         meta_grp = cast(H5GroupLike, self._mc.__wrapped__.get(self._base_dir, {}))
         for obj_node in meta_grp.values():
+            assert isinstance(obj_node, H5DatasetLike)
             obj = StoredMetadata.from_node(obj_node)
             self._objs[obj.schema.name] = obj
 
@@ -214,15 +218,15 @@ class MetadorMeta:
 
         Transitive parent schemas are not included.
         """
-        return self._objs.keys()  # type: ignore
+        return self._objs.keys()
 
-    def values(self) -> ValuesView[MetadataSchema]:
+    def values(self) -> ValuesView[StoredMetadata]:
         self._node._guard_skel_only()
-        return self._objs.values()  # type: ignore
+        return self._objs.values()
 
-    def items(self) -> ItemsView[str, MetadataSchema]:
+    def items(self) -> ItemsView[str, StoredMetadata]:
         self._node._guard_skel_only()
-        return self._objs.items()  # type: ignore
+        return self._objs.items()
 
     # ----
 
@@ -246,7 +250,7 @@ class MetadorMeta:
         self,
         schema: Union[str, Type[MetadataSchema]] = "",
         version: Optional[SemVerTuple] = None,
-    ) -> Iterator[str]:
+    ) -> Iterator[PluginRef]:
         """Return schema names for which objects at this node are compatible with passed schema.
 
         Will also consider compatible child schema instances.
@@ -257,18 +261,19 @@ class MetadorMeta:
         schema_name, schema_ver = plugin_args(schema, version)
         # no schema selected -> anything goes
         if not schema_name:
-            yield from self.keys()
+            for obj in self.values():
+                yield obj.schema
             return
 
         # try exact schema (in any compatible version, if version specified)
         if obj := self._get_raw(schema_name, schema_ver):
-            yield schema_name
+            yield obj.schema
 
         # next, try schemas compatible with any child schemas
         compat = self._mc.metador.schemas.children(schema_name, schema_ver)
         avail = {self._get_raw(s).schema for s in self.keys()}
-        for obj in avail.intersection(compat):
-            yield obj.name
+        for s_ref in avail.intersection(compat):
+            yield s_ref
 
     def __contains__(self, schema: Union[str, MetadataSchema]) -> bool:
         """Check whether a compatible metadata object for given schema exists.
@@ -320,8 +325,9 @@ class MetadorMeta:
             return None
 
         schema_class = self._require_schema(schema_name, schema_ver)
-        obj = self._get_raw(compat_schema).node[()]
-        return cast(S, self._parse_obj(schema_class, obj))
+        if obj := self._get_raw(compat_schema.name, compat_schema.version):
+            return cast(S, self._parse_obj(schema_class, obj.node[()]))
+        return None
 
     def __setitem__(
         self, schema: Union[str, Type[S]], value: Union[Dict[str, Any], MetadataSchema]
@@ -893,7 +899,7 @@ class MetadorContainerTOC:
     ) -> Dict[MetadorNode, Union[MetadataSchema, S]]:
         """Return nodes that contain a metadata object valid for the given schema."""
         schema_name, schema_ver = plugin_args(schema, version)
-        ret = {}
+        ret: Dict[MetadorNode, Union[MetadataSchema, S]] = {}
         if obj := self._container.meta.get(schema_name, schema_ver):
             ret[self._container["/"]] = obj
 

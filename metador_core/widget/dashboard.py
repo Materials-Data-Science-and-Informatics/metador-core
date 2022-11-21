@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from functools import partial
-from itertools import chain, groupby
-from typing import Iterable, List, Optional, Tuple
+from itertools import groupby
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import panel as pn
 from panel.viewable import Viewable
@@ -11,6 +11,8 @@ from phantom.interval import Open
 from ..container import MetadorContainer, MetadorNode
 from ..plugins import schemas, widgets
 from ..schema import MetadataSchema
+from ..schema.plugins import PluginRef
+from ..schema.types import NonEmptyStr, SemVerTuple
 
 
 class DashboardPriority(int, Open, low=1, high=10):
@@ -37,17 +39,21 @@ class DashboardWidgetMeta(MetadataSchema):
     Widgets without an assigned group come last.
     """
 
-    metador_schema: Optional[str]
+    schema_name: Optional[NonEmptyStr]
     """Name of schema of an metadata object at the current node to be visualized.
 
     If not given, any suitable presentable object will be used.
     """
 
-    metador_widget: Optional[str]
+    schema_version: Optional[SemVerTuple]
+
+    widget_name: Optional[str]
     """Name of widget to be used to present the (meta)data.
 
     If not given, any suitable will be used.
     """
+
+    widget_version: Optional[SemVerTuple]
 
 
 class DashboardMeta(MetadataSchema):
@@ -100,17 +106,141 @@ class DashboardMeta(MetadataSchema):
         return cls(widgets=widgets)
 
 
+# ----
+
 NodeWidgetPair = Tuple[MetadorNode, DashboardWidgetMeta]
 """A container node paired up with a widget configuration."""
 
+NodeWidgetRow = List[NodeWidgetPair]
+"""Sorted list of NodeWidgetPairs.
 
-def widget_suitable_for(m_obj: MetadataSchema, w_name: str) -> bool:
+Ordered first by descending priority, then by ascending node path.
+"""
+
+
+def sorted_widgets(
+    widgets: Iterable[NodeWidgetPair],
+) -> Tuple[Dict[int, NodeWidgetRow], NodeWidgetRow]:
+    """Return widgets in groups, ordered by priority and node path.
+
+    Returns tuple with dict of groups and a remainder of ungrouped widgets.
+    """
+
+    def nwp_group(tup: NodeWidgetPair) -> int:
+        return tup[1].group or 0
+
+    def nwp_prio(tup: NodeWidgetPair) -> int:
+        return -tup[1].priority or 0  # in descending order of priority
+
+    def sorted_group(ws: Iterable[NodeWidgetPair]) -> NodeWidgetRow:
+        """Sort first on priority, and for same priority on container node."""
+        return list(sorted(sorted(ws, key=lambda x: x[0].name), key=nwp_prio))
+
+    # dict, sorted in ascending group order (but ungrouped are 0)
+    ret = dict(
+        sorted(
+            {
+                k: sorted_group(v)
+                for k, v in groupby(sorted(widgets, key=nwp_group), key=nwp_group)
+            }.items()
+        )
+    )
+    ungrp = ret.pop(0, [])  # separate out the ungrouped (were mapped to 0)
+    return ret, ungrp
+
+
+# ----
+
+
+def _resolve_schema(node: MetadorNode, wmeta: DashboardWidgetMeta) -> PluginRef:
+    """Return usable schema+version pair for the node based on widget metadata.
+
+    If a schema name or schema version is missing, will complete these values.
+
+    Usable schema means that:
+    * there exists a compatible installed schema
+    * there exists a compatible metadata object at given node
+
+    Raises ValueError on failure to find a suitable schema.
+    """
+    if wmeta.schema_name is None:
+        # if no schema selected -> pick any schema for which we have:
+        #   * a schema instance at the current node
+        #   * installed widget(s) that support it
+        for obj_schema in node.meta.query():
+            if next(widgets.widgets_for(obj_schema), None):
+                return obj_schema
+
+        msg = f"Cannot find suitable schema for a widget at node: {node.name}"
+        raise ValueError(msg)
+
+    # check that a node object is compatible with the one requested
+    req_ver = wmeta.schema_version if wmeta.schema_version else "any"
+    req_schema = f"{wmeta.schema_name} ({req_ver})"
+    s_ref = next(node.meta.query(wmeta.schema_name, wmeta.schema_version), None)
+    if s_ref is None:
+        msg = f"Dashboard wants metadata compatible with {req_schema}, but node"
+        if nrf := next(node.meta.query(wmeta.schema_name), None):
+            nobj_schema = f"{nrf.name} {nrf.version}"
+            msg += f"only has incompatible object: {nobj_schema}"
+        else:
+            msg += "has no suitable object"
+        raise ValueError(msg)
+
+    # if no version is specified, pick the one actually present at the node
+    version = wmeta.schema_version or s_ref.version
+    s_ref = schemas.PluginRef(name=wmeta.schema_name, version=version)
+
+    # ensure there is an installed schema compatible with the one requested
+    # (NOTE: if child schemas exist, the parents do too - no need to check)
+    installed_schema = schemas.get(s_ref.name, s_ref.version)
+    if installed_schema is None:
+        msg = f"No installed schema is compatible with {req_schema}"
+        raise ValueError(msg)
+
+    return s_ref
+
+
+def _widget_suitable_for(m_obj: MetadataSchema, w_ref: PluginRef) -> bool:
     """Granular check whether the widget actually works with the metadata object.
 
     Assumes that the passed object is known to be one of the supported schemas.
     """
-    w_cls = widgets._get_unsafe(w_name)
+    w_cls = widgets._get_unsafe(w_ref.name, w_ref.version)
     return w_cls.Plugin.primary and w_cls.supports_meta(m_obj)
+
+
+def _resolve_widget(
+    node: MetadorNode,
+    s_ref: PluginRef,
+    w_name: Optional[str],
+    w_version: Optional[SemVerTuple],
+) -> PluginRef:
+    """Return suitable widget for the node based on given dashboard metadata."""
+    if w_name is None:
+        # get candidate widgets in alphabetic order (all that claim to work with schema)
+        cand_widgets = sorted(widgets.widgets_for(s_ref))
+        is_suitable = partial(_widget_suitable_for, node.meta[s_ref.name])
+        # filter out the ones that ACTUALLY can handle the object and are eligible
+        if w_ref := next(filter(is_suitable, cand_widgets), None):
+            return w_ref
+        else:
+            msg = f"Could not find suitable widget for {w_name} at node {node.name}"
+            raise ValueError(msg)
+
+    # now we have a widget name (and possibly version) - check it
+    widget_class = widgets._get_unsafe(w_name, w_version)
+    if widget_class is None:
+        raise ValueError(f"Could not find compatible widget: {w_name} {w_version}")
+    if not widget_class.supports(*schemas.parent_path(s_ref.name, s_ref.version)):
+        msg = f"Widget {widget_class.Plugin.ref()} does not support {s_ref}"
+        raise ValueError(msg)
+
+    w_ref = widget_class.Plugin.ref()
+    return w_ref
+
+
+# ----
 
 
 class Dashboard:
@@ -125,98 +255,33 @@ class Dashboard:
         self._server = server
 
         # figure out what schemas to show and what widgets to use and collect
-        self._widgets: List[NodeWidgetPair] = []
-        for node, dbmeta in self._container.toc.query(DashboardMeta).items():
-            localized_node = node.restrict(local_only=True)
+        ws: List[NodeWidgetPair] = []
+        for node, dbmeta in self._container.metador.query(DashboardMeta).items():
+            restr_node = node.restrict(read_only=True, local_only=True)
             for wmeta in dbmeta.widgets:
-                self._widgets.append((localized_node, self._resolve_node(node, wmeta)))
+                ws.append((restr_node, self._resolve_node(node, wmeta)))
 
-        # order widgets by group, priority and node
-
-        def group(tup: NodeWidgetPair) -> int:
-            return tup[1].group or 0
-
-        def prio(tup: NodeWidgetPair) -> int:
-            return -tup[1].priority or 0  # in descending order of priority
-
-        def sorted_widgets(ws: Iterable[NodeWidgetPair]) -> List[NodeWidgetPair]:
-            """Sort first on priority, and for same priority on container node."""
-            return list(sorted(sorted(ws, key=lambda x: x[0].name), key=prio))
-
-        # dict, sorted in ascending group order
-        self._groups = dict(
-            sorted(
-                {
-                    k: sorted_widgets(v)
-                    for k, v in groupby(sorted(self._widgets, key=group), key=group)
-                }.items()
-            )
-        )
-        # separate out the ungrouped widgets
-        self._ungrouped = self._groups[0]
-        del self._groups[0]
+        grps, ungrp = sorted_widgets(ws)
+        self._groups = grps
+        self._ungrouped = ungrp
 
     def _resolve_node(
         self, node: MetadorNode, wmeta: DashboardWidgetMeta
     ) -> DashboardWidgetMeta:
-        """Try to instantiate a widget for a node based on its dashboard metadata."""
-        ret = wmeta.copy()
-        if ret.metador_schema is not None:
-            if schemas.get(ret.metador_schema) is None:
-                msg = (
-                    f"Dashboard metadata contains unknown schema: {ret.metador_schema}"
-                )
-                raise ValueError(msg)
+        """Check and resolve widget dashboard metadata for a node."""
+        wmeta = wmeta.copy()  # use copy, abandon original
 
-            installed_schema = schemas.fullname(ret.metador_schema)
-            container_schema = self._container.toc.fullname(ret.metador_schema)
-            if not installed_schema.supports(container_schema):
-                msg = f"Dashboard metadata contains incompatible schema: {container_schema}"
-                raise ValueError(msg)
-        else:
-            # no desired schema selected -> pick any schema for which we have:
-            #   * a schema instance at the current node
-            #   * installed widget(s) that support it
-            for attached_obj_schema in node.meta.find():
-                container_schema = self._container.toc.fullname(attached_obj_schema)
-                if container_schema in widgets.supported_schemas():
-                    ret.metador_schema = attached_obj_schema
-                    break
+        s_ref: PluginRef = _resolve_schema(node, wmeta)
+        wmeta.schema_name = s_ref.name
+        wmeta.schema_version = s_ref.version
 
-        if ret.metador_schema is None:
-            msg = f"Cannot find schema suitable for known widgets for node: {node.name}"
-            raise ValueError(msg)
-
-        # TODO: use parent_path of the CONTAINER schema (toc.schemas should be PluginRefs)
-        # this is not correct yet!
-        cand_schemas = list(
-            map(lambda n: schemas.fullname(n), schemas.parent_path(ret.metador_schema))
+        w_ref: PluginRef = _resolve_widget(
+            node, s_ref, wmeta.widget_name, wmeta.widget_version
         )
+        wmeta.widget_name = w_ref.name
+        wmeta.widget_version = w_ref.version
 
-        container_schema_ref = self._container.toc.fullname(ret.metador_schema)
-        if ret.metador_widget is not None:
-            widget_class = widgets._get_unsafe(ret.metador_widget)
-            if widget_class is None:
-                raise ValueError(f"Could not find widget: {ret.metador_widget}")
-            if not widget_class.supports(*cand_schemas):
-                msg = f"Desired widget {ret.metador_widget} does not "
-                msg += f"support {container_schema_ref}"
-                raise ValueError(msg)
-        else:
-            # get candidate widgets in alphabetic order (all that claim to work with schema)
-            cand_widgets = sorted(
-                list(chain(*(iter(widgets.widgets_for(sref)) for sref in cand_schemas)))
-            )
-
-            # filter out the ones that ACTUALLY can handle the object and are eligible
-            is_suitable = partial(widget_suitable_for, node.meta[ret.metador_schema])
-            ret.metador_widget = next(filter(is_suitable, cand_widgets), None)
-
-        if ret.metador_widget is None:
-            msg = f"Could not find suitable widget for {ret.metador_schema} at node {node.name}"
-            raise ValueError(msg)
-
-        return ret
+        return wmeta
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
@@ -230,11 +295,12 @@ class Dashboard:
         # helper, to fill widget instances into row or flexbox
         def add_widgets(w_grp, ui_row):
             for node, wmeta in w_grp:
-                w_cls = widgets[wmeta.metador_widget]
+                w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
                 label = pn.pane.Str(f"{node.name}:")
                 w_obj = w_cls(
                     node,
-                    wmeta.metador_schema,
+                    wmeta.schema_name,
+                    wmeta.schema_version,
                     server=self._server,
                     max_width=w_width,
                     max_height=w_height,

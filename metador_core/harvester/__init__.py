@@ -215,7 +215,7 @@ class PGHarvester(pg.PluginGroup[Harvester]):
 
     def plugin_deps(self, plugin):
         if p := plugin.Plugin.returns:
-            return {(schemas.name, p)}
+            return {p}
 
     @overrides
     def check_plugin(self, ep_name: str, plugin: Type[Harvester]):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import ChainMap
+from functools import total_ordering
 from typing import (
     Any,
     ClassVar,
@@ -28,6 +29,7 @@ class PluginLike(Protocol):
     Plugin: ClassVar[Any]  # actually its PluginBase, but this happens at runtime
 
 
+@total_ordering
 class PluginRef(MetadataSchema):
     """Reference to a metador plugin.
 
@@ -64,6 +66,21 @@ class PluginRef(MetadataSchema):
         if self.version[1] < other.version[1]:  # minor
             return False
         return True
+
+    def __eq__(self, other):
+        return (
+            self.group == other.group
+            and self.name == other.name
+            and self.version == other.version
+        )
+
+    def __ge__(self, other):
+        if self.group != other.group:
+            return self.group >= other.group
+        if self.name != other.name:
+            return self.name >= other.name
+        if self.version != other.version:
+            return self.version >= other.version
 
     def __hash__(self):
         # needed because otherwise would differ in subclass,

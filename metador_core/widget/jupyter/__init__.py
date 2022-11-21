@@ -19,11 +19,14 @@ class Previewable(wrapt.ObjectProxy):
             standalone.run()
 
         if prv := standalone.container_provider():
-            prv[self.info.uuid] = (self.info.driver, self.info.source)
+            prv[self.metador.container_uuid] = (
+                self.metador.driver,
+                self.metador.source,
+            )
 
     def close(self, *args, **kwargs):
         if prv := standalone.container_provider():
-            del prv[self.info.uuid]
+            del prv[self.metador.container_uuid]
 
         self.__wrapped__.close(*args, **kwargs)
 

@@ -125,7 +125,7 @@ class WidgetServer:
         raise NotFound(f"Container not found: '{uuid}'")
 
     def file_url_for(self, node: MetadorNode) -> str:
-        return f"{self._flask_endpoint}/file/{node.container_info.uuid}{node.name}"
+        return f"{self._flask_endpoint}/file/{node.metador.container_uuid}{node.name}"
 
     def set_flask_endpoint(self, uri: str):
         """Set URI where the blueprint from `get_flask_blueprint` is mounted."""

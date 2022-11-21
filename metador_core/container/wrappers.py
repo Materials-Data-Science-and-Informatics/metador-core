@@ -228,7 +228,7 @@ class MetadorNode(wrapt.ObjectProxy):
         return MetadorMeta(self)
 
     @property
-    def container_info(self) -> MetadorContainerTOC:
+    def metador(self) -> MetadorContainerTOC:
         """Access the info about the container this node belongs to."""
         return self._self_container.metador
 

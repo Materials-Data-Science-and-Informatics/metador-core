@@ -10,9 +10,9 @@ from typing import (
     Dict,
     Generic,
     Iterable,
-    KeysView,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -257,20 +257,20 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
     def __contains__(self, key) -> bool:
         name, version = plugin_args(key)
-        pg_versions = self._VERSIONS.get(name)
-        if pg_versions:
+        if pg_versions := self._VERSIONS.get(name):
             if not version:
                 return True
             else:
                 pg = self.PluginRef(name=name, version=version)
                 return pg in pg_versions
+        return False
 
     def __getitem__(self, key) -> Type[T]:
         if key not in self:
             raise KeyError(f"{self.name} not found: {key}")
         return self.get(key)
 
-    def keys(self) -> KeysView[AnyPluginRef]:
+    def keys(self) -> Iterable[AnyPluginRef]:
         """Return all names of all plugins."""
         for pgs in self._VERSIONS.values():
             yield from pgs
@@ -295,7 +295,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if ref := self.resolve(p_name, version):
             self._ensure_is_loaded(ref)
             return self._LOADED_PLUGINS[ref]
-        else:
+        else:  # error
             msg = f"{p_name}"
             if version:
                 msg += f": no installed version is compatible with {version}"
@@ -315,18 +315,15 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def get(
         self, key: Union[str, PRX], version: Optional[SemVerTuple] = None
     ) -> Union[Type[T], PRX, None]:
-        key, version = plugin_args(key, version)
-
-        if isinstance(key, str):
-            key_: str = key
-        else:
-            # if a plugin class is passed, use its name + version
-            key_: str = key.Plugin.name  # type: ignore
-            version = version or key.Plugin.version  # use if no version passed
+        key_, version = plugin_args(key, version)
 
         # retrieve compatible plugin
-        ret = self._get_unsafe(key_, version)
-        if ret is not None and version is None:
+        try:
+            ret = self._get_unsafe(key_, version)
+        except KeyError:
+            return None
+
+        if version is None:
             # no version constraint was passed or inferred -> mark it
             ret = UndefVersion._mark_class(ret)
 
@@ -349,20 +346,19 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
         self._load_plugin(ep_name, ret)
 
-    def _explicit_plugin_deps(self, plugin):
+    def _explicit_plugin_deps(self, plugin) -> Set[AnyPluginRef]:
         """Return all plugin dependencies that must be taken into account."""
-        def_deps = set(map(lambda n: (self.name, n), plugin.Plugin.requires))
+        def_deps = set(plugin.Plugin.requires)
         extra_deps = self.plugin_deps(plugin) or set()
         if not isinstance(extra_deps, set):
             extra_deps = set(extra_deps)
         return def_deps.union(extra_deps)
 
-    def plugin_deps(self, plugin):
+    def plugin_deps(self, plugin) -> Set[AnyPluginRef]:
         """Return additional automatically inferred dependencies for a plugin."""
 
     def _load_plugin(self, ep_name: str, plugin):
         """Run checks and finalize loaded plugin."""
-        # print("load", self.name, name, plugin)
         from ..plugins import plugingroups
 
         # run inner Plugin class checks (with possibly new Fields cls)
@@ -376,9 +372,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         self._check_common(ep_name, plugin)
         self.check_plugin(ep_name, plugin)
 
-        for dep_grp, dep_ref in self._explicit_plugin_deps(plugin):
-            dep_grp = plugingroups[dep_grp]
-            # print("check dep", depgroup, depname)
+        for dep_ref in self._explicit_plugin_deps(plugin):
+            dep_grp = plugingroups[dep_ref.group]
             dep_grp._ensure_is_loaded(dep_ref)
 
         self.init_plugin(plugin)
