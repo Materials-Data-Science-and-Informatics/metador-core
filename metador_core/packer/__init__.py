@@ -10,11 +10,11 @@ import wrapt
 from overrides import EnforceOverrides, overrides
 
 from metador_core.ih5.manifest import IH5MFRecord
+from metador_core.plugins import plugingroups
 
 from ..container import MetadorContainer
 from ..hashutils import DirHashsums, dir_hashsums
 from ..plugin import interface as pg
-from ..plugins import harvesters, schemas
 from ..schema.core import MetadataSchema
 from ..schema.plugins import PluginPkgMeta
 from .diff import DirDiff
@@ -236,15 +236,18 @@ class PGPacker(pg.PluginGroup[Packer]):
         version = (0, 1, 0)
         plugin_class = Packer
         plugin_info_class = PackerPlugin
-        requires = [schemas.name, harvesters.name]
+        requires = [
+            plugingroups.PluginRef(name="schema", version=(0, 1, 0)),
+            plugingroups.PluginRef(name="harvester", version=(0, 1, 0)),
+        ]
 
     _PACKER_INFO_NAME = PackerInfo.Plugin.name
 
     @overrides
     def check_plugin(self, ep_name: str, plugin: Type[Packer]):
-        pg.check_implements_method(ep_name, plugin, Packer.check_dir)
-        missing_pack = pg.test_implements_method(plugin, Packer.pack)
-        missing_update = pg.test_implements_method(plugin, Packer.update)
+        pg.util.check_implements_method(ep_name, plugin, Packer.check_dir)
+        missing_pack = pg.util.test_implements_method(plugin, Packer.pack)
+        missing_update = pg.util.test_implements_method(plugin, Packer.update)
         if missing_pack and missing_update:
             raise TypeError(f"{ep_name}: Neither pack nor update are implemented!")
 

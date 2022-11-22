@@ -11,7 +11,11 @@ S = TypeVar("S", bound=PluginGroup)
 class PGPluginGroup(wrapt.ObjectProxy):
     """PluginGroup plugin group.
 
-    Returns instances of other loaded plugin groups.
+    This wrapper returns instances of other loaded plugin groups.
+
+    To access the actual plugingroup class that gives out *classes*
+    instead of instances (like all other plugingroups),
+    request the "plugingroup" plugingroup.
     """
 
     _self_groups: Dict[str, PluginGroup]
@@ -21,24 +25,28 @@ class PGPluginGroup(wrapt.ObjectProxy):
         from .plugin.interface import _plugin_groups, create_pg
 
         create_pg(PluginGroup)
+
         # wire it up with this wrapper
         self._self_groups = _plugin_groups
         self.__wrapped__ = _plugin_groups[PG_GROUP_NAME]
 
     # ----
 
-    def __getitem__(self, key: str) -> PluginGroup:
-        if key not in self:
-            raise KeyError(f"{self.name} not found: {key}")
-        return self.get(key)
+    def __getitem__(self, key) -> PluginGroup:
+        if ret := self.get(key):
+            return ret
+        raise KeyError(f"{self.name} not found: {key}")
 
-    def get(self, key):
+    def get(self, key, version=None):
         """Get a registered plugin group by name."""
         if key == PG_GROUP_NAME:
             return self
-        if grp_cls := self.__wrapped__._get_unsafe(key):
-            # now if it was not existing, it is + stored in _self_groups
-            return cast(S, self._self_groups.get(grp_cls.Plugin.name))
+        try:
+            if grp_cls := self.__wrapped__._get_unsafe(key, version):
+                # now if it was not existing, it is + stored in _self_groups
+                return cast(S, self._self_groups.get(grp_cls.Plugin.name))
+        except KeyError:
+            return None
 
 
 # access to available plugin groups:
@@ -74,7 +82,7 @@ def __dir__() -> List[str]:
 
 def __getattr__(key: str):
     # get desired plugin group and add as module attribute
-    # (i.e. this is done once per group)
+    # (i.e. this is called once per group)
     if not isinstance(key, str) or key[-1] != "s":
         raise AttributeError(key)
     if group := plugingroups.get(key[:-1]):

@@ -19,7 +19,7 @@ from typing import (
 from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
 
 from .core import BaseModelPlus, MetadataSchema
-from .types import NonEmptyStr, SemVerTuple, semver_str
+from .types import NonEmptyStr, SemVerTuple, to_semver_str
 
 
 @runtime_checkable
@@ -145,11 +145,13 @@ class PluginBase(BaseModelPlus):
         )
 
     def plugin_string(self):
-        return f"metador.{self.group}.{self.name}.{semver_str(self.version)}"
+        return f"metador.{self.group}.{self.name}.{to_semver_str(self.version)}"
 
     def __str__(self) -> str:
         # pretty-print semver in user-facing representation
-        dct = dict(group=self.group, name=self.name, version=semver_str(self.version))
+        dct = dict(
+            group=self.group, name=self.name, version=to_semver_str(self.version)
+        )
         dct.update(
             self.json_dict(exclude_defaults=True, exclude={"name", "group", "version"})
         )
@@ -160,7 +162,7 @@ class PluginBase(BaseModelPlus):
         if isinstance(info, cls):
             return info  # nothing to do, already converted info class to PluginBase (sub)model
 
-        expected_ep_name = f"{info.name}__{semver_str(info.version)}"
+        expected_ep_name = f"{info.name}__{to_semver_str(info.version)}"
         ep_name = ep_name or expected_ep_name
         if ep_name != expected_ep_name:
             msg = f"{ep_name}: Based on plugin info, entrypoint must be called '{expected_ep_name}'!"
@@ -201,7 +203,7 @@ class PluginPkgMeta(MetadataSchema):
         from importlib_metadata import distribution
 
         from ..plugin.entrypoints import DistMeta, distmeta_for
-        from ..plugin.interface import _from_ep_name
+        from ..plugin.types import EPName, from_ep_name
 
         dm: DistMeta = distmeta_for(distribution(package_name))
 
@@ -209,7 +211,7 @@ class PluginPkgMeta(MetadataSchema):
         for group, ep_names in dm.plugins.items():
             plugins[group] = []
             for ep_name in ep_names:
-                name, version = _from_ep_name(ep_name)
+                name, version = from_ep_name(EPName(ep_name))
                 ref = PluginRef(group=group, name=name, version=version)
                 plugins[group].append(ref)
 

@@ -24,7 +24,7 @@ from uuid import UUID, uuid1
 
 from typing_extensions import TypeAlias
 
-from ..plugin.interface import _from_ep_name, _to_ep_name
+from ..plugin.types import EPName, from_ep_name, to_ep_name
 from ..plugins import schemas
 from ..schema import MetadataSchema
 from ..schema.plugins import PluginPkgMeta, PluginRef, plugin_args
@@ -63,7 +63,7 @@ class StoredMetadata:
 
     def to_path(self):
         prefix = self.node.parent.name
-        ep_name = _to_ep_name(self.schema.name, self.schema.version)
+        ep_name = to_ep_name(self.schema.name, self.schema.version)
         return f"{prefix}/{ep_name}={self.uuid}"
 
     @staticmethod
@@ -71,19 +71,19 @@ class StoredMetadata:
         path = obj.name
         segs = path.lstrip("/").split("/")
         ep_name, uuid_str = segs.pop().split("=")
-        s_name, s_vers = _from_ep_name(ep_name)
+        s_name, s_vers = from_ep_name(EPName(ep_name))
         uuid = UUID(uuid_str)
         s_ref = schemas.PluginRef(name=s_name, version=s_vers)
         return StoredMetadata(uuid=uuid, schema=s_ref, node=obj)
 
 
 def _schema_ref_for(ep_name: str) -> PluginRef:
-    s_name, s_ver = _from_ep_name(ep_name)
+    s_name, s_ver = from_ep_name(EPName(ep_name))
     return schemas.PluginRef(name=s_name, version=s_ver)
 
 
 def _ep_name_for(s_ref: PluginRef) -> str:
-    return _to_ep_name(s_ref.name, s_ref.version)
+    return to_ep_name(s_ref.name, s_ref.version)
 
 
 class MetadorMeta:
@@ -536,7 +536,7 @@ class TOCSchemas:
 
     @classmethod
     def _schema_path_for(cls, s_ref: PluginRef) -> str:
-        return f"{M.METADOR_SCHEMAS_PATH}/{_to_ep_name(s_ref.name, s_ref.version)}"
+        return f"{M.METADOR_SCHEMAS_PATH}/{to_ep_name(s_ref.name, s_ref.version)}"
 
     @classmethod
     def _jsonschema_path_for(cls, s_ref: PluginRef) -> str:
@@ -743,7 +743,7 @@ class TOCPackages:
 
     @staticmethod
     def _pkginfo_path_for(pkg_name: str, pkg_version: SemVerTuple) -> str:
-        return f"{M.METADOR_PACKAGES_PATH}/{_to_ep_name(pkg_name, pkg_version)}"
+        return f"{M.METADOR_PACKAGES_PATH}/{to_ep_name(pkg_name, pkg_version)}"
 
     def _add_providers(self, pkg: PythonDep, pkginfo: PluginPkgMeta):
         # fill schema -> package lookup table for provided package
@@ -787,7 +787,7 @@ class TOCPackages:
         if M.METADOR_PACKAGES_PATH in self._raw:
             deps_grp = self._raw.require_group(M.METADOR_PACKAGES_PATH)
             for name, node in deps_grp.items():
-                pkg: PythonDep = _from_ep_name(name)
+                pkg: PythonDep = from_ep_name(EPName(name))
                 info = PluginPkgMeta.parse_raw(cast(H5DatasetLike, node)[()])
                 self._pkginfos[pkg] = info
                 self._add_providers(pkg, info)

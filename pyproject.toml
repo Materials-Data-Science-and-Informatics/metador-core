@@ -80,6 +80,7 @@ pdoc = "^10.0.3"
 
 [tool.poetry.group.dev.dependencies]
 black = {version = "^22.10.0", allow-prereleases = true}
+hypothesis = "^6.58.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -90,7 +91,8 @@ build-backend = "poetry.core.masonry.api"
 addopts = "--cov-report=term-missing:skip-covered"
 filterwarnings = [
     "ignore::PendingDeprecationWarning:ruamel.yaml.*",
-    "ignore::PendingDeprecationWarning:pydantic_yaml.*"
+    "ignore::PendingDeprecationWarning:pydantic_yaml.*",
+    "ignore::DeprecationWarning:importlib_metadata.*"
 ]
 
 # .coveragerc replacement

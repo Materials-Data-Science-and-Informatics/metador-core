@@ -1,15 +1,13 @@
 """Interface for plugin groups."""
 from __future__ import annotations
 
-import re
 from abc import ABCMeta
-from importlib.metadata import EntryPoint
 from typing import (
     Any,
     ClassVar,
     Dict,
     Generic,
-    Iterable,
+    Iterator,
     List,
     Optional,
     Set,
@@ -21,91 +19,26 @@ from typing import (
     overload,
 )
 
+from importlib_metadata import EntryPoint
 from typing_extensions import TypeAlias
-
-from metador_core.schema.types import SemVerTuple, from_semver_str, semver_str
 
 from ..schema.plugins import PluginBase, PluginLike, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
 from ..schema.plugins import plugin_args
+from ..util import eprint
+from . import util
 from .entrypoints import get_group, pkg_meta
 from .metaclass import UndefVersion
+from .types import EP_NAME_REGEX, EPName, SemVerTuple, from_ep_name
 
 PG_GROUP_NAME = "plugingroup"
 
-# helpers for checking plugins (also to be used in PluginGroup subclasses):
 
-PLUGIN_NAME_REGEX = r"[A-Za-z0-9._-]+"
-"""Regular expression that all metador plugins must match."""
-
-ENTRYPOINT_NAME_REGEX = rf"{PLUGIN_NAME_REGEX}__\d+\.\d+\.\d+"
-"""Regular expression that all metador plugin entry points must match."""
-
-
-def _check_name(name: str, pat: str):
-    if not re.fullmatch(pat, name):
-        msg = f"{name}: Invalid name, must match {pat}"
-        raise TypeError(msg)
-
-
-def _check_plugin_name_prefix(name: str):
+def check_plugin_name_prefix(name: str):
     xs = name.split(".")
     if len(xs) < 2 or not (2 < len(xs[0]) < 11):
         msg = f"{name}: Missing/invalid namespace prefix (must have length 3-10)!"
         raise TypeError(msg)
-
-
-def check_is_subclass(name: str, plugin, base):
-    """Check whether plugin has expected parent class (helper method)."""
-    if not issubclass(plugin, base):
-        msg = f"{name}: {plugin} is not subclass of {base}!"
-        raise TypeError(msg)
-
-
-def test_implements_method(plugin, base_method):
-    ep_method = plugin.__dict__.get(base_method.__name__)
-    return ep_method is not None and base_method != ep_method
-
-
-def check_implements_method(name: str, plugin, base_method):
-    """Check whether plugin overrides a method of its superclass."""
-    if not test_implements_method(plugin, base_method):
-        msg = f"{name}: {plugin} does not implement {base_method.__name__}!"
-        raise TypeError(msg)
-
-
-def is_plugin(p_cls, *, group: str = ""):
-    """Check whether given class is a loaded plugin.
-
-    If group not specified, will accept any kind of plugin.
-
-    Args:
-        p_cls: class of supposed plugin
-        group: name of desired plugin group
-    """
-    if not hasattr(p_cls, "Plugin") or not issubclass(p_cls.Plugin, PluginBase):
-        return False  # not suitable
-    g = p_cls.Plugin.group
-    return bool(g and (not group or group == g))
-
-
-# ----
-
-
-EP_NAME_VER_SEP: str = "__"
-"""Separator between plugin name and semantic version in entry point name."""
-
-
-def _to_ep_name(p_name: str, p_version: SemVerTuple) -> str:
-    """Return canonical entrypoint name `PLUGIN_NAME__MAJ.MIN.FIX`."""
-    return f"{p_name}{EP_NAME_VER_SEP}{semver_str(p_version)}"
-
-
-def _from_ep_name(ep_name: str) -> Tuple[str, SemVerTuple]:
-    """Split entrypoint name into `(PLUGIN_NAME, (MAJ,MIN,FIX))`."""
-    _check_name(ep_name, ENTRYPOINT_NAME_REGEX)
-    pname, pverstr = ep_name.split(EP_NAME_VER_SEP)
-    return (pname, from_semver_str(pverstr))
 
 
 # ----
@@ -153,25 +86,39 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         plugin_class: Type
         # plugin_class = PluginGroup  # can't set that -> check manually
 
-    _ENTRY_POINTS: Dict[str, EntryPoint]
+    _ENTRY_POINTS: Dict[EPName, EntryPoint]
     """Dict of entry points of versioned plugins (not loaded)."""
 
     _VERSIONS: Dict[str, List[AnyPluginRef]]
-    """Mapping from plugin name to pluginrefs."""
+    """Mapping from plugin name to pluginrefs of available versions."""
 
     _LOADED_PLUGINS: Dict[AnyPluginRef, Type[T]]
     """Dict from entry points to loaded plugins of that pluggable type."""
 
-    def _add_ep(self, ep_name: str, ep_obj: EntryPoint):
-        self._ENTRY_POINTS[ep_name] = ep_obj
+    def _add_ep(self, epname_str: str, ep_obj: EntryPoint):
+        """Add an entrypoint loaded from importlib_metadata."""
+        try:
+            ep_name = EPName(epname_str)
+        except ValueError:
+            txt = "Invalid entrypoint name, must match"
+            msg = f"{ep_name}: {txt} {EP_NAME_REGEX}"
+            raise ValueError(msg)
 
-        name, version = _from_ep_name(ep_name)
+        name, version = from_ep_name(ep_name)
         p_ref = AnyPluginRef(group=self.name, name=name, version=version)
 
-        if name not in self._VERSIONS:
+        if ep_name in self._ENTRY_POINTS:
+            self._LOADED_PLUGINS.pop(p_ref, None)  # unload, if loaded
+            pkg = ep_obj.dist
+            msg = "WARNING: {ep_name} is probably provided by multiple packages!\n"
+            msg += f"The plugin will now be provided by: {pkg.name} {pkg.version}"
+            eprint(msg)
+        self._ENTRY_POINTS[ep_name] = ep_obj
+
+        if ep_name not in self._VERSIONS:
             self._VERSIONS[name] = []
         self._VERSIONS[name].append(p_ref)
-        self._VERSIONS[name].sort()
+        self._VERSIONS[name].sort()  # should be cheap
 
     def __init__(self, entrypoints):
         self._ENTRY_POINTS = {}
@@ -186,16 +133,15 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def __post_init__(self):
         if type(self) is PluginGroup:
             # make the magic plugingroup plugin add itself for consistency
-            ep_name = f"{self.Plugin.name}__{semver_str(self.Plugin.version)}"
-            ep = EntryPoint(
-                ep_name, f"{type(self).__module__}:{type(self).__name__}", self.name
-            )
+            ep_name = util.to_ep_name(self.Plugin.name, self.Plugin.version)
+            ep_path = f"{type(self).__module__}:{type(self).__name__}"
+            ep = EntryPoint(ep_name, ep_path, self.name)
             self._add_ep(ep_name, ep)
 
             self_ref = AnyPluginRef(
-                group=self.name, name=self.Plugin.name, version=self.Plugin.version
+                group=self.name, name=self.name, version=self.Plugin.version
             )
-            self._LOADED_PLUGINS[self_ref] = self_ref
+            self._LOADED_PLUGINS[self_ref] = self
             self.provider(self_ref).plugins[self.name].append(self_ref)
 
     @property
@@ -233,7 +179,8 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             # so we cheat a bit (schema is in same package, but is an EP)
             return self.provider(self.resolve("schema"))
 
-        ep = self._ENTRY_POINTS[_to_ep_name(ref.name, ref.version)]
+        ep_name = util.to_ep_name(ref.name, ref.version)
+        ep = self._ENTRY_POINTS[ep_name]
         return self._PKG_META[cast(Any, ep).dist.name]
 
     # ----
@@ -244,7 +191,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def __str__(self):
         def pg_line(name_refs):
             name, refs = name_refs
-            vs = list(map(lambda x: semver_str(x.version), refs))
+            vs = list(map(lambda x: util.to_semver_str(x.version), refs))
             # p = self.provider(pg_ref.name)
             # pkg = f"{p.name} {semver_str(p.version)}"
             return f"\t'{name}' ({', '.join(vs)})"
@@ -270,16 +217,16 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             raise KeyError(f"{self.name} not found: {key}")
         return self.get(key)
 
-    def keys(self) -> Iterable[AnyPluginRef]:
+    def keys(self) -> Iterator[AnyPluginRef]:
         """Return all names of all plugins."""
         for pgs in self._VERSIONS.values():
             yield from pgs
 
-    def values(self) -> Iterable[Type[T]]:
+    def values(self) -> Iterator[Type[T]]:
         """Return latest versions of all plugins (THIS LOADS ALL PLUGINS!)."""
         return map(self.__getitem__, self.keys())
 
-    def items(self) -> Iterable[Tuple[AnyPluginRef, Type[T]]]:
+    def items(self) -> Iterator[Tuple[AnyPluginRef, Type[T]]]:
         """Return pairs of plugin name and latest installed version (THIS LOADS ALL PLUGINS!)."""
         return map(lambda k: (k, self[k]), self.keys())
 
@@ -340,7 +287,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if ref in self._LOADED_PLUGINS:
             return  # already loaded, all good
 
-        ep_name = _to_ep_name(ref.name, ref.version)
+        ep_name = util.to_ep_name(ref.name, ref.version)
         ret = self._ENTRY_POINTS[ep_name].load()
         self._LOADED_PLUGINS[ref] = ret
 
@@ -357,7 +304,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def plugin_deps(self, plugin) -> Set[AnyPluginRef]:
         """Return additional automatically inferred dependencies for a plugin."""
 
-    def _load_plugin(self, ep_name: str, plugin):
+    def _load_plugin(self, ep_name: EPName, plugin):
         """Run checks and finalize loaded plugin."""
         from ..plugins import plugingroups
 
@@ -378,20 +325,19 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
         self.init_plugin(plugin)
 
-    def _check_common(self, ep_name: str, plugin):
+    def _check_common(self, ep_name: EPName, plugin):
         """Perform both the common and specific checks a registered plugin.
 
         Raises a TypeError with message in case of failure.
         """
-        _check_name(ep_name, PLUGIN_NAME_REGEX)
         if type(self) is not PluginGroup:
-            _check_plugin_name_prefix(ep_name)
+            check_plugin_name_prefix(ep_name)
 
         # check correct base class of plugin, if stated
         if self.Plugin.plugin_class:
-            check_is_subclass(ep_name, plugin, self.Plugin.plugin_class)
+            util.check_is_subclass(ep_name, plugin, self.Plugin.plugin_class)
 
-    def check_plugin(self, ep_name: str, plugin: Type[T]):
+    def check_plugin(self, ep_name: EPName, plugin: Type[T]):
         """Perform plugin group specific checks on a registered plugin.
 
         Raises a TypeError with message in case of failure.
@@ -407,10 +353,10 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
         # these are the checks done for other plugin group plugins:
 
-        check_is_subclass(ep_name, plugin, PluginGroup)
-        check_is_subclass(ep_name, self.Plugin.plugin_info_class, PluginBase)
+        util.check_is_subclass(ep_name, plugin, PluginGroup)
+        util.check_is_subclass(ep_name, self.Plugin.plugin_info_class, PluginBase)
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
-            check_implements_method(ep_name, plugin, PluginGroup.check_plugin)
+            util.check_implements_method(ep_name, plugin, PluginGroup.check_plugin)
 
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.

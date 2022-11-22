@@ -216,7 +216,7 @@ class PGWidget(pg.PluginGroup[Widget]):
 
     @overrides
     def check_plugin(self, ep_name: str, plugin: Type[Widget]):
-        pg.check_implements_method(ep_name, plugin, Widget.show)
+        pg.util.check_implements_method(ep_name, plugin, Widget.show)
 
     def plugin_deps(self, plugin) -> Set[PluginRef]:
         return set(plugin.Plugin.supports)
