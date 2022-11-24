@@ -246,8 +246,8 @@ class PGPacker(pg.PluginGroup[Packer]):
     @overrides
     def check_plugin(self, ep_name: str, plugin: Type[Packer]):
         pg.util.check_implements_method(ep_name, plugin, Packer.check_dir)
-        missing_pack = pg.util.test_implements_method(plugin, Packer.pack)
-        missing_update = pg.util.test_implements_method(plugin, Packer.update)
+        missing_pack = pg.util.implements_method(plugin, Packer.pack)
+        missing_update = pg.util.implements_method(plugin, Packer.update)
         if missing_pack and missing_update:
             raise TypeError(f"{ep_name}: Neither pack nor update are implemented!")
 

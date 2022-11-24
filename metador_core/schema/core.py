@@ -219,7 +219,7 @@ class SchemaBase(BaseModelPlus):
             schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 
             # custom extra key to connect back to metador schema:
-            if pgi := getattr(model, "Plugin", None):
+            if pgi := model.__dict__.get("Plugin"):
                 schema[KEY_SCHEMA_PG] = pgi.ref().copy(exclude={"group"}).json_dict()
 
             if model is not MetadataSchema:
@@ -410,10 +410,8 @@ class SchemaFieldInspector(FieldInspector):
         # to show plugin name and version in case of registered plugin schemas:
         og = self.origin
         self._origin_name = f"{og.__module__}.{og.__qualname__}"
-        if og.is_plugin:
-            self._origin_name += (
-                f" (plugin: {og.Plugin.name} {to_semver_str(og.Plugin.version)})"
-            )
+        if pgi := og.__dict__.get("Plugin"):
+            self._origin_name += f" (plugin: {pgi.name} {to_semver_str(pgi.version)})"
 
         # access to sub-entities/schemas:
         subschemas = list(field_model_types(og.__fields__[name], bound=MetadataSchema))
@@ -583,7 +581,8 @@ def infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]
     """
     return next(
         filter(
-            lambda c: issubclass(c, MetadataSchema) and c.is_plugin, plugin.__mro__[1:]
+            lambda c: issubclass(c, MetadataSchema) and c.__dict__.get("Plugin"),
+            plugin.__mro__[1:],
         ),
         None,
     )

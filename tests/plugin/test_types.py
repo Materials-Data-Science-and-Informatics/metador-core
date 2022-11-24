@@ -3,14 +3,87 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from metador_core.plugin.types import (
+    EPGroupName,
     EPName,
     SemVerStr,
     SemVerTuple,
+    from_ep_group_name,
     from_ep_name,
     from_semver_str,
+    is_pluginlike,
+    plugin_args,
+    to_ep_group_name,
     to_ep_name,
     to_semver_str,
 )
+
+
+class A:
+    pass
+
+
+class B:
+    class Plugin:
+        pass
+
+
+class C:
+    class Plugin:
+        group = "blub"
+        name = "bla"
+        version = "bli"
+
+
+class Info:
+    def __init__(self, a="a", b="b", c=(1, 2, 3)):
+        self.group = a
+        self.name = b
+        self.version = c
+
+
+class D:
+    Plugin = Info()
+
+
+def test_plugin_like():
+    assert not is_pluginlike(A)  # no inner 'Plugin'
+    assert not is_pluginlike(B)  # missing fields
+    assert is_pluginlike(C)  # a class
+    assert is_pluginlike(D)  # an instance
+
+
+def test_plugin_args_simple():
+    # first argument is string (just name)
+    name, ver = plugin_args("")
+    assert name == "" and ver is None
+
+    name, ver = plugin_args("test", None)
+    assert name == "test" and ver is None
+
+    name, ver = plugin_args("test", (1, 2, 3))
+    assert name == "test" and ver == (1, 2, 3)
+
+    # should work
+    name, ver = plugin_args("test", (1, 2, 3), require_version=True)
+    # should fail (could not infer any version)
+    with pytest.raises(ValueError):
+        name, ver = plugin_args("test", None, require_version=True)
+
+
+@pytest.mark.parametrize("obj", [Info(), D()])
+def test_plugin_args_complex(obj):
+    # name and version come both from first argument
+    name, ver = plugin_args(obj)
+    assert name == "b" and ver == (1, 2, 3)
+    # the implicitly passed version should suffice
+    name, ver = plugin_args(obj, require_version=True)
+    assert name == "b" and ver == (1, 2, 3)
+    # the explicitly passed version should override
+    name, ver = plugin_args(obj, (3, 2, 1))
+    assert name == "b" and ver == (3, 2, 1)
+
+
+# ----
 
 
 @pytest.mark.parametrize("s", ["", "a", "1", "1.0", "1.0.5.1", "1.-1.4"])
@@ -44,3 +117,8 @@ def test_epname_conversion(obj):
     # check inverses, but use normalized rep (0.00.01 -> 0.0.1)
     normalized = to_ep_name(name, ver)
     assert to_ep_name(*from_ep_name(normalized)) == normalized
+
+
+@given(st.from_regex(EPGroupName.__pattern__, fullmatch=True))
+def test_ep_group_name_conversion(obj):
+    assert to_ep_group_name(from_ep_group_name(obj)) == obj

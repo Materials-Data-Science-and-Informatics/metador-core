@@ -1,6 +1,6 @@
 """This module defines a metaclass that should be used for all plugin types."""
 
-from ..schema.types import to_semver_str
+from .types import to_semver_str
 
 
 class MarkerMixin:
@@ -56,16 +56,11 @@ class UndefVersion(MarkerMixin):
 
     @classmethod
     def _mark_class(cls, c):
-        # a plugin has a no non-None Plugin attribute -> wrong use
-        # NOTE: no, we also want to mark nested non plugins to prevent subclassing
-        # if not getattr(c, "Plugin", None):
-        #     raise TypeError(f"{c} does not look like a Plugin class!")
-
+        # NOTE: we also want to mark nested non-plugins to prevent subclassing
+        # so we do not assume that cls.Plugin is defined
         ret = super()._mark_class(c)
-
         # make sure that the Plugin section *is* actually inherited,
         # (normally this is prevented by the plugin metaclass)
-        #
         # that way we can use the marked class as if it was the real one
         if not ret.__dict__.get("Plugin"):
             ret.Plugin = c.Plugin
@@ -96,36 +91,18 @@ class PluginMetaclassMixin(type):
         else:
             # indicate loaded plugin name and version
             pg_str = ""
-            if self.is_plugin:
+            if pgi := self.__dict__.get("Plugin"):
                 pgi = self.Plugin
                 pg_str = f" ({pgi.name} {to_semver_str(pgi.version)})"
 
             return f"{super().__repr__()}{pg_str}"
 
-    @property
-    def is_plugin(self):
-        """Return whether this schema is a (possibly marked) installed schema plugin."""
-        c = UndefVersion._unwrap(self) or self  # get real underlying class
-
-        # check its exactly a registered plugin, if it has a Plugin section
-        if info := c.__dict__.get("Plugin"):
-            from ..schema.plugins import PluginBase
-
-            if not isinstance(info, PluginBase):
-                return False
-
-            from ..plugins import plugingroups
-
-            return plugingroups[info.group]._get_unsafe(info.name, info.version) is c
-        else:
-            return False
-
     def __new__(cls, name, bases, dct):
-        # prevent inheriting from a plugin accessed without stating a version
+        # prevent inheriting from a plugin accessed without stated version
         for b in bases:
             if UndefVersion._is_marked(b):
-                if b.is_plugin:
-                    ref = f"plugin '{b.Plugin.name}'"
+                if pgi := b.__dict__.get("Plugin"):
+                    ref = f"plugin '{pgi.name}'"
                 else:
                     ref = f"{UndefVersion._unwrap(b)} originating from a plugin"
                 msg = f"{name}: Cannot inherit from {ref} of unspecified version!"
@@ -136,12 +113,13 @@ class PluginMetaclassMixin(type):
             dct["Plugin"] = None
 
         # hide special marker base class from parent metaclass (if present)
-        # so it does not have to know about any of this
+        # so it does not have to know about any of this happening
         # (otherwise it could interfere with other checks)
+        # NOTE: needed e.g. for schemas to work properly
         filt_bases = tuple(b for b in bases if b is not UndefVersion)
         ret = super().__new__(cls, name, filt_bases, dct)
 
-        # add marker back, as if it was present
+        # add marker back, as if it was present all along
         if len(filt_bases) < len(bases):
             ret.__bases__ = (UndefVersion, *ret.__bases__)
 

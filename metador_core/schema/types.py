@@ -68,7 +68,7 @@ class Str(StrictStr):
 # we prefer this over pydantic anystr config settings (non-local) and
 # we use that instead of NonEmpty[str] because we can also react to whitespace
 # and we can subclass it:
-class NonEmptyStr(FullMatch, pattern=r"\s*\S.*"):
+class NonEmptyStr(FullMatch, pattern=r"\s*\S[\S\s]*"):
     """Non-empty string (contains non-whitespace characters)."""
 
 

@@ -6,6 +6,19 @@ from typing import Any, Dict
 import pytest
 
 
+@pytest.fixture
+def plugingroups_test():
+    """Access to plugingroups in a test, but will reset afterwards."""
+    from metador_core.plugins import plugingroups
+
+    yield plugingroups
+
+    plugingroups.__reset__()
+
+
+# ----
+
+
 @pytest.fixture(scope="session")
 def ds_dir(tmpdir_factory):
     """Create a fresh temporary directory for records created in the tests."""
@@ -23,7 +36,9 @@ def tmp_ds_path_factory(ds_dir):
     def fresh_name():
         name = secrets.token_hex(4)
         names.append(name)
-        return Path(ds_dir / name)
+        path = Path(ds_dir / name)
+        path.mkdir()
+        return path
 
     yield fresh_name
 

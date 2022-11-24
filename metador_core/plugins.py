@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, List, TypeVar, cast
 
 import wrapt
 
-from .plugin.interface import PG_GROUP_NAME, PluginGroup
+from .plugin.interface import PG_GROUP_NAME, AnyPluginRef, PluginGroup, plugin_args
 
 S = TypeVar("S", bound=PluginGroup)
 
@@ -18,35 +18,54 @@ class PGPluginGroup(wrapt.ObjectProxy):
     request the "plugingroup" plugingroup.
     """
 
-    _self_groups: Dict[str, PluginGroup]
+    _self_groups: Dict[AnyPluginRef, PluginGroup]
+
+    def __reset__(self):
+        self._self_groups.clear()
+        self.__init__()
 
     def __init__(self):
         # initialize the meta-plugingroup
         from .plugin.interface import _plugin_groups, create_pg
 
         create_pg(PluginGroup)
+        pgpg_ref = AnyPluginRef(
+            group=PG_GROUP_NAME,
+            name=PluginGroup.Plugin.name,
+            version=PluginGroup.Plugin.version,
+        )
 
         # wire it up with this wrapper
         self._self_groups = _plugin_groups
-        self.__wrapped__ = _plugin_groups[PG_GROUP_NAME]
+        self.__wrapped__ = _plugin_groups[pgpg_ref]
 
     # ----
-
-    def __getitem__(self, key) -> PluginGroup:
-        if ret := self.get(key):
-            return ret
-        raise KeyError(f"{self.name} not found: {key}")
-
     def get(self, key, version=None):
         """Get a registered plugin group by name."""
-        if key == PG_GROUP_NAME:
+        key_, vers = plugin_args(key, version)
+        if key_ == self.name and (vers is None or vers == self.Plugin.version):
             return self
         try:
-            if grp_cls := self.__wrapped__._get_unsafe(key, version):
-                # now if it was not existing, it is + stored in _self_groups
-                return cast(S, self._self_groups.get(grp_cls.Plugin.name))
+            if grp_cls := self.__wrapped__._get_unsafe(key_, vers):
+                # now if the PG was not existing, it is + is stored in _self_groups
+                return cast(S, self._self_groups.get(grp_cls.Plugin.ref()))
         except KeyError:
             return None
+
+    def __getitem__(self, key) -> PluginGroup:
+        # call wrapped '__getitem__' with this object to use its 'get'
+        return PluginGroup.__getitem__(self, key)  # type: ignore
+
+    def values(self):
+        # same idea, this uses '__getitem__'
+        return PluginGroup.values(self)
+
+    def items(self):
+        # same idea, this uses '__getitem__'
+        return PluginGroup.items(self)
+
+    def is_plugin(self, obj):
+        return obj in self.values()
 
 
 # access to available plugin groups:
@@ -56,7 +75,7 @@ plugingroup_classes = plugingroups.__wrapped__
 
 # help mypy (obviously only for groups in this package):
 # NOTE: this would be better: https://github.com/python/mypy/issues/13643
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .harvester import PGHarvester
     from .packer import PGPacker
     from .schema.pg import PGSchema
@@ -72,7 +91,7 @@ if TYPE_CHECKING:
 # this allows to import like: from metador_core.plugins import schemas
 
 # define what to import with *
-__all__ = list(map(lambda n: f"{n}s", plugingroups.keys()))
+__all__ = list(sorted(map(lambda ref: f"{ref.name}s", plugingroups.keys())))
 
 
 def __dir__() -> List[str]:

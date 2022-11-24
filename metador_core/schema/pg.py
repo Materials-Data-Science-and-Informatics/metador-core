@@ -9,7 +9,6 @@ from ..plugins import plugingroups
 from .core import MetadataSchema, PartialSchema, check_types, infer_parent
 from .plugins import PluginBase
 from .plugins import PluginRef as AnyPluginRef
-from .plugins import plugin_args
 from .types import SemVerTuple
 
 SCHEMA_GROUP_NAME = "schema"  # name of schema plugin group
@@ -190,7 +189,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         This sequence can be a subset of the parent sequences in the actual class
         hierarchy (not every subclass must be registered as a plugin).
         """
-        name, vers = plugin_args(schema, version, require_version=True)
+        name, vers = pg.plugin_args(schema, version, require_version=True)
         ref = self.PluginRef(name=name, version=vers)
         self._ensure_is_loaded(ref)
         return list(self._parents[ref])
@@ -199,7 +198,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self, schema, version: Optional[SemVerTuple] = None
     ) -> Set[AnyPluginRef]:
         """Get set of names of registered (strict) child schemas."""
-        name, vers = plugin_args(schema, version, require_version=True)
+        name, vers = pg.plugin_args(schema, version, require_version=True)
         ref = self.PluginRef(name=name, version=vers)
         self._ensure_is_loaded(ref)
         return set(self._children[ref])

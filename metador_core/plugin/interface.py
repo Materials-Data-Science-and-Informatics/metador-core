@@ -22,31 +22,33 @@ from typing import (
 from importlib_metadata import EntryPoint
 from typing_extensions import TypeAlias
 
-from ..schema.plugins import PluginBase, PluginLike, PluginPkgMeta
+from ..schema.plugins import PluginBase, PluginPkgMeta
 from ..schema.plugins import PluginRef as AnyPluginRef
-from ..schema.plugins import plugin_args
 from ..util import eprint
 from . import util
 from .entrypoints import get_group, pkg_meta
 from .metaclass import UndefVersion
-from .types import EP_NAME_REGEX, EPName, SemVerTuple, from_ep_name
+from .types import (
+    EP_NAME_REGEX,
+    EPName,
+    PluginLike,
+    SemVerTuple,
+    from_ep_name,
+    is_pluginlike,
+    plugin_args,
+    to_semver_str,
+)
 
 PG_GROUP_NAME = "plugingroup"
 
 
-def check_plugin_name_prefix(name: str):
-    xs = name.split(".")
-    if len(xs) < 2 or not (2 < len(xs[0]) < 11):
-        msg = f"{name}: Missing/invalid namespace prefix (must have length 3-10)!"
-        raise TypeError(msg)
-
-
-# ----
+def _name_has_namespace(ep_name: EPName):
+    """Check whether the passed name has a namespace prefix."""
+    return len(ep_name.split(".", 1)) > 1
 
 
 class PGPlugin(PluginBase):
-    group = PG_GROUP_NAME
-    plugin_info_class: Type[PluginBase]
+    plugin_info_class: Optional[Type[PluginBase]] = None
     plugin_class: Optional[Any] = object
 
 
@@ -55,8 +57,24 @@ class PluginGroupMeta(ABCMeta):
     """Metaclass to initialize some things on creation."""
 
     def __init__(self, name, bases, dct):
-        self.Plugin.plugin_info_class.group = self.Plugin.name
+        assert is_pluginlike(self, check_group=False)
+
+        # attach generated subclass that auto-fills the group for plugin infos
         self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
+
+        if pgi_cls := self.Plugin.__dict__.get("plugin_info_class"):
+            # attach group name to provided plugin info class
+            pgi_cls.group = self.Plugin.name
+        else:
+            # derive generic plugin info class with the group defined
+            class PGInfo(PluginBase):
+                group = self.Plugin.name
+
+            self.Plugin.plugin_info_class = PGInfo
+
+        # sanity checks... this magic should not mess with the PluginBase
+        assert self.Plugin.plugin_info_class is not PluginBase
+        assert PluginBase.group == ""
 
 
 T = TypeVar("T", bound=PluginLike)
@@ -110,8 +128,9 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         if ep_name in self._ENTRY_POINTS:
             self._LOADED_PLUGINS.pop(p_ref, None)  # unload, if loaded
             pkg = ep_obj.dist
-            msg = "WARNING: {ep_name} is probably provided by multiple packages!\n"
-            msg += f"The plugin will now be provided by: {pkg.name} {pkg.version}"
+            msg = f"WARNING: {ep_name} is probably provided by multiple packages!\n"
+            if pkg is not None:
+                msg += f"The plugin will now be provided by: {pkg.name} {pkg.version}"
             eprint(msg)
         self._ENTRY_POINTS[ep_name] = ep_obj
 
@@ -183,6 +202,27 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         ep = self._ENTRY_POINTS[ep_name]
         return self._PKG_META[cast(Any, ep).dist.name]
 
+    def is_plugin(self, p_cls):
+        """Return whether this class is a (possibly marked) installed plugin.
+
+        Args:
+            p_cls: class to be checked
+        """
+        if not isinstance(p_cls, type) or not issubclass(
+            p_cls, self.Plugin.plugin_class
+        ):
+            return False
+
+        c = UndefVersion._unwrap(p_cls) or p_cls  # get real underlying class
+        # check its exactly a registered plugin, if it has a Plugin section
+        if info := c.__dict__.get("Plugin"):
+            if not isinstance(info, PluginBase):
+                return False
+            loaded_p = self._get_unsafe(info.name, info.version)
+            return loaded_p is c
+        else:
+            return False
+
     # ----
 
     def __repr__(self):
@@ -191,7 +231,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def __str__(self):
         def pg_line(name_refs):
             name, refs = name_refs
-            vs = list(map(lambda x: util.to_semver_str(x.version), refs))
+            vs = list(map(lambda x: to_semver_str(x.version), refs))
             # p = self.provider(pg_ref.name)
             # pkg = f"{p.name} {semver_str(p.version)}"
             return f"\t'{name}' ({', '.join(vs)})"
@@ -311,6 +351,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         # run inner Plugin class checks (with possibly new Fields cls)
         if not plugin.__dict__.get("Plugin"):
             raise TypeError(f"{ep_name}: {plugin} is missing Plugin inner class!")
+        # pass ep_name to check that it agrees with the plugin info
         plugin.Plugin = self.Plugin.plugin_info_class.parse_info(
             plugin.Plugin, ep_name=ep_name
         )
@@ -331,7 +372,9 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         Raises a TypeError with message in case of failure.
         """
         if type(self) is not PluginGroup:
-            check_plugin_name_prefix(ep_name)
+            if not _name_has_namespace(ep_name):
+                msg = f"{ep_name}: Missing plugin namespace prefix!"
+                raise TypeError(msg)
 
         # check correct base class of plugin, if stated
         if self.Plugin.plugin_class:
@@ -383,13 +426,19 @@ _plugin_groups: Dict[str, PluginGroup] = {}
 
 def create_pg(pg_cls):
     """Create plugin group instance if it does not exist."""
-    pg_name = pg_cls.Plugin.name
-    if pg_name in _plugin_groups:
-        return _plugin_groups[pg_name]
+    pg_ref = AnyPluginRef(
+        group=PG_GROUP_NAME, name=pg_cls.Plugin.name, version=pg_cls.Plugin.version
+    )
+    if pg_ref in _plugin_groups:
+        return _plugin_groups[pg_ref]
 
     if not isinstance(pg_cls.Plugin, PluginBase):
         # magic - substitute Plugin class with parsed plugin object
         pg_cls.Plugin = PGPlugin.parse_info(pg_cls.Plugin)
 
-    pg = pg_cls(get_group(pg_name))
-    _plugin_groups[pg_name] = pg
+    # TODO: currently we cannot distinguish entrypoints
+    # for different versions of the plugin group.
+    # should not be problematic for now,
+    # as the groups should not change much
+    pg = pg_cls(get_group(pg_ref.name))
+    _plugin_groups[pg_ref] = pg

@@ -92,7 +92,7 @@ def embed_file(
     if not isinstance(metadata, FileMeta):
         msg = f"Provided metadata is not compatible with '{FileMeta.Plugin.name}'!"
         raise ValueError(msg)
-    if not type(metadata).is_plugin:
+    if not schemas.is_plugin(type(metadata)):
         msg = f"Given metadata is a {type(metadata)}, which is not a schema plugin!"
         raise ValueError(msg)
 

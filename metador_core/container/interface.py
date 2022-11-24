@@ -24,10 +24,10 @@ from uuid import UUID, uuid1
 
 from typing_extensions import TypeAlias
 
-from ..plugin.types import EPName, from_ep_name, to_ep_name
+from ..plugin.types import EPName, from_ep_name, plugin_args, to_ep_name
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.plugins import PluginPkgMeta, PluginRef, plugin_args
+from ..schema.plugins import PluginPkgMeta, PluginRef
 from ..schema.types import SemVerTuple
 from . import utils as M
 from .drivers import (

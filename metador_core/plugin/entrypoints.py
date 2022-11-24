@@ -8,9 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from importlib_metadata import entry_points
 
 from ..schema.plugins import PluginPkgMeta, SemVerTuple
-
-PG_PREFIX: str = "metador_"
-"""Group prefix for metador plugin entry point groups."""
+from .types import from_ep_group_name, is_metador_ep_group, to_ep_group_name
 
 _eps = entry_points()
 """All entry points."""
@@ -21,7 +19,7 @@ pkg_meta = {}
 
 def get_group(group_name: str) -> Dict[str, Any]:
     """Get a dict of all available entrypoints for a Metador plugin group."""
-    ep_grp = f"{PG_PREFIX}{group_name}"
+    ep_grp = to_ep_group_name(group_name)
     plugins: Dict[str, Any] = {}
 
     for ep in _eps.select(group=ep_grp):
@@ -58,11 +56,11 @@ def distmeta_for(dist) -> DistMeta:
 
     # parse entry point groups
     epgs = filter(
-        lambda x: x.startswith(PG_PREFIX),
+        is_metador_ep_group,
         dist.entry_points.groups,
     )
     eps = {
-        epg.lstrip(PG_PREFIX): list(
+        from_ep_group_name(epg): list(
             map(lambda x: x.name, dist.entry_points.select(group=epg))
         )
         for epg in epgs
