@@ -63,6 +63,12 @@ def from_ep_name(ep_name: EPName) -> Tuple[str, SemVerTuple]:
     return (pname, from_semver_str(SemVerStr(pverstr)))
 
 
+def ep_name_has_namespace(ep_name: EPName):
+    """Check whether the passed name has a namespace prefix."""
+    name, ver = from_ep_name(ep_name)
+    return len(name.split(".", 1)) > 1
+
+
 PG_PREFIX: str = "metador_"
 """Group prefix for metador plugin entry point groups."""
 

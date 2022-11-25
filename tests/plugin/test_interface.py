@@ -1,12 +1,12 @@
+import importlib_metadata
 import pytest
 
-from metador_core.plugin.interface import PluginGroup
 from metador_core.plugin.metaclass import UndefVersion
 from metador_core.plugin.types import is_metador_ep_group, to_ep_group_name, to_ep_name
 from metador_core.plugin.util import register_in_group
 from metador_core.plugins import plugingroups, schemas
 
-from .test_util import DummyBase, PGDummy
+from . import dummy_plugins as d
 
 # basic tests
 
@@ -19,6 +19,9 @@ def test_plugingroup_misc():
     # check packages
     assert plugingroups.packages == schemas.packages
     assert "metador-core" in plugingroups.packages
+
+    assert plugingroups.provider(schemas.Plugin.ref()).name == "metador-core"
+    assert schemas.provider(schemas["core.file"].Plugin.ref()).name == "metador-core"
 
 
 def test_plugingroup_str_repr():
@@ -154,56 +157,10 @@ def test_plugingroup_dictlike_consistency(pg):
 
 
 # try creating invalid plugin groups
-def test_invalid_plugingroups(plugingroups_test):
-    class PGInvalid1:
-        class Plugin:
-            name = "invalid"
-            version = (0, 1, 0)
-
+@pytest.mark.parametrize("pg", [d.PGInvalid1, d.PGInvalid2, d.PGInvalid3, d.PGInvalid4])
+def test_invalid_plugingroups(pg, plugingroups_test):
     with pytest.raises(TypeError):
-        # not subclass of PluginGroup
-        register_in_group(plugingroups_test, PGInvalid1, violently=True)
-
-    class PGInvalid2(PluginGroup):
-        class Plugin:
-            name = "invalid"
-            version = (0, 1, 0)
-
-    with pytest.raises(TypeError):
-        # no check_plugin method
-        register_in_group(plugingroups_test, PGInvalid2, violently=True)
-
-    class PGInvalid3(PluginGroup):
-        class Plugin:
-            name = "invalid"
-            version = "0.1"
-
-    with pytest.raises(TypeError):
-        # invalid regular plugin field
-        register_in_group(plugingroups_test, PGInvalid3, violently=True)
-
-    class Foo:
-        ...
-
-    class PGInvalid4(PluginGroup):
-        class Plugin:
-            name = "invalid"
-            version = (0, 1, 0)
-            plugin_info_class = Foo
-
-    with pytest.raises(TypeError):
-        # invalid plugin_info_class
-        register_in_group(plugingroups_test, PGInvalid4, violently=True)
-
-    # this should work:
-    @register_in_group(plugingroups_test, violently=True)
-    class PGValid(PluginGroup):
-        class Plugin:
-            name = "invalid"
-            version = (0, 1, 0)
-
-        def check_plugin(self, ep_name, plugin):
-            return super().check_plugin(ep_name, plugin)
+        register_in_group(plugingroups_test, pg, violently=True)
 
 
 # ----
@@ -212,94 +169,48 @@ def test_invalid_plugingroups(plugingroups_test):
 
 @pytest.fixture
 def pg_dummy(plugingroups_test):
-    register_in_group(plugingroups_test, PGDummy, violently=True)
-
+    # add valid dummy plugin group into test plugin environment
+    register_in_group(plugingroups_test, d.PGDummy, violently=True)
+    # return to tests of plugin system
     return plugingroups_test.get("dummy")
+
+
+class FakeDist:
+    name = "foo"
+    version = "1.2.3"
 
 
 @pytest.fixture(scope="session")
 def ep_factory():
     """Entry point maker."""
-    import importlib_metadata
 
-    def wrapped():
-        def maker(obj, ep_name=None, group=None):
-            if ep_name is None:
-                ep_name = to_ep_name(obj.Plugin.name, obj.Plugin.version)
+    def maker(obj, ep_name=None, group=None):
+        if ep_name is None:
+            ep_name = to_ep_name(obj.Plugin.name, obj.Plugin.version)
 
-            assert not is_metador_ep_group(group)
-            group = to_ep_group_name(group)
-            return importlib_metadata.EntryPoint(
-                ep_name, f"{__name__}:{obj.__qualname__}", group
-            )
+        assert not is_metador_ep_group(group)
+        group = to_ep_group_name(group)
+        return importlib_metadata.EntryPoint(
+            ep_name, f"{obj.__module__}:{obj.__qualname__}", group
+        )._for(FakeDist)
 
-        return maker
-
-    return wrapped
+    return maker
 
 
-# ----
+def test_add_ep_invalid(pg_dummy, ep_factory):
+    with pytest.raises(ValueError):
+        pg_dummy._add_ep("invalid_entrypoint", None)
 
 
-class InvalidPlugin1:
-    ...
+def test_add_ep_twice():
+    plugin = schemas.get("core.file")
+    ref = plugin.Plugin.ref()
+    ep_name = to_ep_name(ref.name, ref.version)
+    ep = schemas._ENTRY_POINTS[ep_name]
 
-
-class InvalidPlugin2:
-    class Plugin:
-        name = "abc"
-        version = (0, 1, 0)
-
-
-class InvalidPlugin3:
-    class Plugin:
-        name = "test.plugin"
-        version = (0, 1, 0)
-
-
-class InvalidPlugin4:
-    class Plugin:
-        name = "test.plugin"
-        version = (0, 1, 0)
-        something = 1
-
-
-class InvalidPlugin5(DummyBase):
-    class Plugin:
-        name = "test.plugin"
-        version = (0, 1, 0)
-        something = 1
-
-
-class DummyPlugin(DummyBase):
-    class Plugin:
-        name = "test.plugin"
-        version = (0, 1, 0)
-        something = 1
-
-    def perform(self):
-        """Perform dummy action."""
-
-
-class DummyPluginB(DummyPlugin):
-    class Plugin:
-        name = "test.plugin"
-        version = (0, 1, 1)
-        something = 1
-
-
-class DummyPluginC(DummyPlugin):
-    class Plugin:
-        name = "test.plugin"
-        version = (1, 2, 3)
-        something = 1
-
-
-class DummyPlugin2(DummyPlugin):
-    class Plugin:
-        name = "test.plugin2"
-        version = (0, 1, 0)
-        something = 1
+    ep2 = importlib_metadata.EntryPoint(ep.name, ep.value, ep.group)._for(FakeDist)
+    schemas._add_ep(ep_name, ep2)
+    assert schemas._ENTRY_POINTS[ep_name] == ep2
 
 
 # ----
@@ -307,41 +218,90 @@ class DummyPlugin2(DummyPlugin):
 # try adding invalid plugins
 def test_plugingroups(pg_dummy, ep_factory):
     assert not list(pg_dummy.keys())
-    make_ep = ep_factory()
+    make_ep = ep_factory
 
-    ep1 = make_ep(InvalidPlugin1, group=pg_dummy.name, ep_name="test.plugin__0.1.0")
+    ep1 = make_ep(d.InvalidPlugin1, group=pg_dummy.name, ep_name="test.plugin__0.1.0")
     with pytest.raises(TypeError):
         pg_dummy._add_ep(ep1.name, ep1)
         pg_dummy["test.plugin"]  # no plugin inner class
 
-    ep2 = make_ep(InvalidPlugin2, group=pg_dummy.name, ep_name="xyz__0.1.0")
-    with pytest.raises(TypeError):
+    ep2 = make_ep(d.InvalidPlugin2, group=pg_dummy.name, ep_name="xyz__0.1.0")
+    with pytest.raises(ValueError):
         pg_dummy._add_ep(ep2.name, ep2)
         pg_dummy._get_unsafe("xyz")  # mismatch ep name / stated name
-    ep2b = make_ep(InvalidPlugin2, group=pg_dummy.name, ep_name="abc__0.2.0")
-    with pytest.raises(TypeError):
+    ep2b = make_ep(d.InvalidPlugin2, group=pg_dummy.name, ep_name="abc__0.2.0")
+    with pytest.raises(ValueError):
         pg_dummy._add_ep(ep2b.name, ep2b)
         pg_dummy._get_unsafe("abc")  # mismatch ep version /stated version
+    ep2c = make_ep(d.InvalidPlugin2b, group=pg_dummy.name, ep_name="test__0.1.0")
+    with pytest.raises(ValueError):
+        pg_dummy._add_ep(ep2c.name, ep2c)
+        pg_dummy._get_unsafe("test")  # missing prefix
 
-    ep3 = make_ep(InvalidPlugin3, group=pg_dummy.name)
+    ep3 = make_ep(d.InvalidPlugin3, group=pg_dummy.name)
     with pytest.raises(TypeError):
         pg_dummy._add_ep(ep3.name, ep3)
         pg_dummy._get_unsafe("test.plugin")  # missing 'something'
 
-    ep4 = make_ep(InvalidPlugin4, group=pg_dummy.name)
+    ep4 = make_ep(d.InvalidPlugin4, group=pg_dummy.name)
     with pytest.raises(TypeError):
         pg_dummy._add_ep(ep4.name, ep4)
         pg_dummy._get_unsafe("test.plugin")  # not DummyBase subclass
 
-    ep5 = make_ep(InvalidPlugin5, group=pg_dummy.name)
+    ep5 = make_ep(d.InvalidPlugin5, group=pg_dummy.name)
     with pytest.raises(TypeError):
         pg_dummy._add_ep(ep5.name, ep5)
         pg_dummy._get_unsafe("test.plugin")  # missing method
 
     # now this works
-    ep6 = make_ep(DummyPlugin, group=pg_dummy.name)
+    ep6 = make_ep(d.DummyPlugin, group=pg_dummy.name)
     pg_dummy._add_ep(ep6.name, ep6)
     pg_dummy._get_unsafe("test.plugin")
 
 
 # TODO: test multi version etc
+def test_versions(pg_dummy, ep_factory):
+    register_in_group(pg_dummy, d.DummyPlugin, violently=True)  # 0.1
+    register_in_group(pg_dummy, d.DummyPluginB, violently=True)  # 0.1.1
+    register_in_group(pg_dummy, d.DummyPluginC, violently=True)  # 1.2.3
+    register_in_group(pg_dummy, d.DummyPlugin2, violently=True)
+
+    # both plugins are available
+    assert "test.plugin" in pg_dummy
+    assert "test.plugin2" in pg_dummy
+
+    # all plugins in all versions are listed
+    keys = list(pg_dummy.keys())
+    for p in [d.DummyPlugin, d.DummyPlugin2, d.DummyPluginB, d.DummyPluginC]:
+        assert p.Plugin.ref() in keys
+        assert p in pg_dummy
+
+    # we can get all versions of a plugin
+    expected = [(0, 1, 0), (0, 1, 1), (1, 2, 3)]
+    vs = pg_dummy.versions("test.plugin")
+    assert list(map(lambda x: x.version, vs)) == expected
+
+    # access without version yields latest
+    latest = pg_dummy.get("test.plugin")
+    assert UndefVersion._is_marked(latest)
+    assert UndefVersion._unwrap(latest) is d.DummyPluginC
+
+    # access with version yields newest compatible
+    # specifically higher minor is returned
+    compat = pg_dummy.get("test.plugin", (0, 1, 0))
+    assert not UndefVersion._is_marked(compat)
+    assert compat is d.DummyPluginB
+    assert pg_dummy.get("test.plugin", (1, 1, 0)) is d.DummyPluginC
+    assert pg_dummy.get("test.plugin2", (0, 0, 1)) is d.DummyPlugin2
+
+    # smaller "revision" may be returned (semantically equivalent)
+    # TODO: is this actually a good idea?...
+    assert pg_dummy.get("test.plugin", (0, 1, 2)) is d.DummyPluginB
+    assert pg_dummy.get("test.plugin", (1, 2, 4)) is d.DummyPluginC
+    assert pg_dummy.get("test.plugin2", (0, 1, 1)) is d.DummyPlugin2
+
+    # these should not be found
+    assert pg_dummy.get("test.plugin", (0, 2, 0)) is None
+    assert pg_dummy.get("test.plugin2", (0, 2, 0)) is None
+    assert pg_dummy.get("test.plugin", (2, 0, 0)) is None
+    assert pg_dummy.get("test.plugin2", (1, 0, 0)) is None

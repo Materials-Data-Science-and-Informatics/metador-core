@@ -33,6 +33,7 @@ from .types import (
     EPName,
     PluginLike,
     SemVerTuple,
+    ep_name_has_namespace,
     from_ep_name,
     is_pluginlike,
     plugin_args,
@@ -40,11 +41,6 @@ from .types import (
 )
 
 PG_GROUP_NAME = "plugingroup"
-
-
-def _name_has_namespace(ep_name: EPName):
-    """Check whether the passed name has a namespace prefix."""
-    return len(ep_name.split(".", 1)) > 1
 
 
 class PGPlugin(PluginBase):
@@ -117,9 +113,11 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         """Add an entrypoint loaded from importlib_metadata."""
         try:
             ep_name = EPName(epname_str)
-        except ValueError:
-            txt = "Invalid entrypoint name, must match"
-            msg = f"{ep_name}: {txt} {EP_NAME_REGEX}"
+        except TypeError:
+            msg = f"{epname_str}: Invalid entrypoint name, must match {EP_NAME_REGEX}"
+            raise ValueError(msg)
+        if type(self) is not PluginGroup and not ep_name_has_namespace(ep_name):
+            msg = f"{epname_str}: Plugin name has no qualifying namespace!"
             raise ValueError(msg)
 
         name, version = from_ep_name(ep_name)
@@ -129,8 +127,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             self._LOADED_PLUGINS.pop(p_ref, None)  # unload, if loaded
             pkg = ep_obj.dist
             msg = f"WARNING: {ep_name} is probably provided by multiple packages!\n"
-            if pkg is not None:
-                msg += f"The plugin will now be provided by: {pkg.name} {pkg.version}"
+            msg += f"The plugin will now be provided by: {pkg.name} {pkg.version}"
             eprint(msg)
         self._ENTRY_POINTS[ep_name] = ep_obj
 
@@ -293,11 +290,11 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
     @overload
     def get(self, key: str, version: Optional[SemVerTuple] = None) -> Optional[Type[T]]:
-        ...
+        ...  # pragma: no cover
 
     @overload
     def get(self, key: PRX, version: Optional[SemVerTuple] = None) -> Optional[PRX]:
-        ...
+        ...  # pragma: no cover
 
     def get(
         self, key: Union[str, PRX], version: Optional[SemVerTuple] = None
@@ -336,9 +333,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
     def _explicit_plugin_deps(self, plugin) -> Set[AnyPluginRef]:
         """Return all plugin dependencies that must be taken into account."""
         def_deps = set(plugin.Plugin.requires)
-        extra_deps = self.plugin_deps(plugin) or set()
-        if not isinstance(extra_deps, set):
-            extra_deps = set(extra_deps)
+        extra_deps = set(self.plugin_deps(plugin) or set())
         return def_deps.union(extra_deps)
 
     def plugin_deps(self, plugin) -> Set[AnyPluginRef]:
@@ -371,11 +366,6 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
 
         Raises a TypeError with message in case of failure.
         """
-        if type(self) is not PluginGroup:
-            if not _name_has_namespace(ep_name):
-                msg = f"{ep_name}: Missing plugin namespace prefix!"
-                raise TypeError(msg)
-
         # check correct base class of plugin, if stated
         if self.Plugin.plugin_class:
             util.check_is_subclass(ep_name, plugin, self.Plugin.plugin_class)
@@ -391,25 +381,31 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
             name: Declared entrypoint name.
             plugin: Object the entrypoint is pointing to.
         """
-        if type(self) is not PluginGroup:
-            return  # is not the "plugingroup" group itself
+        # NOTE: following cannot happen as long as we enforce
+        # overriding check_plugin.
+        # keep that here for now, in case we loosen this
+        # if type(self) is not PluginGroup:
+        #    return  # is not the "plugingroup" group itself
 
         # these are the checks done for other plugin group plugins:
-
         util.check_is_subclass(ep_name, plugin, PluginGroup)
         util.check_is_subclass(ep_name, self.Plugin.plugin_info_class, PluginBase)
         if plugin != PluginGroup:  # exclude itself. this IS its check_plugin
             util.check_implements_method(ep_name, plugin, PluginGroup.check_plugin)
 
+        # NOTE: following cannot happen as long as we set the group
+        # automatically using the metaclass.
+        # keep that in case we decide to change that / get rid of the metaclass
+        # ---
         # make sure that the declared plugin_info_class for the group sets 'group'
         # and it is also equal to the plugin group 'name'.
         # this is the safest way to make sure that Plugin.ref() works correctly.
-        ppgi_cls = plugin.Plugin.plugin_info_class
-        if not ppgi_cls.group:
-            raise TypeError(f"{ep_name}: {ppgi_cls} is missing 'group' attribute!")
-        if not ppgi_cls.group == plugin.Plugin.name:
-            msg = f"{ep_name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
-            raise TypeError(msg)
+        # ppgi_cls = plugin.Plugin.plugin_info_class
+        # if not ppgi_cls.group:
+        #    raise TypeError(f"{ep_name}: {ppgi_cls} is missing 'group' attribute!")
+        # if not ppgi_cls.group == plugin.Plugin.name:
+        #    msg = f"{ep_name}: {ppgi_cls.__name__}.group != {plugin.__name__}.Plugin.name!"
+        #    raise TypeError(msg)
 
     def init_plugin(self, plugin: Type[T]):
         """Override this to do something after the plugin has been checked."""

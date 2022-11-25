@@ -7,6 +7,7 @@ from metador_core.plugin.types import (
     EPName,
     SemVerStr,
     SemVerTuple,
+    ep_name_has_namespace,
     from_ep_group_name,
     from_ep_name,
     from_semver_str,
@@ -45,7 +46,7 @@ class D:
     Plugin = Info()
 
 
-def test_plugin_like():
+def test_is_pluginlike():
     assert not is_pluginlike(A)  # no inner 'Plugin'
     assert not is_pluginlike(B)  # missing fields
     assert is_pluginlike(C)  # a class
@@ -103,6 +104,11 @@ def test_semverstr_conversion(obj):
 def test_epname_invalid(s):
     with pytest.raises(TypeError):
         EPName(s)
+
+
+def test_epname_namespace():
+    assert ep_name_has_namespace(EPName("abc.def__0.1.0"))
+    assert not ep_name_has_namespace(EPName("abc__1.2.3"))
 
 
 @given(st.from_regex(EPName.__pattern__, fullmatch=True))

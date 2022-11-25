@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from importlib_metadata import entry_points
+from importlib_metadata import Distribution, entry_points
 
 from ..schema.plugins import PluginPkgMeta, SemVerTuple
 from .types import from_ep_group_name, is_metador_ep_group, to_ep_group_name
@@ -25,6 +25,8 @@ def get_group(group_name: str) -> Dict[str, Any]:
     for ep in _eps.select(group=ep_grp):
 
         if ep.name in plugins:
+            # TODO: will importlib_metadata even return colliding packages?
+            # should be figured out (quite important to know)
             msg = f"{group_name}: a plugin named '{ep.name}' is already registered!"
             raise TypeError(msg)
 
@@ -46,7 +48,7 @@ class DistMeta:
     repository_url: Optional[str]
 
 
-def distmeta_for(dist) -> DistMeta:
+def distmeta_for(dist: Distribution) -> DistMeta:
     """Extract required metadata from importlib_metadata distribution object."""
     ver = dist.version
     if not re.fullmatch("[0-9]+\\.[0-9]+\\.[0-9]+", ver):

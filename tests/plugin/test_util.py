@@ -1,12 +1,15 @@
 import pytest
 
-from metador_core.plugin.interface import PluginBase, PluginGroup
 from metador_core.plugin.util import (
     check_implements_method,
     check_is_subclass,
     is_notebook,
     register_in_group,
 )
+
+from .dummy_plugins import PGDummy
+
+# some dummy classes for use in tests:
 
 
 class A:
@@ -15,19 +18,22 @@ class A:
 
 
 class B(A):
-    # inherits, but does not implement foo
+    # inherits from A, but does not implement foo
     pass
 
 
 class C(B):
-    # overrides foo
+    # overrides foo that was defined in A
     def foo(self):
         pass
 
 
 class D:
-    # no foo
+    # no foo method available
     pass
+
+
+# ----
 
 
 def test_check_is_subclass():
@@ -48,43 +54,12 @@ def test_check_implements_method():
         check_implements_method("D", D, A.foo)
 
 
-def test_is_notebook():
-    # sanity check: tests do not run in a notebook
-    assert not is_notebook()
-
-
 # ----
 
 
-class DummyBase:
-    """Base class for dummy plugins."""
-
-    def perform(self):
-        """Perform dummy action."""
-
-
-class DummyPluginInfo(PluginBase):
-    """Model for dummy plugin info."""
-
-    something: int
-
-
-class PGDummy(PluginGroup):
-    """Dummy plugin group."""
-
-    class Plugin:
-        name = "dummy"
-        version = (0, 1, 0)
-        plugin_class = DummyBase
-        plugin_info_class = DummyPluginInfo
-
-    # must be overridden
-    def check_plugin(self, ep_name, plugin):
-        return check_implements_method(ep_name, plugin, DummyBase.perform)
-
-    # can be overridden
-    def init_plugin(self, plugin):
-        return super().init_plugin(plugin)
+def test_is_notebook():
+    # sanity check: tests do not run in a notebook
+    assert not is_notebook()
 
 
 def test_register_in_group(plugingroups_test):
@@ -92,18 +67,20 @@ def test_register_in_group(plugingroups_test):
     pgs = plugingroups_test
 
     # should work
+    assert "dummy" not in pgs
     register_in_group(pgs, PGDummy, violently=True)
+    assert "dummy" in pgs
 
     # should work as a decorator too
     @register_in_group(pgs, violently=True)
-    class PGDummy2(PluginGroup):
+    class PGDummy2(PGDummy):
         class Plugin:
+            # must be defined explicitly, or won't pass as plugin
             name = "dummy"
             version = (0, 1, 0)
 
-        # must be overridden
         def check_plugin(self, ep_name, plugin):
-            return super().check_plugin(ep_name, plugin)
+            ...
 
     # fails:
 
@@ -112,5 +89,5 @@ def test_register_in_group(plugingroups_test):
         register_in_group(pgs, A)
 
     with pytest.raises(RuntimeError):
-        # plugin not suitable (no Plugin inner class)
+        # not suitable (no Plugin inner class)
         register_in_group(pgs, A, violently=True)

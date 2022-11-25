@@ -60,7 +60,6 @@ def register_in_group(
     plugin: Optional[Type[T]] = None,
     *,
     violently: bool = False,
-    entrypoint=None,
 ):
     """Register and load a plugin manually, without defining an entry point."""
     if not violently and not is_notebook():
@@ -71,20 +70,17 @@ def register_in_group(
         ep_name = to_ep_name(pginfo.name, pginfo.version)
         pg_ref = pgroup.PluginRef(name=pginfo.name, version=pginfo.version)
 
-        if entrypoint is None:
-            pgroup._ENTRY_POINTS[ep_name] = None
-            pgroup._LOADED_PLUGINS[pg_ref] = plugin
-            if pg_ref.name not in pgroup._VERSIONS:
-                pgroup._VERSIONS[pg_ref.name] = []
-            pgroup._VERSIONS[pg_ref.name].append(pg_ref)
-        else:
-            pgroup._add_ep(entrypoint.name, entrypoint)
+        pgroup._ENTRY_POINTS[ep_name] = None
+        pgroup._LOADED_PLUGINS[pg_ref] = plugin
+        if pg_ref.name not in pgroup._VERSIONS:
+            pgroup._VERSIONS[pg_ref.name] = []
+        pgroup._VERSIONS[pg_ref.name].append(pg_ref)
 
         pgroup._load_plugin(ep_name, plugin)
         if not violently:
             eprint(
                 f"Notebook: Plugin '{pginfo.name}' registered in '{pgroup.name}' group!"
-            )
+            )  # pragma: no cover
         return plugin
 
     if not plugin:

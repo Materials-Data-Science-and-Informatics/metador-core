@@ -121,7 +121,7 @@ class PluginBase(BaseModelPlus):
         ep_name = ep_name or expected_ep_name
         if ep_name != expected_ep_name:
             msg = f"{ep_name}: Based on plugin info, entrypoint must be called '{expected_ep_name}'!"
-            raise TypeError(msg)
+            raise ValueError(msg)
         try:
             fields = ChainMap(
                 *(c.__dict__ for c in info.__mro__)
