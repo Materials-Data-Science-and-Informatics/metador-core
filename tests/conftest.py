@@ -1,7 +1,6 @@
 import secrets
 import shutil
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 
@@ -22,7 +21,7 @@ def plugingroups_test():
 @pytest.fixture(scope="session")
 def ds_dir(tmpdir_factory):
     """Create a fresh temporary directory for records created in the tests."""
-    return tmpdir_factory.mktemp("test_records")
+    return tmpdir_factory.mktemp("metador_tests")
 
 
 @pytest.fixture
@@ -33,11 +32,10 @@ def tmp_ds_path_factory(ds_dir):
     """
     names = []
 
-    def fresh_name():
+    def fresh_name() -> Path:
         name = secrets.token_hex(4)
         names.append(name)
         path = Path(ds_dir / name)
-        path.mkdir()
         return path
 
     yield fresh_name
@@ -60,75 +58,28 @@ def tmp_ds_path(tmp_ds_path_factory):
     return tmp_ds_path_factory()
 
 
-class SymLink(str):
-    pass
+TEST_DATA_DIR = Path(__file__).resolve().parent / "data"
+"""Location of the test input data."""
 
 
-class UtilFuncs:
-    """Helpers used in tests."""
+@pytest.fixture
+def testinputs(tmp_ds_path_factory):
+    """Create temporary file or directory based on a known test input."""
 
-    @staticmethod
-    def random_hex(length: int) -> str:
-        """Return hex string of given length."""
-        return secrets.token_hex(int(length / 2))
+    def copy_from(name):
+        dst = tmp_ds_path_factory()
+        assert not dst.exists()
 
-    # data directory contents
-    data_dir = {
-        "tmp1": {
-            "a": {
-                "b": {
-                    "c.csv": """time,position
-0,1
-1,2.71
-2,3.14
-""",
-                    "c.csv_meta.yaml": """type: table
-title: Movement
-columns:
-  - title: time
-    unit: second
-  - title: position
-    unit: meter
-""",
-                    "d": SymLink("../../d"),
-                }
-            },
-            "d": SymLink("a/b"),
-            "e": "will be replaced",
-            "f": "will be modified",
-            "_meta.yaml": "author: unchanged",
-            "z": "",
-        },
-        "tmp2": {
-            "a": {"b": "hello, world!"},
-            "e": {"g": "is added"},
-            "f": "is modified",
-            "_meta.yaml": "author: unchanged",
-            "z": "",
-        },
-    }
+        src = TEST_DATA_DIR / name
+        print(src)
+        if src.is_file():
+            shutil.copy2(src, dst)
+        elif src.is_dir():
+            shutil.copytree(src, dst, symlinks=True)
+        else:
+            raise RuntimeError(f"No such test input: {name}")
 
-    @classmethod
-    def prepare_dir(cls, dir: Path, data: Dict[str, Any]):
-        """Given an existing empty directory and a data dict, create structure.
+        assert dst.exists()
+        return dst
 
-        Will create nested subdirectories, files and symlinks as specified.
-        """
-        for k, v in data.items():
-            path = dir / k
-            if isinstance(v, dict):
-                path.mkdir()
-                cls.prepare_dir(path, v)
-            elif isinstance(v, SymLink):
-                path.symlink_to(v)
-            else:
-                with open(path, "wb") as f:
-                    if isinstance(v, str):
-                        v = v.encode("utf-8")
-                    f.write(v)
-
-
-@pytest.fixture(scope="session")
-def testutils():
-    """Fixture giving access to helper functions anywhere in test suite."""
-    return UtilFuncs
+    return copy_from

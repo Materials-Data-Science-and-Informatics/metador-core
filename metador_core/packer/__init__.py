@@ -13,11 +13,11 @@ from metador_core.ih5.manifest import IH5MFRecord
 from metador_core.plugins import plugingroups
 
 from ..container import MetadorContainer
-from ..hashutils import DirHashsums, dir_hashsums
 from ..plugin import interface as pg
 from ..schema.core import MetadataSchema
 from ..schema.plugins import PluginPkgMeta
-from .diff import DirDiff
+from ..util.diff import DirDiff
+from ..util.hashsums import DirHashsums, dir_hashsums
 from .types import DirValidationErrors
 
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 from pydantic import BaseModel
 
-from ..hashutils import DirHashsums
+from .hashsums import DirHashsums
 
 
 def dir_paths(base_dir: Path):

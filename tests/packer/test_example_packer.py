@@ -9,32 +9,30 @@ from metador_core.plugins import packers
 pytest.skip(reason="FIXME when API complete", allow_module_level=True)
 
 
-def test_example_packer(tmp_path_factory, tmp_ds_path, testutils):
-    tmp1 = tmp_path_factory.mktemp("tmp1")
-    tmp2 = tmp_path_factory.mktemp("tmp2")
+def test_example_packer(tmp_ds_path, testinputs):
+    ds1 = testinputs("dirdiff1")
+    ds2 = testinputs("dirdiff1")
 
     generic = packers["generic"]
 
     # prepare directory and check that it is packer-compatible (just to make sure)
-    testutils.prepare_dir(tmp1, testutils.data_dir["tmp1"])
-    assert not generic.check_dir(tmp1)
+    assert not generic.check_dir(ds1)
 
     # rename a file to make it fail
-    (tmp1 / "_meta.yaml").rename(tmp1 / "renamed")
-    errs = generic.check_dir(tmp1)
+    (ds1 / "_meta.yaml").rename(ds1 / "renamed")
+    errs = generic.check_dir(ds1)
     assert errs
     print(errs)
 
     with pytest.raises(DirValidationErrors):
-        packers.pack("generic", tmp1, tmp_ds_path, h5py.File)
+        packers.pack("generic", ds1, tmp_ds_path, h5py.File)
 
     # fix error with directory
-    (tmp1 / "renamed").rename(tmp1 / "_meta.yaml")
+    (ds1 / "renamed").rename(ds1 / "_meta.yaml")
 
     # do some "changes"
-    testutils.prepare_dir(tmp2, testutils.data_dir["tmp2"])
-    with open(tmp2 / "example_meta.yaml", "w") as f:
+    with open(ds2 / "example_meta.yaml", "w") as f:
         f.write("author: changed")
 
     # now update
-    packers.update("generic", tmp2, tmp_ds_path, h5py.File)
+    packers.update("generic", ds2, tmp_ds_path, h5py.File)

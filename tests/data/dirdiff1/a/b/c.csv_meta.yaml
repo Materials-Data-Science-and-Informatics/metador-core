@@ -1,0 +1,7 @@
+type: table
+title: Movement
+columns:
+  - title: time
+    unit: second
+  - title: position
+    unit: meter

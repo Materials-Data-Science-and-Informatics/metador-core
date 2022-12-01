@@ -23,7 +23,10 @@ def ld_decorator(**presets):
     The returned decorator will attach the passed fields to a schema.
 
     All additional fields passed to the decorator will also be added,
-    or override the default that is passed to this function.
+    if not present, or override the default that is passed to this function.
+
+    Note that the pre-set fields will ALWAYS override existing fields,
+    regardless of the state of the override flag.
 
     Example usage:
     Pass your `@context` as `context` to this decorator factory.
@@ -46,19 +49,6 @@ ld = ld_decorator()
 """Decorator to add constant JSON-LD fields equal for all instances of a schema."""
 
 
-class LDIdRef(MetadataSchema):
-    """Object with just an @id reference (more info is given elsewhere)."""
-
-    class Config:
-        extra = Extra.forbid
-
-    id_: Annotated[NonEmptyStr, Field(alias="@id")]
-
-    @property
-    def is_ld_ref(self):
-        return True
-
-
 class LDSchema(MetadataSchema):
     """Semantically enriched schema for JSON-LD."""
 
@@ -69,12 +59,29 @@ class LDSchema(MetadataSchema):
 
         Throws an exception if no @id is found.
         """
-        assert self.id_ is not None, "Object has no @id attribute!"
+        if self.id_ is None:
+            raise ValueError("Object has no @id attribute!")
         return LDIdRef(id_=self.id_)
 
     @property
     def is_ld_ref(self):
         return False
+
+
+class LDIdRef(LDSchema):
+    """Object with just an @id reference (more info is given elsewhere)."""
+
+    class Config:
+        extra = Extra.forbid
+
+    id_: Annotated[NonEmptyStr, Field(alias="@id")]
+
+    def ref(self) -> LDIdRef:
+        return self
+
+    @property
+    def is_ld_ref(self):
+        return True
 
 
 T = TypeVar("T", bound=LDSchema)

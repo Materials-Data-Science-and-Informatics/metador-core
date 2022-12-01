@@ -24,8 +24,8 @@ import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final, Literal
 
-from ..hashutils import qualified_hashsum
 from ..schema.types import QualHashsumStr
+from ..util.hashsums import qualified_hashsum
 from .overlay import IH5Group, h5_copy_from_to
 
 # the magic string we use to identify a valid container

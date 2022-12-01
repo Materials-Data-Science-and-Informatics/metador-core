@@ -16,8 +16,8 @@ from typing import Any, Union
 import pandas
 from overrides import overrides
 
+from ..util.diff import DiffNode, DirDiff
 from . import MetadorContainer, Packer
-from .diff import DiffNode, DirDiff
 from .utils import DirValidationErrors, check_metadata_file, embed_file
 
 BibMeta = Any

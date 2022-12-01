@@ -7,8 +7,8 @@ from uuid import UUID, uuid1
 
 from pydantic import BaseModel
 
-from ..hashutils import qualified_hashsum
 from ..schema.types import QualHashsumStr
+from ..util.hashsums import qualified_hashsum
 from .record import IH5Record, IH5UserBlock, hashsum_file
 from .skeleton import IH5Skeleton, init_stub_base
 

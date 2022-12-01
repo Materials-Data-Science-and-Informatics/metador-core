@@ -9,6 +9,7 @@ from metador_core.container.types import (
 
 
 def test_instance_checks(tmp_ds_path):
+    tmp_ds_path.mkdir()
     with h5py.File(tmp_ds_path / "blub.h5", "w") as f:
         f["group/dataset"] = 123
 

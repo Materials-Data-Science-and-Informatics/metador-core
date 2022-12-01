@@ -2,8 +2,8 @@ import magic
 from PIL import Image
 
 from ..harvester import FileHarvester
-from ..hashutils import hashsum
 from ..plugins import schemas
+from ..util.hashsums import hashsum
 
 FileMeta = schemas["core.file"]
 ImageFileMeta = schemas["core.imagefile"]

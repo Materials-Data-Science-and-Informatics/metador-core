@@ -1,0 +1,1 @@
+"""Metador pytest tests."""

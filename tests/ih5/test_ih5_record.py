@@ -15,14 +15,14 @@ def test_raw_open_empty_record():
         IH5Record._open([])
 
 
-def test_open_create_invalid_record_name(ds_dir):
+def test_open_create_invalid_record_name(tmp_ds_path):
     # record names: only alphanumeric and dashes allowed
     for name in ["invalid.name", "invalid_name", "Юникод", "inva#lid"]:
         assert not IH5Record._is_valid_record_name(name)
         with pytest.raises(ValueError):
-            IH5Record(ds_dir / name)
+            IH5Record(tmp_ds_path / name)
         with pytest.raises(ValueError):
-            IH5Record(ds_dir / name, "w")
+            IH5Record(tmp_ds_path / name, "w")
 
 
 def test_open_r(tmp_ds_path):

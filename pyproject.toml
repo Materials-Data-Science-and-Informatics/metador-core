@@ -11,7 +11,7 @@ python = "^3.8"
 h5py = "^3.6.0"
 toml = "^0.10.2"
 typing-extensions = "^4.1.1"
-pydantic = "^1.9.0"
+pydantic = "^1.10.2"
 jsonschema = "^4.4.0"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
 importlib-metadata = "^4.11.4"
@@ -30,12 +30,14 @@ overrides = "^7.0.0"
 phantom-types = "^0.17.1"
 simple-parsing = "^0.0.20"
 typing-utils = "^0.1.0"
+frozendict = "^2.3.4"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.17.0"
 pytest = "^7.0.1"
 pytest-cov = "^3.0.0"
 pdoc = "^10.0.3"
+hypothesis = "^6.58.0"
 
 [tool.poetry.plugins.metador_plugingroup]
 # Metador supports defining custom validated plugin groups.
@@ -76,11 +78,6 @@ pdoc = "^10.0.3"
 
 [tool.poetry.plugins.metador_packer]
 'core.generic__0.1.0' = "metador_core.packer.example:GenericPacker"
-
-
-[tool.poetry.group.dev.dependencies]
-black = {version = "^22.10.0", allow-prereleases = true}
-hypothesis = "^6.58.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

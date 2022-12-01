@@ -61,7 +61,7 @@ def json_encoder(func):
 
 def add_json_encoder(cls, func):
     """Register a JSON encoder function for a class."""
-    json_encoder(func)(cls)
+    return json_encoder(func)(cls)
 
 
 # ----

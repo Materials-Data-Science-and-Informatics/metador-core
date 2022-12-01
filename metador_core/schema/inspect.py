@@ -6,7 +6,8 @@ from typing import Any, Callable, Dict, List, Optional, Set, Type, Union
 from pydantic import BaseModel
 from simple_parsing.docstring import get_attribute_docstring
 
-from .utils import field_origins, get_annotations
+from ..util.models import field_origins
+from ..util.typing import get_annotations
 
 
 class LiftedRODict(type):

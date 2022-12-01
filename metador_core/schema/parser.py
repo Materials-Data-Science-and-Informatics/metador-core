@@ -102,3 +102,6 @@ class ParserMixin:
         if parser := get_parser(cls):
             if schema_info := parser.schema_info:
                 schema.update(**schema_info)
+
+
+__all__ = ["BaseParser", "ParserMixin"]

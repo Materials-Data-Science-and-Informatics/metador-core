@@ -16,21 +16,23 @@ hierarchy, e.g. if you use plain `BaseModel`, you can e.g. define:
 class MyPartial(DeepPartialModel, BaseModel): ...
 ```
 
-And use `MyPartial._create_partial` on your models.
+And use `MyPartial._get_partial` on your models.
 """
 
+from __future__ import annotations
+
 from functools import reduce
-from typing import ClassVar, ForwardRef, List, Optional, Type
+from typing import ClassVar, Dict, ForwardRef, List, Optional, Type
 
 from overrides import overrides
 from pydantic import BaseModel, ValidationError, create_model, validate_model
 from pydantic.fields import FieldInfo
 from typing_extensions import Annotated
 
-from . import utils
+from ..util import typing as t
 
-_partials = {}
-_forwardrefs = {}
+_partials: Dict[Type[PartialModel], Type[BaseModel]] = {}
+_forwardrefs: Dict[str, Type[PartialModel]] = {}
 
 
 class PartialModel:
@@ -49,12 +51,12 @@ class PartialModel:
     _def_ignore_invalid: bool = False
 
     @classmethod
-    def _partial_name(cls, mcls):
+    def _partial_name(cls, mcls) -> str:
         """Return class name for partial of model `mcls`."""
         return f"{mcls.__qualname__}.{cls.__name__}"
 
     @classmethod
-    def _partial_forwardref_name(cls, mcls):
+    def _partial_forwardref_name(cls, mcls) -> str:
         """Return ForwardRef string for partial of model `mcls`."""
         return f"__{mcls.__module__}_{cls._partial_name(mcls)}".replace(".", "_")
 
@@ -172,15 +174,30 @@ class PartialModel:
     # ----
 
     @classmethod
+    def _substitute_partial(cls, orig_type):
+        if not isinstance(orig_type, type):
+            return orig_type  # not a class (probably just a hint)
+        if not issubclass(orig_type, cls.__base__):
+            return orig_type  # not a suitable model
+
+        # if p := _partials[cls].get(orig_type):
+        #     print("ret ", p.__name__)
+        #     return p  # existing partial
+        # print("mark ", orig_type.__name__)
+        # _partials[cls][orig_type] = None  # mark as "to be generated"
+        # return a reference to be resolved later
+        return ForwardRef(cls._partial_forwardref_name(orig_type))
+
+    @classmethod
     def _partial_type(cls, orig_type):
-        return Optional[orig_type]
+        return Optional[t.map_typehint(orig_type, cls._substitute_partial)]
 
     @classmethod
     def _partial_field(cls, orig_field):
         th, fi = orig_field, None
         # if pydantic Field is added (in an Annotated[...]) - unwrap
-        if utils.get_origin(orig_field) is Annotated:
-            args = utils.get_args(orig_field)
+        if t.get_origin(orig_field) is Annotated:
+            args = t.get_args(orig_field)
             if not isinstance(args[1], FieldInfo):
                 raise RuntimeError(f"Unexpected annotation: {args}")
             th, fi = args[0], args[1]
@@ -192,14 +209,24 @@ class PartialModel:
     def _create_partial(cls, mcls, *, typehints=None):
         """Create a new partial model class based on `mcls`."""
         if not issubclass(mcls, cls.__base__):
-            raise ValueError(f"{mcls} is not a {cls.__base__.__name__}!")
+            raise TypeError(f"{mcls} is not a {cls.__base__.__name__}!")
+
+        # print("create partial:", mcls.__name__)
 
         # get all annotations (we define fields only using them)
-        field_types = typehints or utils.get_type_hints(mcls)
+        field_types = typehints or t.get_type_hints(mcls)
+        missing_partials = set()
+        # get dependencies that must be substituted
+        for th in field_types.values():
+            for h in t.traverse_typehint(th):
+                if isinstance(h, type) and issubclass(h, cls.__base__):
+                    if _partials[cls].get(mcls) is None:
+                        missing_partials.add(h)
+
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()
-            if k[0] != "_" and utils.get_origin(v) is not ClassVar
+            if k[0] != "_" and t.get_origin(v) is not ClassVar
         }
 
         # replace base classes with corresponding partial bases
@@ -220,7 +247,8 @@ class PartialModel:
         )
         ret._partial_of = mcls  # connect to original model
 
-        return ret
+        # print("done create partial:", mcls.__name__)
+        return ret, missing_partials
 
     @classmethod
     def _get_partial(cls, mcls, *, typehints=None):
@@ -237,12 +265,20 @@ class PartialModel:
         because it recursively substitutes with partial models.
         This allows us to implement smart deep merge for partials.
         """
+        # print("get    partial:", mcls.__name__)
+
         if cls not in _partials:
+            # first use of this partial mixin
             _partials[cls] = {}
             _forwardrefs[cls] = {}
 
         if partial := _partials[cls].get(mcls):
+            # already have a partial
+            # print("return existing:", partial.__name__)
             return partial
+        else:
+            # block the spot (to break recursion)
+            _partials[cls][mcls] = None
 
         # ----
         # create a partial for a model:
@@ -250,19 +286,21 @@ class PartialModel:
         # print("make partial for", mcls)
 
         mcls.update_forward_refs()  # to be sure
-        partial = cls._create_partial(mcls, typehints=typehints)
+        partial, missing = cls._create_partial(mcls, typehints=typehints)
 
         partial_ref = cls._partial_forwardref_name(mcls)
         _forwardrefs[cls][partial_ref] = partial
         _partials[cls][mcls] = partial
 
         # create partials that are marked as "to be done"
-        missing = {m for m, p in _partials[cls].items() if p is None}
+        # print("dep partials for ", mcls.__name__)
         for model in missing:
             cls._get_partial(model)
+        # print("end dep partials for ", mcls.__name__)
 
         # resolve possible circular references
         partial.update_forward_refs(**_forwardrefs[cls])
+        # print("done get partial:", mcls.__name__)
         return partial
 
 
@@ -271,27 +309,27 @@ class PartialModel:
 
 
 def is_list_or_set(hint):
-    return utils.is_list(hint) or utils.is_set(hint)
+    return t.is_list(hint) or t.is_set(hint)
 
 
 def check_type_mergeable(hint, *, allow_none: bool = False):
-    args = utils.get_args(hint)
+    args = t.get_args(hint)
 
     if is_list_or_set(hint):  # list or set -> dig deeper
         return all(map(check_type_mergeable, args))
 
     # not union, list or set?
-    if not utils.is_union(hint):
+    if not t.is_union(hint):
         # will be either primitive or recursively merged -> ok
         return True
 
     # Union case:
-    if not allow_none and utils.is_optional(hint):
+    if not allow_none and t.is_optional(hint):
         return False  # allows none, but should not!
 
     # If a Union contains a set or list, it must be only combined with None
     is_prim_union = not any(map(is_list_or_set, args))
-    is_opt_set_or_list = len(args) == 2 and utils.NoneType in args
+    is_opt_set_or_list = len(args) == 2 and t.NoneType in args
     if not (is_prim_union or is_opt_set_or_list):
         return False
 
@@ -313,24 +351,6 @@ class DeepPartialModel(PartialModel):
         return check_type_mergeable(hint, allow_none=True)
 
     # make partial transformation recursive for the smart update to be useful:
-
-    @classmethod
-    def _substitute_partial(cls, orig_type):
-        if not isinstance(orig_type, type):
-            return orig_type  # not a class (probably just a hint)
-        if not issubclass(orig_type, cls.__base__):
-            return orig_type  # not a suitable model
-
-        if p := _partials[cls].get(orig_type):
-            return p  # existing partial
-        _partials[cls][orig_type] = None  # mark as "to be generated"
-        # return a reference to be resolved later
-        return ForwardRef(cls._partial_forwardref_name(orig_type))
-
-    @classmethod
-    @overrides
-    def _partial_type(cls, orig_type):
-        return Optional[utils.map_typehint(orig_type, cls._substitute_partial)]
 
     # smart update combining values recursively:
 

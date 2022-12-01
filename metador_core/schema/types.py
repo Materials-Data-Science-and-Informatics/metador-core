@@ -1,73 +1,37 @@
 """Useful types and validators for use in pydantic models."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import isodate
 from phantom.re import FullMatch
 from pint import Quantity, UndefinedUnitError, Unit
 from pydantic import StrictBool, StrictBytes, StrictFloat, StrictInt, StrictStr
 from typing_extensions import TypeAlias
 
-from ..hashutils import _hash_alg
 from ..plugin.types import SemVerTuple, from_semver_str, to_semver_str
+from ..util.hashsums import _hash_alg
 from .encoder import json_encoder
 from .parser import BaseParser, ParserMixin
 
 # ----
 
-# we want people to use the strict types,
+# we want people to use the strict types, they should be default.
 # coercing / normalization should be done explicitly!
-# furthermore, we use the fixes from https://github.com/pydantic/pydantic/issues/2329
-# using subclasses we also rename them, so nobody is confused.
+# before, we needed to use fixes from https://github.com/pydantic/pydantic/issues/2329
+# with pydantic 1.10.2 we can just pass through to the strict types
 
-if TYPE_CHECKING:
-    Bool: TypeAlias = bool
-else:
-
-    class Bool(StrictBool):
-        # (type checker is wrong, StrictBool is not actually inheriting from bool)
-        def __new__(self, value=False):
-            return bool(value)
-
-
-class Int(StrictInt):
-    def __new__(cls, value=0):
-        if cls is Int:
-            return int(value)
-        else:
-            return super().__base__.__new__(cls, value)
-
-
-class Float(StrictFloat):
-    def __new__(cls, value=0.0):
-        if cls is Float:
-            return float(value)
-        else:
-            return super().__base__.__new__(cls, value)
-
-
-class Bytes(StrictBytes):
-    def __new__(cls, value=b""):
-        if cls is StrictBytes:
-            return bytes(value)
-        else:
-            return super().__base__.__new__(cls, value)
-
-
-class Str(StrictStr):
-    def __new__(cls, value=""):
-        if cls is Str:
-            return str(value)
-        else:
-            return super().__base__.__new__(cls, value)
-
+Bool: TypeAlias = StrictBool
+Int: TypeAlias = StrictInt
+Float: TypeAlias = StrictFloat
+Str: TypeAlias = StrictStr
+Bytes: TypeAlias = StrictBytes
 
 # ----
 
 # we prefer this over pydantic anystr config settings (non-local) and
 # we use that instead of NonEmpty[str] because we can also react to whitespace
 # and we can subclass it:
+
+
 class NonEmptyStr(FullMatch, pattern=r"\s*\S[\S\s]*"):
     """Non-empty string (contains non-whitespace characters)."""
 

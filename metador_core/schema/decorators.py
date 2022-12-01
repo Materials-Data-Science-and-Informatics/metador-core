@@ -2,8 +2,10 @@ from typing import Any, Dict, Optional
 
 from pydantic.fields import ModelField
 
+from ..util import is_public_name
+from ..util.models import field_parent_type
+from ..util.typing import get_annotations, unoptional
 from .core import MetadataSchema
-from .utils import get_annotations, is_public_name, parent_field_type, unoptional
 
 
 def _expect_schema_class(mcls):
@@ -39,7 +41,7 @@ def make_mandatory(*names: str):
                     f"{mcls} manually defines '{name}', cannot use decorator!"
                 )
 
-            hint = unoptional(parent_field_type(mcls, name))
+            hint = unoptional(field_parent_type(mcls, name))
             # update model and type hint
             mcls.__fields__[name].required = True
             mcls.__annotations__[name] = hint

@@ -146,10 +146,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
-        # infer the parent schema plugin, if any
-        self._parent_schema[plugin] = infer_parent(plugin)
-        # overrides of inherited fields are valid?
-        check_types(plugin)
+        check_types(plugin)  # ensure that (overrides of) fields are valid
 
     def _compute_parent_path(self, plugin: Type[MetadataSchema]) -> List[AnyPluginRef]:
         ref = plugin.Plugin.ref()
@@ -166,6 +163,9 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         return ret
 
     def init_plugin(self, plugin):
+        # infer the parent schema plugin, if any
+        self._parent_schema[plugin] = infer_parent(plugin)
+
         # pre-compute parent schema path
         ref = plugin.Plugin.ref()
         self._parents[ref] = self._compute_parent_path(plugin)
@@ -175,8 +175,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         # collect children schema set for all parents
         parents = self._parents[ref][:-1]
         for parent in parents:
-            if parent not in self._children:
-                self._children[parent] = set()
             self._children[parent].add(ref)
 
     # ----

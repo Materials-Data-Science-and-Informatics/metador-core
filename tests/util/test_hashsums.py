@@ -1,7 +1,7 @@
 """Test hashing helper functions."""
 import pytest
 
-from metador_core.hashutils import file_hashsum
+from metador_core.util.hashsums import file_hashsum
 
 
 def test_hashsum(tmp_path):

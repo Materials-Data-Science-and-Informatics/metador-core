@@ -4,8 +4,8 @@ from functools import partial
 from pydantic import schema_of as pyd_schema_of
 from pydantic.schema import schema as pyd_schemas
 
-from ..hashutils import hashsum
 from ..plugin.metaclass import UndefVersion
+from ..util.hashsums import hashsum
 
 KEY_SCHEMA_DEFS = "$defs"
 """JSON schema key to store subschema definitions."""
