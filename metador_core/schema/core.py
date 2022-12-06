@@ -12,7 +12,7 @@ from pydantic import Extra, root_validator
 
 from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
 from ..util import cache, is_public_name
-from ..util.models import field_atomic_types, traverse_typehint
+from ..util.models import field_atomic_types, traverse_typehint, updated_fields
 from ..util.typing import (
     get_annotations,
     get_type_hints,
@@ -23,7 +23,13 @@ from ..util.typing import (
 )
 from .base import BaseModelPlus
 from .encoder import DynEncoderModelMetaclass
-from .inspect import FieldInspector, LiftedRODict, make_field_inspector
+from .inspect import (
+    FieldInspector,
+    LiftedRODict,
+    WrappedLiftedDict,
+    lift_dict,
+    make_field_inspector,
+)
 from .jsonschema import (
     KEY_SCHEMA_DEFS,
     KEY_SCHEMA_HASH,
@@ -52,7 +58,7 @@ def split_model_inheritance(schema, model):
     This is ugly because pydantic does in-place wrangling and caching,
     and we need to hack around it.
     """
-    # NOTE: important - we assume to get the standard for of a $ref + $defs
+    # NOTE: important - we assume to get the standard form of a $ref + $defs
     # so that the $defs contain the actual definition of the base_schema
     # and everything it needs.
     # simply calling schema() is different for recursive and non-recursive schemas,
@@ -64,10 +70,7 @@ def split_model_inheritance(schema, model):
     ps = schema_new.pop("properties", None)
     rq = schema_new.pop("required", None)
 
-    lst_fields = detect_field_overrides(model)
-    lst_fields.update(
-        set(model.__fields__.keys()) - set(model.__base__.__fields__.keys())
-    )
+    lst_fields = updated_fields(model)
     ps_new = {k: v for k, v in ps.items() if k in lst_fields}
     rq_new = None if not rq else [k for k in rq if k in ps_new]
     schema_this = {k: v for k, v in [("properties", ps_new), ("required", rq_new)] if v}
@@ -175,8 +178,9 @@ class SchemaMagic(DynEncoderModelMetaclass):
         baseschema = bases[0]
 
         # only allow inheriting from other schemas:
-        if not issubclass(baseschema, SchemaBase):
-            raise TypeError(f"Base class {baseschema} is not a MetadataSchema!")
+        # NOTE: can't normally happen (this metaclass won't be triggered)
+        # if not issubclass(baseschema, SchemaBase):
+        #     raise TypeError(f"Base class {baseschema} is not a MetadataSchema!")
 
         # prevent user from defining special schema fields by hand
         for atr in SchemaBase.__annotations__.keys():
@@ -187,14 +191,23 @@ class SchemaMagic(DynEncoderModelMetaclass):
         if conf := dct.get("Config"):
             for conffield in conf.__dict__:
                 if (
-                    conffield[0] != "_"
+                    is_public_name(conffield)
                     and conffield not in ALLOWED_SCHEMA_CONFIG_FIELDS
                 ):
-                    raise TypeError(f"{name}: {conffield} must not be changed!")
+                    raise TypeError(f"{name}: {conffield} must not be set or changed!")
 
         # generate pydantic model of schema (further checks are easier that way)
         # can't do these checks in __init__, because in __init__ the bases could be mangled
         ret = super().__new__(cls, name, bases, dct)
+
+        # prevent user defining fields that are constants in a parent
+        if base_consts := set(getattr(baseschema, "__constants__", {}).keys()):
+            new_defs = set(get_annotations(ret).keys())
+            if illegal := new_defs.intersection(base_consts):
+                msg = (
+                    f"{name}: Cannot define {illegal}, defined as const field already!"
+                )
+                raise TypeError(msg)
 
         # prevent parent-compat breaking change of extra handling / new fields:
         parent_forbids_extras = baseschema.__config__.extra is Extra.forbid
@@ -202,39 +215,46 @@ class SchemaMagic(DynEncoderModelMetaclass):
             # if parent forbids, child does not -> problem (child can parse, parent can't)
             extra = ret.__config__.extra
             if extra is not Extra.forbid:
-                raise TypeError(
+                msg = (
                     f"{name}: cannot {extra.value} extra fields if parent forbids them!"
                 )
+                raise TypeError(msg)
 
             # parent forbids extras, child has new fields -> same problem
-            new_fields = set(ret.__fields__.keys()) - set(baseschema.__fields__.keys())
-            if new_fields:
-                msg = f"{name}: Cannot define new fields {new_fields} if parent forbids extra fields!"
+            if new_flds := set(ret.__fields__.keys()) - set(
+                baseschema.__fields__.keys()
+            ):
+                msg = f"{name}: Cannot define new fields {new_flds} if parent forbids extra fields!"
                 raise TypeError(msg)
 
         # everything looks ok
         return ret
 
     def __init__(self, name, bases, dct):
-        # prevent implicit inheritance of class-specific stuff
-        if "Plugin" not in dct:
-            self.Plugin = None
+        self.__types_checked__ = False  # marker used by check_types (for performance)
 
+        # prevent implicit inheritance of class-specific internal/meta stuff:
+        # should be taken care of by plugin metaclass
+        assert self.Plugin is None or self.Plugin != bases[0].Plugin
+
+        # also prevent inheriting override marker
         self.__overrides__ = set()
+
+        # "constant fields" are inherited, but copied - not shared
         self.__constants__ = {}
         for b in bases:
             self.__constants__.update(getattr(b, "__constants__", {}))
 
-        self.__types_checked__ = False
-
     @property  # type: ignore
     @cache
     def _typehints(self):
+        """Return typehints of this class."""
         return get_type_hints(self)
 
     @property  # type: ignore
     @cache
     def _base_typehints(self):
+        """Return typehints accumulated from base class chain."""
         return ChainMap(
             *(b._typehints for b in self.__bases__ if issubclass(b, SchemaBase))
         )
@@ -278,7 +298,7 @@ class SchemaMetaclass(PluginMetaclassMixin, SchemaMagic):
 class MetadataSchema(SchemaBase, metaclass=SchemaMetaclass):
     """Extends Pydantic models with custom serializers and functions."""
 
-    Plugin: ClassVar[Type]  # user-defined inner class (for schema plugins)
+    Plugin: ClassVar[Optional[Type]]  # user-defined inner class (for schema plugins)
 
 
 # ----
@@ -310,14 +330,12 @@ class SchemaFieldInspector(FieldInspector):
         # to show plugin name and version in case of registered plugin schemas:
         og = self.origin
         self._origin_name = f"{og.__module__}.{og.__qualname__}"
-        if pgi := og.__dict__.get("Plugin"):
+        if pgi := og.Plugin:
             self._origin_name += f" (plugin: {pgi.name} {to_semver_str(pgi.version)})"
 
         # access to sub-entities/schemas:
         subschemas = list(field_atomic_types(og.__fields__[name], bound=MetadataSchema))
-        self.schemas = LiftedRODict(
-            "Schemas", (), dict(_dict={s.__name__: s for s in set(subschemas)})
-        )
+        self.schemas = lift_dict("Schemas", {s.__name__: s for s in set(subschemas)})
 
     def __repr__(self) -> str:
         desc_str = ""
@@ -347,29 +365,7 @@ def make_schema_inspector(schema):
 
 
 # ----
-# some wrappers needed to "infect" nested schemas with UndefVersion
-
-
-class WrappedLiftedDict(wrapt.ObjectProxy):
-    """Wrap values returned by a LiftedRODict."""
-
-    def __init__(self, obj, wrapperfun):
-        if not isinstance(obj, LiftedRODict):
-            raise TypeError(f"{obj} is not a LiftedRODict!")
-        super().__init__(obj)
-        self._self_wrapperfun = wrapperfun
-
-    def __getitem__(self, key):
-        return self._self_wrapperfun(self.__wrapped__[key])
-
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError as e:
-            raise AttributeError(str(e))
-
-    def __repr__(self):
-        return repr(self.__wrapped__)
+# wrapper to "infect" nested schemas with UndefVersion
 
 
 class UndefVersionFieldInspector(wrapt.ObjectProxy):
@@ -402,17 +398,17 @@ class PartialSchema(DeepPartialModel, SchemaBase):
     @overrides
     def _get_fields(cls, obj):
         # exclude the "annotated" fields that we support
-        constants = obj.__dict__.get("__constants__", {}).keys()
+        constants = obj.__constants__.keys()
         return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
 
     @classmethod
     @overrides
     def _create_partial(cls, mcls, *, typehints=...):
-        ret = super()._create_partial(mcls, typehints=mcls._typehints)
+        ret, missing = super()._create_partial(mcls, typehints=mcls._typehints)
         # copy custom parser (these are supposed to also work with the partials)
         if parser := getattr(mcls, "Parser", None):
             setattr(ret, "Parser", parser)
-        return ret
+        return (ret, missing)
 
 
 # --- delayed checks (triggered during schema loading) ---
@@ -445,12 +441,11 @@ def check_allowed_types(schema: Type[MetadataSchema]):
     """Check that shape of defined fields is suitable for deep merging."""
     hints = cast(Any, schema._typehints)
     for field, hint in hints.items():
-        if field[0] == "_":
+        if not is_public_name(field):
             continue  # private field
         if not PartialSchema._is_mergeable_type(hint):
-            raise TypeError(
-                f"{schema}:\n\ttype of '{field}' contains a forbidden pattern!"
-            )
+            msg = f"{schema}:\n\ttype of '{field}' contains a forbidden pattern!"
+            raise TypeError(msg)
 
         # check that no nested schemas from undefVersion plugins are used in field definitions
         # (the Plugin metaclass cannot check this, but it checks for inheritance)
@@ -463,15 +458,6 @@ def check_allowed_types(schema: Type[MetadataSchema]):
         ):
             msg = f"{schema}:\n\ttype of '{field}' contains an illegal subschema:\n\t\t{illegal}"
             raise TypeError(msg)
-
-
-def is_pub_instance_field(schema, name, hint):
-    """Return whether field `name` in `schema` is a non-constant, public schema instance field."""
-    return (
-        is_public_name(name)
-        and not is_classvar(hint)
-        and name not in schema.__constants__
-    )
 
 
 def infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]:
@@ -488,11 +474,19 @@ def infer_parent(plugin: Type[MetadataSchema]) -> Optional[Type[MetadataSchema]]
     )
 
 
+def is_pub_instance_field(schema, name, hint):
+    """Return whether field `name` in `schema` is a non-constant, public schema instance field."""
+    return (
+        is_public_name(name)
+        and not is_classvar(hint)
+        and name not in schema.__constants__
+    )
+
+
 def detect_field_overrides(schema: Type[MetadataSchema]):
     anns = get_annotations(schema)
     base_hints = cast(Any, schema._base_typehints)
-    new_hints = {n for n, h in anns.items() if is_pub_instance_field(schema, n, h)}
-    return set(base_hints.keys()).intersection(new_hints)
+    return set(base_hints.keys()).intersection(set(anns.keys()))
 
 
 def check_overrides(schema: Type[MetadataSchema]):
@@ -501,20 +495,25 @@ def check_overrides(schema: Type[MetadataSchema]):
     base_hints = cast(Any, schema._base_typehints)
 
     actual_overrides = detect_field_overrides(schema)
-    miss_override = schema.__overrides__ - actual_overrides
     undecl_override = actual_overrides - schema.__overrides__
-    if miss_override:
-        raise TypeError(f"{schema}: Missing claimed field overrides: {miss_override}")
+    if unreal_override := schema.__overrides__ - set(base_hints.keys()):
+        msg = f"{schema.__name__}: No parent field to override: {unreal_override}"
+        raise ValueError(msg)
+
+    if miss_override := schema.__overrides__ - actual_overrides:
+        msg = f"{schema.__name__}: Missing claimed field overrides: {miss_override}"
+        raise ValueError(msg)
 
     # all undeclared overrides must be strict subtypes of the inherited type:
     for fname in undecl_override:
         hint, parent_hint = hints[fname], base_hints[fname]
         if not is_subtype(hint, parent_hint):
             parent = infer_parent(schema)
-            if parent:
-                parent_name = parent.Fields[fname]._origin_name
-            else:
-                parent_name = schema.__base__.__name__
+            parent_name = (
+                parent.Fields[fname]._origin_name
+                if parent
+                else schema.__base__.__name__
+            )
             msg = f"""The type assigned to field '{fname}'
 in schema {repr(schema)}:
 
@@ -531,3 +530,10 @@ use the @overrides decorator to silence this error
 and live forever with the burden of responsibility.
 """
             raise TypeError(msg)
+
+
+# def detect_field_overrides(schema: Type[MetadataSchema]) -> Set[str]:
+#     return {n
+#         for n in updated_fields(schema)
+#         if is_public_name(n) and not is_classvar(schema._typehints[n]) and n not in schema.__constants__
+#     }

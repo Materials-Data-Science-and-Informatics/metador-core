@@ -1,5 +1,8 @@
+"""Hacks to improve pydantic JSON Schema generation."""
+
 import json
 from functools import partial
+from typing import Any, Dict, List, Union
 
 from pydantic import schema_of as pyd_schema_of
 from pydantic.schema import schema as pyd_schemas
@@ -10,10 +13,14 @@ from ..util.hashsums import hashsum
 KEY_SCHEMA_DEFS = "$defs"
 """JSON schema key to store subschema definitions."""
 
-KEY_SCHEMA_HASH = "$metador_hash"
+KEY_SCHEMA_HASH = "$metador_schema_hash"
 """Custom key to store schema hashsum."""
 
 # ----
+
+JSON_PRIMITIVE_TYPES = (type(None), bool, int, float, str)
+
+JSONType = Union[bool, int, float, str, None, List[Any], Dict[str, Any]]
 
 JSONSCHEMA_STRIP = {
     # these are meta-level keys that should not affect the hash:
@@ -32,41 +39,50 @@ JSONSCHEMA_STRIP = {
     # we can't hash the hash, it cannot be part of the clean schema.
     KEY_SCHEMA_HASH,
 }
-"""Fields to strip for JSON Schema hashsum."""
+"""Fields to be removed for JSON Schema hashsum computation."""
 
 
-def clean_jsonschema(obj, *, is_properties: bool = False):
-    if isinstance(obj, (type(None), bool, int, float, str)):
+def clean_jsonschema(obj: JSONType, *, _is_properties: bool = False):
+    if isinstance(obj, JSON_PRIMITIVE_TYPES):
         return obj
     if isinstance(obj, list):
         return list(map(clean_jsonschema, obj))
     if isinstance(obj, dict):
         return {
-            k: clean_jsonschema(v, is_properties=k == "properties")
+            k: clean_jsonschema(v, _is_properties=k == "properties")
             for k, v in obj.items()
             # must ensure not to touch keys in a properties sub-object!
-            if is_properties or k not in JSONSCHEMA_STRIP
+            if _is_properties or k not in JSONSCHEMA_STRIP
         }
 
     raise ValueError(f"Object {obj} not of a JSON type: {type(obj)}")
 
 
+def normalized_json(obj) -> bytes:
+    return json.dumps(
+        obj,
+        ensure_ascii=True,
+        allow_nan=False,
+        indent=None,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
 def jsonschema_id(schema):
-    """Compute robust schema identifier.
+    """Compute robust semantic schema identifier.
 
     A schema identifier is based on the schema plugin name + version
     and its JSON Schema representation, which includes all parent and nested schemas.
     """
-    rep = json.dumps(clean_jsonschema(schema))
-    ret = hashsum(rep.encode("utf-8"), "sha256")[:16]
-    return ret
+    return hashsum(normalized_json(clean_jsonschema(schema)), "sha256")
 
 
 # ----
 
 
 def lift_nested_defs(schema):
-    """Flatten nested $defs ($defs -> key -> $defs)."""
+    """Flatten nested $defs ($defs -> key -> $defs) in-place."""
     if mydefs := schema.get(KEY_SCHEMA_DEFS):
         inner = []
         for schema in mydefs.values():
@@ -85,7 +101,7 @@ REF_PREFIX = f"#/{KEY_PYD_DEFS}/"
 
 
 def merge_nested_defs(schema):
-    """Merge definitions."""
+    """Merge definitions in-place."""
     if defs := schema.pop(KEY_PYD_DEFS, None):
         my_defs = schema.get(KEY_SCHEMA_DEFS)
         if not my_defs:
@@ -159,27 +175,10 @@ def remap_refs(schema):
     schema[KEY_SCHEMA_DEFS] = {defmap[k]: v for k, v in defs.items()}
 
 
-def eliminate_true(obj, in_properties: bool = False):
-    """Replace `true` with `{}`."""
-    if isinstance(obj, (type(None), bool, int, float, str)):
-        return obj
-    elif isinstance(obj, list):
-        return list(map(eliminate_true, obj))
-    elif isinstance(obj, dict):
-        return {
-            k: {}
-            if v == True and in_properties
-            else eliminate_true(v, k == "properties")
-            for k, v in obj.items()
-        }
-    raise ValueError(f"Object {obj} not of a JSON type: {type(obj)}")
-
-
 # ----
 
 
 def fixup_jsonschema(schema):
-    schema.update(eliminate_true(schema))
     merge_nested_defs(schema)  # move `definitions` into `$defs`
     lift_nested_defs(schema)  # move nested `$defs` to top level `$defs`
     remap_refs(schema)  # "rename" defs from model name to metador hashsum

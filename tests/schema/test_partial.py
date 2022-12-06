@@ -9,6 +9,8 @@ from metador_core.schema.partial import DeepPartialModel, PartialModel
 
 from ..util.test_models import MyBaseModel
 
+# from hypothesis import given, strategies as st
+
 
 class ModelG(MyBaseModel):
     xyz: Optional[int]
@@ -33,6 +35,18 @@ class ModelE(ModelG):
 
 class ModelF(ModelE):
     ...
+
+
+# class Dummy1(BaseModel):
+#     x: List[Dummy1]
+
+
+# Dummy1.update_forward_refs()
+
+
+# @given(st.from_type(Dummy1))
+# def test_modelgen(obj):
+#     print(obj.json(indent=2))
 
 
 @pytest.mark.parametrize("p_cls", [PartialModel, DeepPartialModel])

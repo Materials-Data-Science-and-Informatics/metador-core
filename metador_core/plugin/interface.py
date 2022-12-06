@@ -56,7 +56,9 @@ class PluginGroupMeta(ABCMeta):
         assert is_pluginlike(self, check_group=False)
 
         # attach generated subclass that auto-fills the group for plugin infos
-        self.PluginRef: Type[AnyPluginRef] = AnyPluginRef.subclass_for(self.Plugin.name)
+        self.PluginRef: Type[AnyPluginRef] = AnyPluginRef._subclass_for(
+            self.Plugin.name
+        )
 
         if pgi_cls := self.Plugin.__dict__.get("plugin_info_class"):
             # attach group name to provided plugin info class

@@ -10,7 +10,7 @@ from .core import MetadataSchema
 
 def _expect_schema_class(mcls):
     if not issubclass(mcls, MetadataSchema):
-        raise ValueError("This decorator is for MetadataSchema subclasses!")
+        raise TypeError("This decorator is for MetadataSchema subclasses!")
 
 
 def _check_names_public(names):
@@ -27,6 +27,8 @@ def make_mandatory(*names: str):
     Use this decorator instead of manually declaring an annotation,
     if all you need to do is making an existing field mandatory.
     """
+    # NOTE: idea: could take a dict, then values are the new default for non-optional
+    # but is this good? defaults are implicit optionality -> we discourage it, so no.
     _check_names_public(names)
 
     def make_fields_mandatory(mcls):
@@ -35,10 +37,10 @@ def make_mandatory(*names: str):
         for name in names:
 
             if name not in mcls.__fields__:
-                raise ValueError(f"{mcls} has no field named '{name}'!")
+                raise ValueError(f"{mcls.__name__} has no field named '{name}'!")
             if name in get_annotations(mcls):
                 raise ValueError(
-                    f"{mcls} manually defines '{name}', cannot use decorator!"
+                    f"{mcls.__name__} manually defines '{name}', cannot use decorator!"
                 )
 
             hint = unoptional(field_parent_type(mcls, name))
@@ -61,6 +63,9 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
     Constant fields are included in serialization, unless `exclude_defaults` is set.
 
     This can be used e.g. to attach JSON-LD annotations to schemas.
+
+    Constant fields are inherited and may only be overridden by other constant fields
+    using this decorator, they cannot become normal fields again.
     """
     _check_names_public(consts.keys())
 
@@ -73,9 +78,8 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
 
             if name in mcls.__fields__:
                 if not override:
-                    raise ValueError(
-                        f"{mcls} already has a field '{name}'! (override={override})"
-                    )
+                    msg = f"{mcls} already has a field '{name}'! (override={override})"
+                    raise ValueError(msg)
                 else:
                     overridden.add(name)
 

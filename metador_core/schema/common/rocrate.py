@@ -12,7 +12,7 @@ from pydantic import parse_obj_as, root_validator, validator
 
 from ..decorators import make_mandatory
 from ..ld import LDIdRef, ld_decorator
-from ..types import MimeTypeStr, Str
+from ..types import MimeTypeStr, NonEmptyStr
 from . import schemaorg
 
 CTX_URL_ROCRATE = "https://w3id.org/ro/crate/1.1/context"
@@ -29,8 +29,8 @@ class FileMeta(schemaorg.MediaObject):
         version = (0, 1, 0)
 
     # NOTE: We do not use `name` here because `name` is used semantically
-    # like a title, which could also make sense for a file to have.
-    filename: Str
+    # like a title in schema.org, which could also make sense for a file to have.
+    filename: NonEmptyStr
     """Original name of the file in source directory."""
 
     encodingFormat: MimeTypeStr

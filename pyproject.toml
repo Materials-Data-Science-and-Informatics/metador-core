@@ -89,6 +89,7 @@ addopts = "--cov-report=term-missing:skip-covered"
 filterwarnings = [
     "ignore::PendingDeprecationWarning:ruamel.yaml.*",
     "ignore::PendingDeprecationWarning:pydantic_yaml.*",
+    "ignore::PendingDeprecationWarning:metador_core.schema.base",
     "ignore::DeprecationWarning:importlib_metadata.*"
 ]
 

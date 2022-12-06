@@ -1,3 +1,5 @@
 """Metador schemas."""
 
-from .core import MetadataSchema  # noqa: F401
+from .core import MetadataSchema
+
+__all__ = ["MetadataSchema"]

@@ -1,8 +1,9 @@
 from collections import ChainMap
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import Any, Callable, Dict, List, Optional, Set, Type, Union
+from typing import Any, Callable, List, Mapping, Optional, Set, Type
 
+import wrapt
 from pydantic import BaseModel
 from simple_parsing.docstring import get_attribute_docstring
 
@@ -23,22 +24,22 @@ class LiftedRODict(type):
     access, if dynamic iteration is needed.
     """
 
-    _dict: Dict[str, Any]
+    # NOTE: we don't want to add non-default methods
+    # because method names collide with dict keys
+
+    _dict: Mapping[str, Any]
     """The underlying dict."""
 
     _keys: Optional[List[str]] = None
     """Optionally, list of keys in desired order."""
 
-    _repr: Union[str, Callable] = ""
+    _repr: Optional[Callable] = None
     """Optional custom repr string or function."""
 
     def __repr__(self):
         # choose best representation based on configuration
         if self._repr:
-            if isinstance(self._repr, str):
-                return self._repr
-            else:
-                return self._repr(self)
+            return self._repr(self)
         if self._keys:
             return repr(self._keys)
         return repr(list(self._dict.keys()))
@@ -70,6 +71,36 @@ class LiftedRODict(type):
     def __setattr__(self, key, value):
         # this is supposed to be read-only
         raise UnsupportedOperation
+
+
+def lift_dict(name, dct, *, keys=None, repr=None):
+    """Return LiftedRODict class based on passed dict."""
+    assert hasattr(dct, "__getitem__")
+    kwargs = {"_dict": dct}
+    if keys is not None:
+        assert set(keys) == set(iter(dct))
+        kwargs["_keys"] = keys
+    if repr is not None:
+        kwargs["_repr"] = repr
+    return LiftedRODict(name, (), kwargs)
+
+
+class WrappedLiftedDict(wrapt.ObjectProxy):
+    """Wrap values returned by a LiftedRODict."""
+
+    def __init__(self, obj, wrapperfun):
+        assert isinstance(obj, LiftedRODict)
+        super().__init__(obj)
+        self._self_wrapperfun = wrapperfun
+
+    def __getitem__(self, key):
+        return self._self_wrapperfun(self.__wrapped__[key])
+
+    def __getattr__(self, key):
+        return LiftedRODict.__getattr__(self, key)
+
+    def __repr__(self):
+        return repr(self.__wrapped__)
 
 
 @dataclass
@@ -114,8 +145,24 @@ def make_field_inspector(
     bound: Optional[Type[BaseModel]] = BaseModel,
     key_filter: Optional[Callable[[str], bool]],
     i_cls: Optional[Type[FieldInspector]] = FieldInspector,
-):
-    """Create a field inspector class for the given model (see `get_field_inspector`)."""
+) -> Type[LiftedRODict]:
+    """Create a field inspector class for the given model.
+
+    This can be used for introspection about fields and also
+    enables users to access subschemas without extra imports,
+    improving decoupling of plugins and packages.
+
+    To be used in a metaclass for a custom top level model.
+
+    Args:
+        model: Class for which to return the inspector
+        prop_name: Name of the metaclass property that wraps this function
+        i_cls: Optional subclass of FieldInspector to customize it
+        bound: Top level class using the custom metaclass that uses this function
+        key_filter: Predicate used to filter the annotations that are to be inspectable
+    Returns:
+        A fresh inspector class for the fields.
+    """
     # get hints corresponding to fields that are not inherited
     field_hints = {
         k: v
@@ -128,7 +175,7 @@ def make_field_inspector(
     # manually compute desired traversal order (from newest overwritten to oldest inherited fields)
     # as the default chain map order semantically is not suitable.
     inspectors = [new_inspectors] + [
-        getattr(b, prop_name) for b in model.__bases__ if issubclass(b, bound)
+        getattr(b, prop_name)._dict for b in model.__bases__ if issubclass(b, bound)
     ]
     covered_keys: Set[str] = set()
     ordered_keys: List[str] = []
@@ -138,52 +185,9 @@ def make_field_inspector(
         ordered_keys += [k for k in d if k in rem_keys]
 
     # construct and return the class
-    return LiftedRODict(
+    return lift_dict(
         f"{model.__name__}.{prop_name}",
-        (),
-        dict(
-            _keys=ordered_keys,
-            _dict=ChainMap(*inspectors),
-            _repr=lambda self: "\n".join(map(str, (self[k] for k in self))),
-        ),
+        ChainMap(*inspectors),
+        keys=ordered_keys,
+        repr=lambda self: "\n".join(map(str, (self[k] for k in self))),
     )
-
-
-def get_field_inspector(
-    model: Type[BaseModel],
-    prop_name: str,
-    attr_name: str,
-    *,
-    bound: Optional[Type[BaseModel]] = BaseModel,
-    key_filter: Optional[Callable[[str], bool]],
-    i_cls: Optional[Type[FieldInspector]] = FieldInspector,
-):
-    """Return a field inspector for the given model.
-
-    This can be used for introspection about fields and also
-    enables users to access subschemas without extra imports,
-    improving decoupling of plugins and packages.
-
-    To be used in a metaclass for a custom top level model.
-
-    Args:
-        model: Class for which to return the inspector
-        prop_name: Name of the metaclass property that wraps this function
-        attr_name: Name of the class attribute that caches the returned class
-        i_cls: Optional subclass of FieldInspector to customize it
-        bound: Top level class using the custom metaclass that uses this function
-        key_filter: Predicate used to filter the annotations that are to be inspectable
-    Returns:
-        If an inspector was already created, will return it.
-        Otherwise will create a fresh inspector class first and cache it.
-    """
-    if inspector := model.__dict__.get(attr_name):
-        return inspector
-    setattr(
-        model,
-        attr_name,
-        make_field_inspector(
-            model, prop_name, key_filter=key_filter, bound=bound, i_cls=i_cls
-        ),
-    )
-    return model.__dict__.get(attr_name)

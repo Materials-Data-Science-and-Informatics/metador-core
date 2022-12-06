@@ -13,6 +13,8 @@ from metador_core.util.models import (
     field_atomic_types,
     field_origins,
     field_parent_type,
+    new_fields,
+    updated_fields,
 )
 
 add_json_encoder(frozendict, lambda x: json.dumps(dict(x)))
@@ -46,6 +48,20 @@ def test_field_origins():
     assert list(field_origins(ModelC, "bar")) == [ModelC, ModelA]
     assert list(field_origins(ModelC, "baz")) == [ModelA]
     assert list(field_origins(ModelC, "qux")) == []  # no such field -> no origins
+
+
+def test_updated_fields():
+    assert set(updated_fields(MyBaseModel)) == {"foo"}
+    assert set(updated_fields(ModelA)) == {"bar", "baz"}
+    assert set(updated_fields(ModelB)) == {"foo"}
+    assert set(updated_fields(ModelC)) == {"bar"}
+
+
+def test_new_fields():
+    assert set(new_fields(MyBaseModel)) == {"foo"}
+    assert set(new_fields(ModelA)) == {"bar", "baz"}
+    assert set(new_fields(ModelB)) == set()
+    assert set(new_fields(ModelC)) == set()
 
 
 def test_field_atomic_types():

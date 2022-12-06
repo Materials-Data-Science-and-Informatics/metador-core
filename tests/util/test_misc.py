@@ -1,10 +1,16 @@
 import pytest
 
 from metador_core.util import drop
-from metador_core.util.pytest import parameters
+from metador_core.util.pytest import parameters, random_hex
 
 
-@pytest.mark.parametrize("n", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("n", list(range(10)))
+def test_random_hex(n):
+    hx = random_hex(n)
+    assert len(hx) == n
+
+
+@pytest.mark.parametrize("n", list(range(5)))
 def test_drop(n):
     lst = list(range(0, 3))
     assert list(drop(n, lst)) == lst[n:]

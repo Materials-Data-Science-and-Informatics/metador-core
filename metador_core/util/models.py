@@ -13,6 +13,20 @@ def field_origins(m: Type[BaseModel], name: str) -> Iterator[Type[BaseModel]]:
     )
 
 
+def updated_fields(m: Type[BaseModel], names=None) -> Set[str]:
+    """Return subset of fields that are added or overridden by a new type hint."""
+    return {
+        n
+        for n in m.__fields__.keys()
+        if next(field_origins(m, n)) is m and (not names or n in names)
+    }
+
+
+def new_fields(m: Type[BaseModel]) -> Set[str]:
+    # return {n for n in updated_fields(m) if not next(field_origins(m.__base__, n), None)}
+    return set(m.__fields__.keys()) - set(m.__base__.__fields__.keys())  # type: ignore
+
+
 def field_atomic_types(mf: ModelField, *, bound=object) -> Iterator[Type]:
     """Return sequence of nested atomic types in the hint of given field."""
     return filter(is_subclass_of(bound), traverse_typehint(mf.type_))

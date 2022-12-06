@@ -169,6 +169,7 @@ def test_invalid_plugingroups(pg, plugingroups_test):
 
 @pytest.fixture
 def pg_dummy(plugingroups_test):
+    plugingroups_test.__reset__()  # plugingroups_test is module-level, need to reset it
     # add valid dummy plugin group into test plugin environment
     register_in_group(plugingroups_test, d.PGDummy, violently=True)
     # return to tests of plugin system

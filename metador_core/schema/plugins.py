@@ -8,6 +8,7 @@ from typing import ClassVar, Dict, List, Literal, Optional
 
 from pydantic import AnyHttpUrl, Extra, ValidationError, create_model
 
+from ..util import is_public_name
 from .core import BaseModelPlus, MetadataSchema
 from .types import NonEmptyStr, SemVerTuple, to_semver_str
 
@@ -34,22 +35,6 @@ class PluginRef(MetadataSchema):
     version: SemVerTuple
     """Version of the Python package."""
 
-    def supports(self, other: PluginRef) -> bool:
-        """Return whether this plugin supports objects marked by given reference.
-
-        True iff the package name, plugin group and plugin name agree,
-        and the package of this reference has equal or larger minor version.
-        """
-        if self.group != other.group:
-            return False
-        if self.name != other.name:
-            return False
-        if self.version[0] != other.version[0]:  # major
-            return False
-        if self.version[1] < other.version[1]:  # minor
-            return False
-        return True
-
     def __eq__(self, other):
         return (
             self.group == other.group
@@ -71,14 +56,27 @@ class PluginRef(MetadataSchema):
         return hash((self.group, self.name, self.version))
 
     def __str__(self) -> str:
-        return self.json()  # no indent
+        return self.json()  # no indent (in contrast to base model)
+
+    def supports(self, other: PluginRef) -> bool:
+        """Return whether this plugin supports objects marked by given reference.
+
+        True iff the package name, plugin group and plugin name agree,
+        and the package of this reference has equal or larger minor version.
+        """
+        if self.group != other.group:
+            return False
+        if self.name != other.name:
+            return False
+        if self.version[0] != other.version[0]:  # major
+            return False
+        if self.version[1] < other.version[1]:  # minor
+            return False
+        return True
 
     @classmethod
-    def subclass_for(cls, group: str):
-        # lit = Literal[group_name] # type: ignore
-        # class GroupPluginRef(cls):
-        #     group: lit = group_name # type: ignore
-        # return GroupPluginRef
+    def _subclass_for(cls, group: NonEmptyStr):
+        """Create a subclass of PluginRef with group field pre-set."""
         return create_model(f"PG{group.capitalize()}.PluginRef", __base__=cls, group=(Literal[group], group))  # type: ignore
 
 
@@ -95,6 +93,7 @@ class PluginBase(BaseModelPlus):
     def ref(self, *, version: Optional[SemVerTuple] = None):
         from ..plugins import plugingroups
 
+        assert self.group, "Must be called from a subclass that has group set!"
         return plugingroups[self.group].PluginRef(
             name=self.name, version=version or self.version
         )
@@ -127,7 +126,7 @@ class PluginBase(BaseModelPlus):
                 *(c.__dict__ for c in info.__mro__)
             )  # this will treat inheritance well
             # validate
-            public_attrs = {k: v for k, v in fields.items() if k[0] != "_"}
+            public_attrs = {k: v for k, v in fields.items() if is_public_name(k)}
             return cls(**public_attrs)
         except ValidationError as e:
             raise TypeError(f"{ep_name}: {ep_name}.Plugin validation error: \n{str(e)}")

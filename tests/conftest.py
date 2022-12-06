@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def plugingroups_test():
     """Access to plugingroups in a test, but will reset afterwards."""
     from metador_core.plugins import plugingroups

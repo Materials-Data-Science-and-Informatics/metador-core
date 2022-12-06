@@ -22,17 +22,19 @@ And use `MyPartial._get_partial` on your models.
 from __future__ import annotations
 
 from functools import reduce
-from typing import ClassVar, Dict, ForwardRef, List, Optional, Type
+from typing import ClassVar, Dict, ForwardRef, List, Optional, Set, Type, cast
 
 from overrides import overrides
 from pydantic import BaseModel, ValidationError, create_model, validate_model
 from pydantic.fields import FieldInfo
 from typing_extensions import Annotated
 
+from ..util import is_public_name
 from ..util import typing as t
 
-_partials: Dict[Type[PartialModel], Type[BaseModel]] = {}
-_forwardrefs: Dict[str, Type[PartialModel]] = {}
+# PartialModel-specific lookup dicts
+_partials: Dict[Type[PartialModel], Dict[Type[BaseModel], Type[PartialModel]]] = {}
+_forwardrefs: Dict[Type[PartialModel], Dict[str, Type[PartialModel]]] = {}
 
 
 class PartialModel:
@@ -51,24 +53,26 @@ class PartialModel:
     _def_ignore_invalid: bool = False
 
     @classmethod
-    def _partial_name(cls, mcls) -> str:
+    def _partial_name(cls, mcls: Type[BaseModel]) -> str:
         """Return class name for partial of model `mcls`."""
         return f"{mcls.__qualname__}.{cls.__name__}"
 
     @classmethod
-    def _partial_forwardref_name(cls, mcls) -> str:
+    def _partial_forwardref_name(cls, mcls: Type[BaseModel]) -> str:
         """Return ForwardRef string for partial of model `mcls`."""
         return f"__{mcls.__module__}_{cls._partial_name(mcls)}".replace(".", "_")
 
     @classmethod
-    def _get_fields(cls, obj):
+    def _get_fields(cls, obj: BaseModel):
         """Return dict with fields excluding None and private fields.
 
         This is different from `BaseModel.dict` as it ignores the defined alias
         and is used here only for "internal representation".
         """
         return (
-            (k, v) for k, v in obj.__dict__.items() if k[0] != "_" and v is not None
+            (k, v)
+            for k, v in obj.__dict__.items()
+            if is_public_name(k) and v is not None
         )
 
     # ----
@@ -99,7 +103,7 @@ class PartialModel:
         return cls.parse_obj(obj)  # type: ignore
 
     @classmethod
-    def cast(cls, obj, *, ignore_invalid: bool = _def_ignore_invalid):
+    def cast(cls, obj: BaseModel, *, ignore_invalid: bool = _def_ignore_invalid):
         """Cast given object into this partial model if needed.
 
         If it already is an instance, will do nothing.
@@ -206,7 +210,7 @@ class PartialModel:
         return (cls._partial_type(th), fi)
 
     @classmethod
-    def _create_partial(cls, mcls, *, typehints=None):
+    def _create_partial(cls, mcls: Type[BaseModel], *, typehints=None):
         """Create a new partial model class based on `mcls`."""
         if not issubclass(mcls, cls.__base__):
             raise TypeError(f"{mcls} is not a {cls.__base__.__name__}!")
@@ -215,18 +219,18 @@ class PartialModel:
 
         # get all annotations (we define fields only using them)
         field_types = typehints or t.get_type_hints(mcls)
-        missing_partials = set()
+        missing_partials: Set[Type[BaseModel]] = set()
         # get dependencies that must be substituted
         for th in field_types.values():
             for h in t.traverse_typehint(th):
                 if isinstance(h, type) and issubclass(h, cls.__base__):
                     if _partials[cls].get(mcls) is None:
-                        missing_partials.add(h)
+                        missing_partials.add(cast(Type[BaseModel], h))
 
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()
-            if k[0] != "_" and t.get_origin(v) is not ClassVar
+            if is_public_name(k) and t.get_origin(v) is not ClassVar
         }
 
         # replace base classes with corresponding partial bases
@@ -251,7 +255,7 @@ class PartialModel:
         return ret, missing_partials
 
     @classmethod
-    def _get_partial(cls, mcls, *, typehints=None):
+    def _get_partial(cls, mcls: Type[BaseModel], *, typehints=None):
         """Return a partial schema with all fields of the given schema optional.
 
         Original default values are not respected and are set to `None`.
@@ -299,7 +303,7 @@ class PartialModel:
         # print("end dep partials for ", mcls.__name__)
 
         # resolve possible circular references
-        partial.update_forward_refs(**_forwardrefs[cls])
+        partial.update_forward_refs(**_forwardrefs[cls])  # type: ignore
         # print("done get partial:", mcls.__name__)
         return partial
 
