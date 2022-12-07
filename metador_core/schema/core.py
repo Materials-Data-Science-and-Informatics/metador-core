@@ -240,6 +240,10 @@ class SchemaMagic(DynEncoderModelMetaclass):
         # also prevent inheriting override marker
         self.__overrides__ = set()
 
+        # and manually prevent inheriting annotations (for Python < 3.10)
+        if "__annotations__" not in self.__dict__:
+            self.__annotations__ = {}
+
         # "constant fields" are inherited, but copied - not shared
         self.__constants__ = {}
         for b in bases:

@@ -101,20 +101,17 @@ def test_make_mandatory(dummy_schema):
     class DummyChild(dummy_schema):
         ...
 
+    # field is already defined by decorator
+    with pytest.raises(ValueError):
+        make_mandatory("foo")(DummyChild)
+
     # parent still ok with optional field
     assert dummy_schema().foo is None
 
     # child now requires it
     with pytest.raises(ValidationError):
         DummyChild()  # missing foo
-    assert DummyChild(foo=5).foo == 5
-
-    # no effect if field already mandatory
-    make_mandatory("foo")(DummyChild)
-
-    with pytest.raises(ValidationError):
-        DummyChild()  # missing foo
-    assert DummyChild(foo=5).foo == 5
+    assert DummyChild(foo=5).foo == 5  # ok
 
 
 def test_override(dummy_schema, plugingroups_test):

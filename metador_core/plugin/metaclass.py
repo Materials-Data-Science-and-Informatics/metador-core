@@ -28,6 +28,9 @@ class MarkerMixin:
         ret = c.__class__(c.__name__, (cls, c), {})
         setattr(ret, cls._fieldname(), c)
 
+        # NOTE: discouraged!
+        # https://docs.python.org/3/howto/annotations.html#annotations-howto
+        # ----
         # anns = getattr(ret, "__annotations__", {})
         # anns[unw_field] = ClassVar[Type]
         # ret.__annotations__ = anns

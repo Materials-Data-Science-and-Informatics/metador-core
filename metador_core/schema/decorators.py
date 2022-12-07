@@ -40,11 +40,11 @@ def make_mandatory(*names: str):
                 raise ValueError(f"{mcls.__name__} has no field named '{name}'!")
             if name in get_annotations(mcls):
                 raise ValueError(
-                    f"{mcls.__name__} manually defines '{name}', cannot use decorator!"
+                    f"{mcls.__name__} already defines '{name}', cannot use decorator!"
                 )
 
             hint = unoptional(field_parent_type(mcls, name))
-            # update model and type hint
+            # update model and type hint (important for type analysis)
             mcls.__fields__[name].required = True
             mcls.__annotations__[name] = hint
 
