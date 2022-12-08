@@ -58,28 +58,47 @@ def tmp_ds_path(tmp_ds_path_factory):
     return tmp_ds_path_factory()
 
 
-TEST_DATA_DIR = Path(__file__).resolve().parent / "data"
+@pytest.fixture
+def testinput_maker(tmp_ds_path_factory):
+    def wrapped(root_dir: Path):
+        def copy_from(name: str):
+            dst_dir = tmp_ds_path_factory()
+            dst_dir.mkdir()
+            dst = dst_dir / name
+            assert not dst.exists()
+
+            src = root_dir / name
+            if src.is_file():
+                shutil.copy2(src, dst)
+            elif src.is_dir():
+                shutil.copytree(src, dst, symlinks=True)
+            else:
+                raise RuntimeError(f"No such test input in {root_dir}: {name}")
+
+            assert dst.exists()
+            return dst
+
+        return copy_from
+
+    return wrapped
+
+
+TEST_DIR = Path(__file__).resolve().parent
+
+TEST_DATA_DIR = TEST_DIR / "data"
 """Location of the test input data."""
+
+TUTORIAL_FILES_DIR = TEST_DIR.parent / "tutorial" / "files"
+"""Location of the tutorial input files."""
 
 
 @pytest.fixture
-def testinputs(tmp_ds_path_factory):
+def testinputs(testinput_maker):
     """Create temporary file or directory based on a known test input."""
+    return testinput_maker(TEST_DATA_DIR)
 
-    def copy_from(name):
-        dst = tmp_ds_path_factory()
-        assert not dst.exists()
 
-        src = TEST_DATA_DIR / name
-        print(src)
-        if src.is_file():
-            shutil.copy2(src, dst)
-        elif src.is_dir():
-            shutil.copytree(src, dst, symlinks=True)
-        else:
-            raise RuntimeError(f"No such test input: {name}")
-
-        assert dst.exists()
-        return dst
-
-    return copy_from
+@pytest.fixture
+def tutorialfiles(testinput_maker):
+    """Create temporary file or directory based on a known tutorial input."""
+    return testinput_maker(TUTORIAL_FILES_DIR)

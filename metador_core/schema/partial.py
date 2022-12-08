@@ -22,7 +22,7 @@ And use `MyPartial._get_partial` on your models.
 from __future__ import annotations
 
 from functools import reduce
-from typing import ClassVar, Dict, ForwardRef, List, Optional, Set, Type, cast
+from typing import ClassVar, Dict, ForwardRef, List, Optional, Set, Tuple, Type, cast
 
 from overrides import overrides
 from pydantic import BaseModel, ValidationError, create_model, validate_model
@@ -86,7 +86,9 @@ class PartialModel:
         """Transform `obj` into a new instance of this partial model.
 
         If passed object is instance of (a subclass of) this or the original model,
-        no validation is performed. Otherwise, will try to parse the object.
+        no validation is performed.
+
+        Otherwise, will try to parse the object.
         """
         if isinstance(obj, (cls, cls._partial_of)):
             # safe, because subclasses are "stricter"
@@ -157,13 +159,11 @@ class PartialModel:
             v_merged = self._update_field(
                 v_old, v_new, path=_path + [f_name], allow_overwrite=allow_overwrite
             )
-            setattr(
-                ret, f_name, v_merged
-            )  # validates if used BaseModel configured for it
+            ret.__dict__[f_name] = v_merged
         return ret
 
     @classmethod
-    def merge(cls, *objs, **kwargs):
+    def merge(cls, *objs: Type[PartialModel], **kwargs) -> Type[PartialModel]:
         """Merge all passed partial models in given order using `merge_with`."""
         ignore_invalid = kwargs.get("ignore_invalid", cls._def_ignore_invalid)
         allow_overwrite = kwargs.get("allow_overwrite", cls._def_allow_overwrite)
@@ -197,17 +197,17 @@ class PartialModel:
         return Optional[t.map_typehint(orig_type, cls._substitute_partial)]
 
     @classmethod
-    def _partial_field(cls, orig_field):
+    def _partial_field(cls, orig_field) -> Tuple[Type, Optional[FieldInfo]]:
         th, fi = orig_field, None
+
         # if pydantic Field is added (in an Annotated[...]) - unwrap
         if t.get_origin(orig_field) is Annotated:
             args = t.get_args(orig_field)
-            if not isinstance(args[1], FieldInfo):
-                raise RuntimeError(f"Unexpected annotation: {args}")
-            th, fi = args[0], args[1]
+            th = args[0]
+            fi = next(filter(lambda ann: isinstance(ann, FieldInfo), args[1:]), None)
 
-        # map to partial type
-        return (cls._partial_type(th), fi)
+        pth = cls._partial_type(th)  # map the (unwrapped) type to optional
+        return (pth, fi)
 
     @classmethod
     def _create_partial(cls, mcls: Type[BaseModel], *, typehints=None):
@@ -215,10 +215,9 @@ class PartialModel:
         if not issubclass(mcls, cls.__base__):
             raise TypeError(f"{mcls} is not a {cls.__base__.__name__}!")
 
-        # print("create partial:", mcls.__name__)
-
         # get all annotations (we define fields only using them)
         field_types = typehints or t.get_type_hints(mcls)
+
         missing_partials: Set[Type[BaseModel]] = set()
         # get dependencies that must be substituted
         for th in field_types.values():
@@ -227,21 +226,29 @@ class PartialModel:
                     if _partials[cls].get(mcls) is None:
                         missing_partials.add(cast(Type[BaseModel], h))
 
+        # compute new field types
         fields = {
             k: cls._partial_field(v)
             for k, v in field_types.items()
-            if is_public_name(k) and t.get_origin(v) is not ClassVar
+            if k in mcls.__fields__
         }
 
         # replace base classes with corresponding partial bases
         def partial_base(b_cls):
             if b_cls is cls.__base__:
-                return cls  # top base
+                # make sure that partials are hashable and immutable
+                class FrozenBase(cls):
+                    class Config:
+                        frozen = True
+
+                return FrozenBase
+                # return cls  # top base
             if not issubclass(b_cls, cls.__base__):
                 return b_cls  # not child of top base -> leave it
             return cls._get_partial(b_cls)  # replace with existing partials
 
         # create partial model
+        # print(fields)
         ret: Type[PartialModel] = create_model(
             cls._partial_name(mcls),
             __base__=tuple(map(partial_base, mcls.__bases__)),

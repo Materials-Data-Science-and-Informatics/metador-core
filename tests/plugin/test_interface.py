@@ -4,14 +4,17 @@ import pytest
 from metador_core.plugin.metaclass import UndefVersion
 from metador_core.plugin.types import is_metador_ep_group, to_ep_group_name, to_ep_name
 from metador_core.plugin.util import register_in_group
-from metador_core.plugins import plugingroups, schemas
+from metador_core.plugins import plugingroups
 
 from . import dummy_plugins as d
 
 # basic tests
 
 
-def test_plugingroup_misc():
+def test_plugingroup_misc(plugingroups_test):
+    plugingroups = plugingroups_test
+    schemas = plugingroups_test["schema"]
+
     # check name
     assert plugingroups.name == "plugingroup"
     assert schemas.name == "schema"
@@ -24,8 +27,9 @@ def test_plugingroup_misc():
     assert schemas.provider(schemas["core.file"].Plugin.ref()).name == "metador-core"
 
 
-def test_plugingroup_str_repr():
+def test_plugingroup_str_repr(plugingroups_test):
     # just make sure it works without error and dummy check output
+    schemas = plugingroups_test["schema"]
     rstr = repr(schemas)
     assert rstr.find("core.file")
     pstr = str(schemas)
@@ -33,9 +37,12 @@ def test_plugingroup_str_repr():
     assert pstr.find("\n")
 
 
-def test_plugingroup_pluginref():
+def test_plugingroup_pluginref(plugingroups_test):
     """Check that PluginRef subclasses work as expected."""
     # check PluginRef of the plugingroups themselves
+    plugingroups = plugingroups_test
+    schemas = plugingroups_test["schema"]
+
     pg_ref = plugingroups.PluginRef(name="plugingroup", version=(0, 1, 0))
     assert pg_ref.group == pg_ref.name
     assert plugingroups.Plugin.ref() == pg_ref
@@ -49,7 +56,10 @@ def test_plugingroup_pluginref():
     assert s_ref.group == sg_ref.name
 
 
-def test_is_plugin():
+def test_is_plugin(plugingroups_test):
+    plugingroups = plugingroups_test
+    schemas = plugingroups_test["schema"]
+
     assert plugingroups.is_plugin(schemas)
     assert not schemas.is_plugin(plugingroups)
 
@@ -87,8 +97,11 @@ def test_is_plugin():
     assert not schemas.is_plugin(Impostor3)
 
 
-def test_plugingroup_compare():
+def test_plugingroup_compare(plugingroups_test):
     # different PluginRef subclasses still comparable!
+    plugingroups = plugingroups_test
+    schemas = plugingroups_test["schema"]
+
     from metador_core.schema.plugins import PluginRef
 
     kwargs = dict(name="xyz", version=(0, 1, 0))
@@ -100,8 +113,11 @@ def test_plugingroup_compare():
     assert s_ref == PluginRef(group=schemas.name, **kwargs)
 
 
-def test_plugingroup_dictlike_basic():
+def test_plugingroup_dictlike_basic(plugingroups_test):
     """Do some manual sanity checks."""
+    plugingroups = plugingroups_test
+    schemas = plugingroups_test["schema"]
+
     # NOTE: important to check that plugingroup itself is a plugingroup
     # because it allows us to do the next rigorous checks easily
 
@@ -203,7 +219,9 @@ def test_add_ep_invalid(pg_dummy, ep_factory):
         pg_dummy._add_ep("invalid_entrypoint", None)
 
 
-def test_add_ep_twice():
+def test_add_ep_twice(plugingroups_test):
+    schemas = plugingroups_test["schema"]
+
     plugin = schemas.get("core.file")
     ref = plugin.Plugin.ref()
     ep_name = to_ep_name(ref.name, ref.version)
@@ -306,3 +324,6 @@ def test_versions(pg_dummy, ep_factory):
     assert pg_dummy.get("test.plugin2", (0, 2, 0)) is None
     assert pg_dummy.get("test.plugin", (2, 0, 0)) is None
     assert pg_dummy.get("test.plugin2", (1, 0, 0)) is None
+
+
+plugingroups.__reset__()  # because we accessed the real plugin groups

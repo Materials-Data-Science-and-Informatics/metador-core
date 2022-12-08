@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import List, Optional, Set
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
+from typing_extensions import Annotated
 
 from metador_core.schema.partial import DeepPartialModel, PartialModel
 
@@ -27,7 +28,7 @@ class ModelE(ModelG):
     class Config:
         frozen = True
 
-    prv: ModelD  # simple model
+    prv: Annotated[ModelD, Field(description="simple model + annotation")]
     rec: Optional[ModelE]  # direct recursion
     col: Optional[Set[ModelD]]  # set
     fwd: List[ModelF] = []  # forward reference (+ indirect recursion)
@@ -35,18 +36,6 @@ class ModelE(ModelG):
 
 class ModelF(ModelE):
     ...
-
-
-# class Dummy1(BaseModel):
-#     x: List[Dummy1]
-
-
-# Dummy1.update_forward_refs()
-
-
-# @given(st.from_type(Dummy1))
-# def test_modelgen(obj):
-#     print(obj.json(indent=2))
 
 
 @pytest.mark.parametrize("p_cls", [PartialModel, DeepPartialModel])
@@ -98,19 +87,45 @@ def test_partial_behavior(p_cls):
     hlp = ModelF(prv=ModelD(val="c"))
     # hlp2 = ModelF(prv=ModelD(val="d"))
     obj = ModelF(prv=ModelD(val="a"), fwd=[hlp.copy()], col=set([hlp.prv.copy()]))
+    objE = ModelE(**obj.dict())
+
     # obj2 = ModelF(
     #     prv=ModelD(val="b"),
     #     fwd=[hlp.copy(), hlp2.copy()],
     #     col=set([hlp.prv.copy(), hlp2.prv.copy()]),
     # )
 
-    # convert it to a partial
-    p_obj = PartF.to_partial(obj)
+    # to_partial
+    p_obj = PartF.to_partial(obj)  # no validation case
+    assert PartF.to_partial(p_obj) is not p_obj  # should be fresh
+    assert PartF.to_partial(objE) == p_obj
+    assert PartF.to_partial(objE.dict()) == p_obj
+
+    # test behavior with with invalid fields
+    objInv = obj.copy(update=dict(prv=5))
+    with pytest.raises(ValidationError):
+        PartF.to_partial(objInv.dict())  # failed validation
+    # with flag to drop invalid, it should work
+    pObjInv = PartF.to_partial(objInv.dict(), ignore_invalid=True)
+    # check that the result agrees with dropping the field (setting to "None")
+    assert pObjInv.dict() == p_obj.copy(update={"prv": None}).dict()
+
+    # cast
+    assert PartF.cast(p_obj) is p_obj  # nothing to do -> returns original
+    # should convert
+    assert PartF.cast(obj) == p_obj
+    p_objE = PartF.cast(objE)
+    assert p_objE == p_obj
+    assert p_objE is not p_obj
+
     # to partial -> from partial == original
     assert PartF.from_partial(p_obj) == obj
+
     # empty object is neutral element
     assert empty_obj.merge_with(p_obj, allow_overwrite=True) == p_obj
     assert p_obj.merge_with(empty_obj, allow_overwrite=True) == p_obj
+    assert PartialModel.merge_with(empty_obj, empty_obj) == empty_obj
+    assert PartialModel.merge(empty_obj, p_obj, empty_obj) == p_obj
 
     # without overwrite flag: cannot overwrite "a" with "a"
     with pytest.raises(ValueError):

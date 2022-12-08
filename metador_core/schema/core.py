@@ -12,7 +12,7 @@ from pydantic import Extra, root_validator
 
 from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
 from ..util import cache, is_public_name
-from ..util.models import field_atomic_types, traverse_typehint, updated_fields
+from ..util.models import field_atomic_types, traverse_typehint
 from ..util.typing import (
     get_annotations,
     get_type_hints,
@@ -30,13 +30,7 @@ from .inspect import (
     lift_dict,
     make_field_inspector,
 )
-from .jsonschema import (
-    KEY_SCHEMA_DEFS,
-    KEY_SCHEMA_HASH,
-    fixup_jsonschema,
-    jsonschema_id,
-    schema_of,
-)
+from .jsonschema import finalize_schema_extra, schema_of
 from .partial import DeepPartialModel
 from .types import to_semver_str
 
@@ -50,46 +44,6 @@ def add_missing_field_descriptions(schema, model):
                     fjsdef["description"] = desc
             except KeyError:
                 pass  # no field info for that field
-
-
-def split_model_inheritance(schema, model):
-    """Decompose a model into an allOf combination with a parent model.
-
-    This is ugly because pydantic does in-place wrangling and caching,
-    and we need to hack around it.
-    """
-    # NOTE: important - we assume to get the standard form of a $ref + $defs
-    # so that the $defs contain the actual definition of the base_schema
-    # and everything it needs.
-    # simply calling schema() is different for recursive and non-recursive schemas,
-    # schema_of is consistent in its output.
-    base_schema = schema_of(model.__base__)
-
-    # compute filtered properties / required section
-    schema_new = dict(schema)
-    ps = schema_new.pop("properties", None)
-    rq = schema_new.pop("required", None)
-
-    lst_fields = updated_fields(model)
-    ps_new = {k: v for k, v in ps.items() if k in lst_fields}
-    rq_new = None if not rq else [k for k in rq if k in ps_new]
-    schema_this = {k: v for k, v in [("properties", ps_new), ("required", rq_new)] if v}
-
-    # construct new schema as combination of base schema and remainder schema
-    schema_new.update(
-        {
-            # "rdfs:subClassOf": f"/{base_id}",
-            "allOf": [{"$ref": base_schema["$ref"]}, schema_this],
-        }
-    )
-
-    # we need to add the definitions to/from the base schema as well
-    if KEY_SCHEMA_DEFS not in schema_new:
-        schema_new[KEY_SCHEMA_DEFS] = {}
-    schema_new[KEY_SCHEMA_DEFS].update(base_schema.get(KEY_SCHEMA_DEFS, {}))
-
-    schema.clear()
-    schema.update(schema_new)
 
 
 KEY_SCHEMA_PG = "$metador_plugin"
@@ -115,19 +69,17 @@ class SchemaBase(BaseModelPlus):
     class Config:
         @staticmethod
         def schema_extra(schema: Dict[str, Any], model: Type[BaseModelPlus]) -> None:
-            # print("schema_extra", repr(model))
             model = UndefVersion._unwrap(model) or model
-
-            # a schema should have a specified standard
-            schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
 
             # custom extra key to connect back to metador schema:
             if pgi := model.__dict__.get("Plugin"):
                 schema[KEY_SCHEMA_PG] = pgi.ref().copy(exclude={"group"}).json_dict()
 
+            # enrich schema with descriptions retrieved from e.g. docstrings
             if model is not MetadataSchema:
                 add_missing_field_descriptions(schema, model)
 
+            # special handling for "constant fields"
             if model.__constants__:
                 schema[KEY_SCHEMA_CONSTFLDS] = {}
                 for cname, cval in model.__constants__.items():
@@ -136,23 +88,13 @@ class SchemaBase(BaseModelPlus):
                     # store the constant alongside the schema
                     schema[KEY_SCHEMA_CONSTFLDS][cname] = cval
 
-            if (
-                model.__base__ is not MetadataSchema
-            ):  # tricky part: de-duplicate from parent class
-                split_model_inheritance(schema, model)
-
-            # do this last, because it needs everything else to compute:
-            schema[KEY_SCHEMA_HASH] = f"{jsonschema_id(schema)}"
-            fixup_jsonschema(schema)
+            # do magic
+            finalize_schema_extra(schema, model, base_model=MetadataSchema)
 
     @classmethod
     def schema(cls, *args, **kwargs):
-        # print("schema", repr(cls))
-        ret = dict(super().schema(*args, **kwargs))
-        # from pprint import pprint
-        # pprint(ret)
-        fixup_jsonschema(ret)
-        return ret
+        """Return customized JSONSchema for this model."""
+        return schema_of(UndefVersion._unwrap(cls) or cls, *args, **kwargs)
 
     @root_validator(pre=True)
     def override_consts(cls, values):
@@ -164,8 +106,8 @@ class SchemaBase(BaseModelPlus):
         return values
 
 
-ALLOWED_SCHEMA_CONFIG_FIELDS = {"title", "schema_extra", "extra", "allow_mutation"}
-"""Allowed pydantic Config fields to be overridden in Schemas."""
+ALLOWED_SCHEMA_CONFIG_FIELDS = {"title", "extra", "allow_mutation"}
+"""Allowed pydantic Config fields to be overridden in schema models."""
 
 
 class SchemaMagic(DynEncoderModelMetaclass):
@@ -490,7 +432,8 @@ def is_pub_instance_field(schema, name, hint):
 def detect_field_overrides(schema: Type[MetadataSchema]):
     anns = get_annotations(schema)
     base_hints = cast(Any, schema._base_typehints)
-    return set(base_hints.keys()).intersection(set(anns.keys()))
+    new_hints = {n for n, h in anns.items() if is_pub_instance_field(schema, n, h)}
+    return set(base_hints.keys()).intersection(new_hints)
 
 
 def check_overrides(schema: Type[MetadataSchema]):

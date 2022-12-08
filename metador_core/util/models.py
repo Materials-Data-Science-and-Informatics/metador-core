@@ -13,13 +13,9 @@ def field_origins(m: Type[BaseModel], name: str) -> Iterator[Type[BaseModel]]:
     )
 
 
-def updated_fields(m: Type[BaseModel], names=None) -> Set[str]:
+def updated_fields(m: Type[BaseModel]) -> Set[str]:
     """Return subset of fields that are added or overridden by a new type hint."""
-    return {
-        n
-        for n in m.__fields__.keys()
-        if next(field_origins(m, n)) is m and (not names or n in names)
-    }
+    return {n for n in m.__fields__.keys() if next(field_origins(m, n)) is m}
 
 
 def new_fields(m: Type[BaseModel]) -> Set[str]:
