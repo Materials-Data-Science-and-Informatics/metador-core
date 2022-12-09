@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel, Field, ValidationError
 from typing_extensions import Annotated
 
-from metador_core.schema.partial import DeepPartialModel, PartialModel
+from metador_core.schema.partial import PartialFactory, PartialModel
 
 from ..util.test_models import MyBaseModel
 
@@ -39,28 +39,28 @@ class ModelF(ModelE):
     ...
 
 
-@pytest.mark.parametrize("p_cls", [PartialModel, DeepPartialModel])
-def test_partial_inheritance(p_cls):
-    class MyPartial(p_cls, MyBaseModel):
-        ...
+class MyPartialFactory(PartialFactory):
+    base_model = MyBaseModel
 
+
+def test_partial_inheritance():
     # only for models sharing the selected base:
     class SomeModel(BaseModel):
         ...
 
     with pytest.raises(TypeError):
-        MyPartial._get_partial(SomeModel)
+        MyPartialFactory.get_partial(SomeModel)
 
     classes = [ModelD, ModelE, ModelF, ModelG]
     for cls1 in classes:
-        p1 = MyPartial._get_partial(cls1)
+        p1 = MyPartialFactory.get_partial(cls1)
         # partial is subclass of partial mixin and the base model:
-        assert issubclass(p1, MyBaseModel)
-        assert issubclass(p1, MyPartial)
+        assert issubclass(p1, MyPartialFactory.base_model)
+        assert issubclass(p1, MyPartialFactory.partial_mixin)
         #  partial MUST NOT be a subclass of original:
         assert not issubclass(p1, cls1)
         for cls2 in classes:
-            p2 = MyPartial._get_partial(cls2)
+            p2 = MyPartialFactory.get_partial(cls2)
             if cls1 is cls2:
                 # idempotent partial generation
                 assert p1 is p2
@@ -74,12 +74,9 @@ def test_partial_inheritance(p_cls):
 # TODO: test partials properly
 
 
-@pytest.mark.parametrize("p_cls", [PartialModel, DeepPartialModel])
-def test_partial_behavior(p_cls):
-    class MyPartial(p_cls, MyBaseModel):
-        ...
+def test_partial_behavior():
 
-    PartF = MyPartial._get_partial(ModelF)
+    PartF = MyPartialFactory.get_partial(ModelF)
 
     # empty object is always possible
     empty_obj = PartF()
@@ -143,12 +140,7 @@ def test_partial_behavior(p_cls):
     merged = PartF.merge(obj2, obj3, allow_overwrite=True).from_partial()
     assert merged.col == obj2.col
 
-    if p_cls is DeepPartialModel:
-        assert merged.prv.val == obj.prv.val  # overwritten value
-        assert merged.prv.val2 == 123  # preserved by rec. merge
-        # the list should be self-concatenated with deep merge
-        assert merged.fwd == obj2.fwd + obj3.fwd
-    else:
-        assert merged.prv == obj.prv
-        assert merged.prv.val2 is None
-        assert merged.fwd == obj3.fwd
+    assert merged.prv.val == obj.prv.val  # overwritten value
+    assert merged.prv.val2 == 123  # preserved by rec. merge
+    # the list should be self-concatenated with deep merge
+    assert merged.fwd == obj2.fwd + obj3.fwd

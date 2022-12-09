@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Set, Type
 
 from ..plugin import interface as pg
 from ..plugins import plugingroups
-from .core import MetadataSchema, PartialSchema, check_types, infer_parent
+from .core import MetadataSchema, check_types, infer_parent
+from .partial import PartialModel
 from .plugins import PluginBase
 from .plugins import PluginRef as AnyPluginRef
 from .types import SemVerTuple
@@ -142,7 +143,7 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._subschemas: Dict[MetadataSchema, Set[MetadataSchema]] = {}
 
         # partial schema classes
-        self._partials: Dict[MetadataSchema, PartialSchema] = {}
+        self._partials: Dict[MetadataSchema, PartialModel] = {}
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):

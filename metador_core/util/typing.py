@@ -7,6 +7,9 @@ from typing_extensions import Annotated, ClassVar, Literal, TypedDict
 
 get_args = te.get_args  # re-export get_args
 
+TypeHint: Any
+"""For documentation purposes - to mark type hint arguments."""
+
 
 def get_type_hints(cls) -> Mapping[str, Any]:
     """Return type hints of this class."""

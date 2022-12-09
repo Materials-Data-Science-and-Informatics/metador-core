@@ -22,8 +22,8 @@ from typing_extensions import TypeAlias
 from ..plugin import interface as pg
 from ..plugins import schemas
 from ..schema import MetadataSchema
-from ..schema.core import BaseModelPlus, PartialSchema
-from ..schema.partial import PartialModel
+from ..schema.core import BaseModelPlus
+from ..schema.partial import PartialFactory, PartialModel
 from ..schema.plugins import PluginRef
 
 HARVESTER_GROUP_NAME = "harvester"
@@ -50,12 +50,10 @@ class HarvesterArgs(BaseModelPlus):
         extra = Extra.forbid
 
 
-class HarvesterArgsPartial(PartialModel, HarvesterArgs):
+class HarvesterArgsPartial(PartialFactory):
     """Base class for partial harvester arguments."""
 
-    @classmethod
-    def _partial_name(cls, mcls):
-        return f"{mcls.__qualname__}.Partial"
+    base_model = HarvesterArgs
 
 
 class HarvesterMetaMixin(type):
@@ -65,7 +63,7 @@ class HarvesterMetaMixin(type):
     # @cache not needed, partials take care of that themselves
     def PartialArgs(self):
         """Access the partial schema based on the current schema."""
-        return HarvesterArgsPartial._get_partial(self.Args)
+        return HarvesterArgsPartial.get_partial(self.Args)
 
 
 class HarvesterMeta(HarvesterMetaMixin, ABCMeta):
@@ -176,7 +174,7 @@ class FileHarvester(Harvester):
 
 
 class MetadataLoader(FileHarvester):
-    _partial_schema: PartialSchema
+    _partial_schema: PartialModel
     _sidecar_func: Callable[[Path], Path]
 
     def run(self):

@@ -7,7 +7,6 @@ from functools import partial
 from typing import Any, ClassVar, Dict, Optional, Set, Type, cast
 
 import wrapt
-from overrides import overrides
 from pydantic import Extra, root_validator
 
 from ..plugin.metaclass import PluginMetaclassMixin, UndefVersion
@@ -31,7 +30,7 @@ from .inspect import (
     make_field_inspector,
 )
 from .jsonschema import finalize_schema_extra, schema_of
-from .partial import DeepPartialModel
+from .partial import PartialFactory, is_mergeable_type
 from .types import to_semver_str
 
 
@@ -234,7 +233,7 @@ class SchemaMagic(DynEncoderModelMetaclass):
     @property
     def Partial(self):
         """Access the partial schema based on the current schema."""
-        return PartialSchema._get_partial(self)
+        return PartialSchemas.get_partial(self)
 
 
 class SchemaMetaclass(PluginMetaclassMixin, SchemaMagic):
@@ -326,35 +325,35 @@ class UndefVersionFieldInspector(wrapt.ObjectProxy):
 # ----
 
 
-class PartialSchema(DeepPartialModel, SchemaBase):
+class PartialSchemas(PartialFactory):
     """Partial model for MetadataSchema model.
 
     Needed for harvesters to work (which can provide validated but partial metadata).
     """
 
-    __constants__: ClassVar[Dict[str, Any]] = {}
+    base_model = SchemaBase
 
-    # MetadataSchema-specific adaptations:
+    # override to ignore "constant fields" for partials
     @classmethod
-    @overrides
-    def _partial_name(cls, mcls) -> str:
-        return f"{mcls.__qualname__}.Partial"
+    def _get_field_vals(cls, obj):
+        return (
+            (k, v)
+            for k, v in super()._get_field_vals(obj)
+            if k not in obj.__constants__
+        )
 
+    # override to add some fixes to partials
     @classmethod
-    @overrides
-    def _get_fields(cls, obj):
-        # exclude the "annotated" fields that we support
-        constants = obj.__constants__.keys()
-        return ((k, v) for k, v in super()._get_fields(obj) if k not in constants)
-
-    @classmethod
-    @overrides
     def _create_partial(cls, mcls, *, typehints=...):
-        ret, missing = super()._create_partial(mcls, typehints=mcls._typehints)
-        # copy custom parser (these are supposed to also work with the partials)
+        th = getattr(mcls, "_typehints", None)
+        ret, nested = super()._create_partial(mcls, typehints=th)
+        # attach constant field list for field filtering
+        setattr(ret, "__constants__", getattr(mcls, "__constants__", set()))
+        # copy custom parser to partial
+        # (otherwise partial can't parse correctly with parser mixin)
         if parser := getattr(mcls, "Parser", None):
             setattr(ret, "Parser", parser)
-        return (ret, missing)
+        return (ret, nested)
 
 
 # --- delayed checks (triggered during schema loading) ---
@@ -389,7 +388,7 @@ def check_allowed_types(schema: Type[MetadataSchema]):
     for field, hint in hints.items():
         if not is_public_name(field):
             continue  # private field
-        if not PartialSchema._is_mergeable_type(hint):
+        if not is_mergeable_type(hint):
             msg = f"{schema}:\n\ttype of '{field}' contains a forbidden pattern!"
             raise TypeError(msg)
 
