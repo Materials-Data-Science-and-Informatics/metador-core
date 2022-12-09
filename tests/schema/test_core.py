@@ -169,6 +169,14 @@ def test_forbidden_types_rejected(schemas_test):
     with pytest.raises(TypeError):
         register_in_group(schemas_test, InvalidModel, violently=True)
 
+    class InvalidModel2(MetadataSchema):
+        Plugin = InvalidModel.Plugin
+
+        x: List[Optional[int]]  # <- forbidden pattern
+
+    with pytest.raises(TypeError):
+        register_in_group(schemas_test, InvalidModel2, violently=True)
+
 
 def test_wrapped_fields_undef_version(schemas_test):
     """Test that UndefVersion infects introspected field schemas."""

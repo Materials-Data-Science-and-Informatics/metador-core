@@ -17,12 +17,31 @@ class MyPartial(DeepPartialModel, BaseModel): ...
 ```
 
 And use `MyPartial._get_partial` on your models.
+
+If different compatible model instances are merged,
+the merge will produce an instance of the left type.
+
+Some theory - partial schemas form a monoid with:
+* the empty partial schema as neutral element
+* merge of the fields as the binary operation
+* associativity follows from associativity of used merge operations
 """
 
 from __future__ import annotations
 
 from functools import reduce
-from typing import ClassVar, Dict, ForwardRef, List, Optional, Set, Tuple, Type, cast
+from typing import (
+    ClassVar,
+    Dict,
+    ForwardRef,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 
 from overrides import overrides
 from pydantic import BaseModel, ValidationError, create_model, validate_model
@@ -47,6 +66,7 @@ class PartialModel:
     """
 
     _partial_of: ClassVar[Type[BaseModel]]  # original model class, auto-generated
+    _partial_base: ClassVar[Type[PartialModel]]  # factory class
 
     # default arguments for merge
     _def_allow_overwrite: bool = False
@@ -105,7 +125,12 @@ class PartialModel:
         return cls.parse_obj(obj)  # type: ignore
 
     @classmethod
-    def cast(cls, obj: BaseModel, *, ignore_invalid: bool = _def_ignore_invalid):
+    def cast(
+        cls,
+        obj: Union[BaseModel, PartialModel],
+        *,
+        ignore_invalid: bool = _def_ignore_invalid,
+    ):
         """Cast given object into this partial model if needed.
 
         If it already is an instance, will do nothing.
@@ -151,6 +176,7 @@ class PartialModel:
 
         Raises `ValueError` if `allow_overwrite=False` and a value would be overwritten.
         """
+        # print("merging ", self, "|",  obj)
         obj = self.cast(obj, ignore_invalid=ignore_invalid)  # raises on failure
 
         ret = self.copy()  # type: ignore
@@ -163,17 +189,20 @@ class PartialModel:
         return ret
 
     @classmethod
-    def merge(cls, *objs: Type[PartialModel], **kwargs) -> Type[PartialModel]:
+    def merge(cls, *objs: PartialModel, **kwargs) -> PartialModel:
         """Merge all passed partial models in given order using `merge_with`."""
+        if not objs:
+            return cls()
+
         ignore_invalid = kwargs.get("ignore_invalid", cls._def_ignore_invalid)
         allow_overwrite = kwargs.get("allow_overwrite", cls._def_allow_overwrite)
 
         def merge_two(x, y):
-            return x.merge_with(
+            return cls.cast(x).merge_with(
                 y, ignore_invalid=ignore_invalid, allow_overwrite=allow_overwrite
             )
 
-        return reduce(merge_two, objs)
+        return cls.cast(reduce(merge_two, objs))
 
     # ----
 
@@ -257,6 +286,7 @@ class PartialModel:
             **fields,
         )
         ret._partial_of = mcls  # connect to original model
+        ret._partial_base = cls  # connect to this class
 
         # print("done create partial:", mcls.__name__)
         return ret, missing_partials
@@ -323,7 +353,40 @@ def is_list_or_set(hint):
     return t.is_list(hint) or t.is_set(hint)
 
 
-def check_type_mergeable(hint, *, allow_none: bool = False):
+def check_type_mergeable(hint, *, allow_none: bool = False) -> bool:
+    """Check whether a type is mergeable.
+
+    An atomic type is:
+    * not None
+    * not a List, Set, Union or Optional
+    * not a model
+
+    (i.e. usually a primitive value e.g. int/bool/etc.)
+
+    A singular type is:
+    * an atomic type, or
+    * a model, or
+    * a Union of multiple singular types
+
+    A complex type is:
+    * a singular type
+    * it is a List/Set of a singular type
+
+    A mergeable type is:
+    * a complex type, or
+    * an Optional complex type
+
+    merge(x,y):
+        merge(None, None) = None
+        merge(None, x) = merge(x, None) = x
+        merge(x: model1, y: model2)
+        | model1 < model2 or model2 < model1 = recursive_merge(x, y)
+        | otherwise = y
+        merge(x: singular, y: singular) = y
+        merge(x: list, y: list) = x ++ y
+        merge(x: set, y: set) =  x.union(y)
+    """
+    # print("check ", hint)
     args = t.get_args(hint)
 
     if is_list_or_set(hint):  # list or set -> dig deeper
@@ -382,6 +445,8 @@ class DeepPartialModel(PartialModel):
         partial models are recursively merged,
         otherwise the new value overwrites the old one.
         """
+        # print("merge fields", v_old, v_new)
+
         # None -> missing value -> just use new value (shortcut)
         if v_old is None:
             return v_new
@@ -396,16 +461,21 @@ class DeepPartialModel(PartialModel):
             # https://github.com/Materials-Data-Science-and-Informatics/metador-core/issues/20
             return v_old.union(v_new)  # set union
 
-        # another partial -> recursive merge of partials, if compatible
-        if isinstance(v_old, PartialModel):
-            new_subclass_old = issubclass(type(v_new), type(v_old))
-            old_subclass_new = issubclass(type(v_old), type(v_new))
+        # another model -> recursive merge of partials, if compatible
+        old_is_model = isinstance(v_old, cls._partial_base.__base__)
+        new_is_model = isinstance(v_new, cls._partial_base.__base__)
+        if old_is_model and new_is_model:
+            v_old_p = cls._partial_base._get_partial(type(v_old)).cast(v_old)
+            v_new_p = cls._partial_base._get_partial(type(v_new)).cast(v_new)
+            new_subclass_old = issubclass(type(v_new_p), type(v_old_p))
+            old_subclass_new = issubclass(type(v_old_p), type(v_new_p))
             if new_subclass_old or old_subclass_new:
                 try:
-                    return v_old.merge_with(
-                        v_new, allow_overwrite=allow_overwrite, _path=path
+                    return v_old_p.merge_with(
+                        v_new_p, allow_overwrite=allow_overwrite, _path=path
                     )
-                except ValidationError:  # casting failed -> proceed to next merge variant
+                except ValidationError:
+                    # casting failed -> proceed to next merge variant
                     pass
 
         # if we're here, treat it as an opaque value

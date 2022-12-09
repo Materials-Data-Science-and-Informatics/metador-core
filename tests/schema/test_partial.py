@@ -22,6 +22,7 @@ class ModelD(MyBaseModel):
         frozen = True
 
     val: str
+    val2: Optional[int]
 
 
 class ModelE(ModelG):
@@ -85,15 +86,8 @@ def test_partial_behavior(p_cls):
 
     # example object
     hlp = ModelF(prv=ModelD(val="c"))
-    # hlp2 = ModelF(prv=ModelD(val="d"))
     obj = ModelF(prv=ModelD(val="a"), fwd=[hlp.copy()], col=set([hlp.prv.copy()]))
     objE = ModelE(**obj.dict())
-
-    # obj2 = ModelF(
-    #     prv=ModelD(val="b"),
-    #     fwd=[hlp.copy(), hlp2.copy()],
-    #     col=set([hlp.prv.copy(), hlp2.prv.copy()]),
-    # )
 
     # to_partial
     p_obj = PartF.to_partial(obj)  # no validation case
@@ -131,10 +125,30 @@ def test_partial_behavior(p_cls):
     with pytest.raises(ValueError):
         assert p_obj.merge_with(p_obj) == p_obj
 
-    # self-merge
-    # p_obj2 = p_obj.copy()
-    # p_obj2.fwd = list(p_obj2.fwd) + list(p_obj2.fwd)
-    # print(p_obj2.json(indent=2))
-    # ret = p_obj.merge_with(p_obj, allow_overwrite=True)
-    # print(ret.json(indent=2))
-    # assert ret == p_obj2
+    # merge 0 -> empty partial
+    assert PartF.merge() == empty_obj
+
+    # merge 1 -> partial with same content as given, implicit cast
+    assert isinstance(PartF.merge(obj), PartF)
+    assert PartF.merge(obj) == obj
+
+    # merge 2 -> non-trivial merge
+    hlp2 = ModelF(prv=ModelD(val="d"))
+    obj2 = ModelF(
+        prv=ModelD(val="b", val2=123),
+        fwd=[hlp.copy(), hlp2.copy()],
+        col=set([hlp.prv.copy(), hlp2.prv.copy()]),
+    )
+    obj3 = obj2.copy(update={"prv": obj.prv})
+    merged = PartF.merge(obj2, obj3, allow_overwrite=True).from_partial()
+    assert merged.col == obj2.col
+
+    if p_cls is DeepPartialModel:
+        assert merged.prv.val == obj.prv.val  # overwritten value
+        assert merged.prv.val2 == 123  # preserved by rec. merge
+        # the list should be self-concatenated with deep merge
+        assert merged.fwd == obj2.fwd + obj3.fwd
+    else:
+        assert merged.prv == obj.prv
+        assert merged.prv.val2 is None
+        assert merged.fwd == obj3.fwd
