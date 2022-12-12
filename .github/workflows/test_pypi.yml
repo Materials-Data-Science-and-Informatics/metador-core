@@ -1,4 +1,4 @@
-name: Push to TestPyPI
+name: Publish on TestPyPI
 on:
   workflow_dispatch:
 
