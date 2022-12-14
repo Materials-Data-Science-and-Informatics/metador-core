@@ -26,6 +26,7 @@ class MarkerMixin:
             raise TypeError(f"{c} already marked by {cls}!")
 
         ret = c.__class__(c.__name__, (cls, c), {})
+        # ret.__module__ = c.__module__
         setattr(ret, cls._fieldname(), c)
 
         # NOTE: discouraged!
