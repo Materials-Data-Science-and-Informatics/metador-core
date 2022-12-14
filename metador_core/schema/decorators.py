@@ -4,7 +4,7 @@ from pydantic.fields import ModelField
 
 from ..util import is_public_name
 from ..util.models import field_parent_type
-from ..util.typing import get_annotations, unoptional
+from ..util.typing import get_annotations, is_enum, is_subtype, make_literal, unoptional
 from .core import MetadataSchema
 
 
@@ -76,10 +76,18 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
         overridden = set()
         for name, value in consts.items():
 
-            if name in mcls.__fields__:
+            if field_def := mcls.__fields__.get(name):
                 if not override:
-                    msg = f"{mcls} already has a field '{name}'! (override={override})"
-                    raise ValueError(msg)
+                    ok = False
+
+                    # it's allowed to make more specific without override
+                    if is_enum(field_def.type_):
+                        ok = value in field_def.type_
+                    elif field_def.type_ != Any:
+                        ok = is_subtype(make_literal(value), field_def.type_)
+                    if not ok:
+                        msg = f"{mcls.__name__} already has a field '{name}'! (override={override})"
+                        raise ValueError(msg)
                 else:
                     overridden.add(name)
 

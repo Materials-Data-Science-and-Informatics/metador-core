@@ -1,3 +1,4 @@
+import enum
 from collections import ChainMap
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Set, Tuple, Type, Union
 
@@ -62,6 +63,10 @@ def is_annotated(hint):
     return get_origin(hint) is Annotated
 
 
+def is_literal(hint):
+    return get_origin(hint) is Literal
+
+
 NoneType = type(None)
 
 
@@ -106,6 +111,8 @@ def make_literal(val):
         return type(None)
     elif isinstance(val, (bool, int, str)):
         return make_typehint(LIT, val)
+    elif issubclass(val.__class__, enum.Enum):
+        return make_typehint(LIT, val.value)
     elif isinstance(val, (tuple, list)):
         args = tuple(map(make_literal, val))
         return make_typehint(TUP, *args)
@@ -181,14 +188,18 @@ def unoptional(th):
 
 def is_subtype(sub, base):
     # add hack to ignore pydantic Annotated FieldInfo
+    # add hacky fix for literals
     # NOTE: this is only superficial, actually issubtype must be fixed
-    # or it won't work with nested Annotated types
+    # or it won't work with nested Annotated types or complicated stuff
     ann_sub, ann_base = is_annotated(sub), is_annotated(base)
-    if ann_sub != ann_base:
+    lit_sub, lit_base = is_literal(sub), is_literal(base)
+    if ann_sub != ann_base or lit_sub != lit_base:
         return False  # not equal on annotated wrapping status
 
-    if not ann_sub:
-        # proceed as usual
+    if lit_sub:
+        return set(get_args(sub)) - set(get_args(base)) == set()
+
+    if not ann_sub:  # proceed as usual
         return typing_utils.issubtype(sub, base)
     else:
         sub_args, base_args = get_args(sub), get_args(base)
@@ -210,3 +221,6 @@ def is_instance_of(t: Any) -> Callable[[Any], bool]:
 def is_subclass_of(t: Any) -> Callable[[Any], bool]:
     """Return a predicate to check issubclass for a given type."""
     return lambda obj: isinstance(obj, type) and issubclass(obj, t)
+
+
+is_enum = is_subclass_of(enum.Enum)

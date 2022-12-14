@@ -173,6 +173,14 @@ def test_is_subtype():
     assert t.is_subtype(Annotated[int, "x"], Annotated[t.Union[int, str], "y"])
     assert not t.is_subtype(int, Annotated[t.Union[int, str], "y"])
 
+    # Literal (custom hack)
+    assert t.is_subtype(Literal[1], Literal[1, 2])
+    assert t.is_subtype(Literal["b", "a"], Literal["a", "b"])
+    assert t.is_subtype(Literal["a"], Literal["a", "b"])
+    assert t.is_subtype(Literal["b"], Literal["a", "b"])
+    assert not t.is_subtype(Literal["c"], Literal["a", "b"])
+    assert not t.is_subtype(Literal["b", "a"], Literal["a"])
+
 
 def test_predicates():
     d1, d2 = DummyClass(), DummyClass2()
