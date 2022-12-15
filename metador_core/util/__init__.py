@@ -1,3 +1,4 @@
+import re
 import sys
 from functools import lru_cache
 from typing import Iterable
@@ -18,3 +19,8 @@ def drop(n: int, it: Iterable):
 def is_public_name(n: str):
     """Return whether a name is public (does not start with _)."""
     return n[0] != "_"
+
+
+def pythonize_name(name: str):
+    """Sanitize a string to be a valid Python variable name."""
+    return re.sub(r"\W|^(?=\d)", "_", " ".join(name.split()))
