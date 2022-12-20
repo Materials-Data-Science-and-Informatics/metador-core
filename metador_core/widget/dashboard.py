@@ -285,15 +285,19 @@ class Dashboard:
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        w_width, w_height = 640, 480  # max size of a widget tile
-        db_height = int(3.5 * w_height)  # max size of the dashboard
-        db_width = int(2.5 * w_width)
+        w_width, w_height = 600, 400  # max size of a widget tile, arbitrarily set
 
         # Outermost element: The Dashboard is a column of widget groups
-        db = pn.Column(scroll=True, height=db_height, width=db_width)
+        db = pn.FlexBox(
+            flex_direction="row",
+            justify_content="space-evenly",
+            align_content="space-evenly",
+            align_items="center",
+            sizing_mode="scale_both",
+        )
 
         # helper, to fill widget instances into row or flexbox
-        def add_widgets(w_grp, ui_row):
+        def add_widgets(w_grp, ui_grp):
             for node, wmeta in w_grp:
                 w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
                 label = pn.pane.Str(f"{node.name}:")
@@ -305,17 +309,73 @@ class Dashboard:
                     max_width=w_width,
                     max_height=w_height,
                 )
-                ui_row.append(pn.Column(label, w_obj.show()))
-            return ui_row
+                ui_grp.append(
+                    pn.Column(
+                        label, w_obj.show(), scroll=True, sizing_mode="scale_both"
+                    )
+                )
+            return ui_grp
 
         # instantiate each widget group as row (those are non-wrapping)
-        for widget_group in self._groups.values():
+        for idx, widget_group in enumerate(self._groups.values()):
+            grp_label = pn.pane.Str(
+                f"Group {idx+1}",
+                style={
+                    "font-size": "15px",
+                    "font-weight": "bold",
+                    "text-decoration": "underline",
+                },
+            )
             db.append(
-                add_widgets(
-                    widget_group,
-                    pn.Row(width=db_width, height=int(1.2 * w_height), scroll=True),
+                pn.FlexBox(
+                    grp_label,
+                    add_widgets(
+                        widget_group,
+                        pn.FlexBox(
+                            flex_direction="row",
+                            justify_content="space-around",
+                            align_content="space-around",
+                            align_items="center",
+                            sizing_mode="scale_both",
+                        ),
+                    ),
+                    pn.layout.Divider(margin=(100, 0, 20, 0)),
+                    flex_direction="column",
+                    justify_content="space-evenly",
+                    align_content="space-evenly",
+                    align_items="center",
+                    sizing_mode="scale_both",
                 )
             )
+
         # dump remaining ungrouped widgets into flexbox (auto-wrapping)
-        db.append(add_widgets(self._ungrouped, pn.FlexBox()))
+        ungrp_exist = len(self._ungrouped) != 0
+        if ungrp_exist:
+            db.append(
+                pn.FlexBox(
+                    pn.pane.Str(
+                        "Ungrouped resources",
+                        style={
+                            "font-size": "15px",
+                            "font-weight": "bold",
+                            "text-decoration": "underline",
+                        },
+                    ),
+                    add_widgets(
+                        self._ungrouped,
+                        pn.FlexBox(
+                            flex_direction="row",
+                            justify_content="space-evenly",
+                            align_content="space-evenly",
+                            align_items="center",
+                            sizing_mode="scale_both",
+                        ),
+                    ),
+                    flex_direction="column",
+                    justify_content="space-around",
+                    align_content="space-around",
+                    align_items="center",
+                    sizing_mode="scale_both",
+                )
+            )
         return db

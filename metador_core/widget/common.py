@@ -171,6 +171,7 @@ class JSONWidget(FileWidget):
             name=self.title,
             max_width=self._w,
             max_height=self._h,
+            depth=-1,
         )
 
 
@@ -205,7 +206,10 @@ class ImageWidget(FileWidget):
     @overrides
     def show(self) -> Viewable:
         return self.PANEL_WIDGET[self._meta.encodingFormat](
-            self.file_url(), width=self._w, height=self._h
+            self.file_url(),
+            width=self._w,
+            height=self._h,
+            style={"border-width": "2px"},
         )
 
 

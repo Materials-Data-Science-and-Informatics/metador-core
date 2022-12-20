@@ -83,10 +83,6 @@ class Widget(ABC):
             srv = widget_server()
         self._server = srv
 
-        # maximal width and height to use / try to fill
-        self._w = max_width
-        self._h = max_height
-
         # setup correct metadata
         if metadata is not None:
             if not self.supports_meta(metadata):
@@ -106,6 +102,18 @@ class Widget(ABC):
                 self._meta = metadata
             else:
                 raise ValueError("The node does not contain '{schema_name}' metadata!")
+
+        # resizing images to fit within set bounds
+        if self._meta.width is not None and self._meta.height is not None:
+            scale_factor = min(
+                max_height / self._meta.height.value, max_width / self._meta.width.value
+            )
+            max_width = int(self._meta.width.value * scale_factor)
+            max_height = int(self._meta.height.value * scale_factor)
+
+        # maximal width and height to use / try to fill
+        self._w = max_width
+        self._h = max_height
 
         # widget-specific setup hook
         self.setup()
