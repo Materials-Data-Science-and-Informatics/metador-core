@@ -11,7 +11,7 @@ from ..ih5.overlay import H5Type, node_h5type
 from . import utils as M
 from .drivers import MetadorDriver, to_h5filelike
 from .interface import MetadorContainerTOC, MetadorMeta
-from .types import H5DatasetLike, H5FileLike, H5GroupLike, H5NodeLike, OpenMode
+from .protocols import H5DatasetLike, H5FileLike, H5GroupLike, H5NodeLike, OpenMode
 
 RO_FLAG: Final[str] = "read_only"
 LO_FLAG: Final[str] = "local_only"

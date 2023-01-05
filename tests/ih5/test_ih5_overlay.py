@@ -66,6 +66,18 @@ def dummy_ds_factory(tmp_ds_path_factory):
 # --------
 
 
+def test_ds_ndim(tmp_ds_path):
+    """Make sure ndim is passed through correctly."""
+    with IH5Record(tmp_ds_path, "w") as ds:
+        create_entries(ds["/"])
+        ds["mat"] = [[0, 1, 2], [3, 4, 5]]
+
+        assert ds["raw"].ndim == 0
+        assert ds["bool"].ndim == 0
+        assert ds["array"].ndim == 1
+        assert ds["mat"].ndim == 2
+
+
 def test_node_instance_checks(tmp_ds_path):
     # test that instance creation expectedly fails due to sanity checks
     with IH5Record(tmp_ds_path, "w") as ds:

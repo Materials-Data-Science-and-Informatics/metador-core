@@ -419,6 +419,11 @@ class IH5Dataset(IH5Node):
         self._guard_open()
         return IH5AttributeManager(self._record, self._gpath, self._cidx)
 
+    # this one is also needed to work with H5DatasetLike
+    @property
+    def ndim(self):
+        return self._files[self._cidx][self._gpath].ndim  # type: ignore
+
     # for a dataset, instead of paths the numpy data is indexed. at this level
     # the patching mechanism ends, so it's just passing through to h5py
 

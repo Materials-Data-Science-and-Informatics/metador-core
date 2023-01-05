@@ -37,7 +37,7 @@ from .drivers import (
     get_driver_type,
     get_source,
 )
-from .types import H5DatasetLike, H5FileLike, H5GroupLike
+from .protocols import H5DatasetLike, H5FileLike, H5GroupLike
 
 if TYPE_CHECKING:
     from .wrappers import MetadorContainer, MetadorNode

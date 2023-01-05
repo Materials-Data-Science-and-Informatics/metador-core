@@ -25,13 +25,21 @@ class ContainerProxy(Protocol[T]):
     Knowing and iterating over all containers in a system is not always possible.
     """
 
-    def get(self, key: T) -> Optional[MetadorContainer]:
-        ...
-
     def __contains__(self, key: T) -> bool:
-        return self.get(key) is None
+        """Return whether a resource key is known to the proxy."""
+        # return self.get(key) is not None
+
+    def get(self, key: T) -> Optional[MetadorContainer]:
+        """Get a container instance, if resource key is known to the proxy.
+
+        Implement this method in subclasses to support the minimal interface.
+        """
 
     def __getitem__(self, key: T) -> T:
+        """Get a container instance, if resource key is known to the proxy.
+
+        Default implementation is in terms of `get`.
+        """
         if ret := self.get(key):
             return ret
         raise KeyError(key)
@@ -40,7 +48,7 @@ class ContainerProxy(Protocol[T]):
 ContainerArgs = Tuple[Type[MetadorDriver], Any]
 """Pair of (driver class, suitable driver arguments).
 
-Must be such that `MetadorContainer(driver(source))` yields a container.
+Must be such that `MetadorContainer(driver(source))` yields a working container.
 """
 
 
@@ -58,6 +66,9 @@ class SimpleContainerProvider(Generic[T], ContainerProxy[T]):
     def __init__(self):
         self._known = {}
 
+    def __contains__(self, key: T) -> bool:
+        return key in self._known
+
     def get(self, key: T) -> Optional[MetadorContainer]:
         """Get an open container file to access data and metadata, if it exists."""
         if key not in self._known:
@@ -70,8 +81,8 @@ class SimpleContainerProvider(Generic[T], ContainerProxy[T]):
     def __delitem__(self, key: T):
         del self._known[key]
 
-    def __setitem__(self, key: T, value: ContainerArgs):
-        self._known[key] = value
+    def __setitem__(self, key: T, value: MetadorContainer):
+        self._known[key] = (value.metador.driver, value.metador.source)
 
     def keys(self):
         return self._known.keys()
