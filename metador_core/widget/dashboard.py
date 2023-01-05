@@ -285,7 +285,7 @@ class Dashboard:
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        w_width, w_height = 600, 400  # max size of a widget tile, arbitrarily set
+        w_width, w_height = 500, 500  # max size of a widget tile, arbitrarily set
 
         # Outermost element: The Dashboard is a column of widget groups
         db = pn.FlexBox(
@@ -306,12 +306,20 @@ class Dashboard:
                     wmeta.schema_name,
                     wmeta.schema_version,
                     server=self._server,
-                    max_width=w_width,
-                    max_height=w_height,
+                    max_width=700  # reset max size of a widget tiles, arbitrarily set, if its for a pdf or text file
+                    if "pdf" in wmeta.widget_name or "text" in wmeta.widget_name
+                    else w_width,
+                    max_height=700 if "text" in wmeta.widget_name else w_height,
                 )
+
                 ui_grp.append(
                     pn.Column(
-                        label, w_obj.show(), scroll=True, sizing_mode="scale_both"
+                        label,
+                        w_obj.show(),
+                        sizing_mode="scale_both",
+                        scroll=False
+                        if "image" in wmeta.widget_name or "pdf" in wmeta.widget_name
+                        else True,
                     )
                 )
             return ui_grp

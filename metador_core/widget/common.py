@@ -171,6 +171,7 @@ class JSONWidget(FileWidget):
             name=self.title,
             max_width=self._w,
             max_height=self._h,
+            hover_preview=True,
             depth=-1,
         )
 
@@ -209,7 +210,7 @@ class ImageWidget(FileWidget):
             self.file_url(),
             width=self._w,
             height=self._h,
-            style={"border-width": "2px"},
+            alt_text="Sorry. Something went wrong while loading the resource",
         )
 
 
