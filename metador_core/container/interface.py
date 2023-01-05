@@ -824,18 +824,20 @@ class MetadorContainerTOC:
         self._raw = self._container.__wrapped__
 
         ver = self.spec_version if M.METADOR_VERSION_PATH in self._raw else None
-        if ver is None and self._container.mode == "r":
-            msg = "Container is read-only and does not look like a Metador container! "
-            msg += "Please open in writable mode to initialize Metador structures!"
-            raise ValueError(msg)
-        if ver is not None and ver >= [2]:
-            msg = f"Unsupported Metador container version: {ver}"
-            raise ValueError(msg)
+        if ver:
+            if ver >= [2]:
+                msg = f"Unsupported Metador container version: {ver}"
+                raise ValueError(msg)
+        else:
+            if self._container.read_only:
+                msg = "Container is read-only and does not look like a Metador container! "
+                msg += "Please open in writable mode to initialize Metador structures!"
+                raise ValueError(msg)
 
-        # writable + no version = fresh (for metador), initialize it
-        if ver is None:
+            # writable + no version = fresh (for metador), initialize it
             self._raw[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION
             self._raw[M.METADOR_UUID_PATH] = str(uuid1())
+
         # if we're here, we have a prepared container TOC structure
 
         # proceed to initialize TOC

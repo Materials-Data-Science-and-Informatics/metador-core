@@ -560,11 +560,18 @@ class MetadorContainer(MetadorGroup):
     def __init__(
         self,
         name_or_obj: Union[MetadorDriver, Any],
-        mode: OpenMode = "r",
+        mode: Optional[OpenMode] = None,
         *,
         # NOTE: driver takes class instead of enum to also allow subclasses
         driver: Optional[Type[MetadorDriver]] = None,
     ):
+        """Initialize a MetadorContainer instance from file(s) or a supported object.
+
+        The `mode` argument is ignored when simply wrapping an object.
+
+        If a data source such as a path is passed, will instantiate the object first,
+        using the default H5File driver or the passed `driver` keyword argument.
+        """
         # wrap the h5file-like object (will set self.__wrapped__)
         super().__init__(self, to_h5filelike(name_or_obj, mode, driver=driver))
         # initialize metador-specific stuff

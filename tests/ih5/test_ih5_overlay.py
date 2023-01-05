@@ -45,6 +45,10 @@ def fill_dummy_ds(ds: IH5Record, flat: bool):
             next_patch()
 
 
+# NOTE: this might be slowing down this whole module, maybe consider caching
+# or keeping a bunch of pre-generated test-files to be used with the testinput fixture
+
+
 @pytest.fixture
 def dummy_ds_factory(tmp_ds_path_factory):
     """Return record with base container still in writable mode."""
