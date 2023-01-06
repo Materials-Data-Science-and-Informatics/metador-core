@@ -7,16 +7,20 @@ import h5py
 from ..ih5.container import IH5Record
 from .protocols import H5FileLike, OpenMode
 
-MetadorDriver = Union[h5py.File, IH5Record]
-"""Union of all supported classes (for static type check)."""
-
 
 class MetadorDriverEnum(Enum):
-    """Supported classes that work with MetadorContainer."""
+    """Supported classes that work with MetadorContainer.
+
+    Note that they must be unrelated (i.e. not subclasses of each other).
+    """
 
     HDF5 = h5py.File
     IH5 = IH5Record
 
+
+# NOTE: must be duplicated or static checkers can't pick it up
+MetadorDriver = Union[h5py.File, IH5Record]
+"""Union of all supported classes (for static type check)."""
 
 METADOR_DRIVERS = {x: x.value for x in iter(MetadorDriverEnum)}
 """Dict representation of MetadorDriverEnum."""

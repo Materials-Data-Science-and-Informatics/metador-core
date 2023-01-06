@@ -7,7 +7,6 @@ import h5py
 import wrapt
 from typing_extensions import Final
 
-from ..ih5.overlay import H5Type, node_h5type
 from . import utils as M
 from .drivers import MetadorDriver, to_h5filelike
 from .interface import MetadorContainerTOC, MetadorMeta
@@ -190,10 +189,9 @@ class MetadorNode(wrapt.ObjectProxy):
 
     def _wrap_if_node(self, val):
         """Wrap value into a metador node wrapper, if it is a suitable group or dataset."""
-        ntype = node_h5type(val)
-        if ntype == H5Type.group:
+        if isinstance(val, H5GroupLike):
             return MetadorGroup(self._self_container, val, **self._child_node_kwargs())
-        elif ntype == H5Type.dataset:
+        elif isinstance(val, H5DatasetLike):
             return MetadorDataset(
                 self._self_container, val, **self._child_node_kwargs()
             )

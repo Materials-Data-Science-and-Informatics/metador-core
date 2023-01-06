@@ -20,9 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
-from typing_extensions import Literal
-
-from ..ih5.record import OpenMode
+from typing_extensions import Literal, get_args
 
 
 @runtime_checkable
@@ -139,6 +137,11 @@ class H5GroupLike(H5NodeLike, Protocol):  # pragma: no cover
 
     def copy(self, source, dest, **kwargs) -> None:
         ...
+
+
+OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
+"""User open modes that can be passed during initialization."""
+_OPEN_MODES = list(get_args(OpenMode))
 
 
 @runtime_checkable
