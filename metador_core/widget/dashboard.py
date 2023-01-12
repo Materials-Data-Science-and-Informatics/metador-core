@@ -307,7 +307,9 @@ class Dashboard:
                     wmeta.schema_version,
                     server=self._server,
                     max_width=700  # reset max size of a widget tiles, arbitrarily set, if its for a pdf or text file
-                    if "pdf" in wmeta.widget_name or "text" in wmeta.widget_name
+                    if "pdf" in wmeta.widget_name
+                    or "text" in wmeta.widget_name
+                    or "video" in wmeta.widget_name
                     else w_width,
                     max_height=700 if "text" in wmeta.widget_name else w_height,
                 )

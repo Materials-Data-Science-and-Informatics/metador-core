@@ -214,6 +214,9 @@ class ImageWidget(FileWidget):
         )
 
 
+# switching to HTML based audio/video panes because one from Panel not working
+# same problem in both case - url in str format throws an error
+# potential fixes from github not working
 class AudioWidget(FileWidget):
     class Plugin(FileWidget.Plugin):
         name = "core.file.audio"
@@ -223,7 +226,14 @@ class AudioWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        return pn.pane.Audio(self.file_url(), name=self.title)
+        # TODO check how to set type value from file metadata
+        return pn.pane.HTML(
+            f"""
+                <audio controls>
+                    <source src={self.file_url()} type="audio/mp3">
+                </audio>
+            """,
+        )
 
 
 class VideoWidget(FileWidget):
@@ -235,6 +245,12 @@ class VideoWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        return pn.pane.Video(
-            self.file_url(), name=self.title, max_width=self._w, max_height=self._h
+        # switching to HTML based video pane because one from Panel is not working
+        # TODO check how to set type value from file metadata
+        return pn.pane.HTML(
+            f"""
+                <video width={self._w} height={self._h} controls style="object-position: center; object-fit:cover;">
+                <source src={self.file_url()} type="video/mp4">
+                </video>
+            """,
         )
