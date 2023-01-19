@@ -34,13 +34,12 @@ def test_dirmeta(schemas_test):
     assert m.dict().get("@type") == "Dataset"
 
 
-# TODO: Person is broken (should not accept empty name)
-# also test organization
+# TODO: test organization
 BIB_DICT = dict(
     name="My dataset",
     abstract="some description",
     dateCreated="2123-04-05",
-    creator=dict(),
+    creator=dict(name="Jane Doe"),
     author=[],
 )
 

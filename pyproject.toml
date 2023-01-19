@@ -11,7 +11,7 @@ python = "^3.8"
 h5py = "^3.6.0"
 toml = "^0.10.2"
 typing-extensions = "^4.1.1"
-runtype = { git = "https://github.com/erezsh/runtype.git", rev = "ea57401" }
+runtype = { git = "https://github.com/erezsh/runtype.git", rev = "a407462" }
 pydantic = "^1.10.2"
 jsonschema = "^4.4.0"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
@@ -96,3 +96,18 @@ filterwarnings = [
 # .coveragerc replacement
 [tool.coverage.run]
 source = ['metador_core']
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

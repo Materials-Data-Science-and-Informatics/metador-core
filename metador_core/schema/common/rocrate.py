@@ -79,14 +79,18 @@ class Person(schemaorg.Person):
         return values
 
     @root_validator
-    def infer_name(cls, values):
+    def ensure_name(cls, values):
         missing_name = values.get("name") is None
         if missing_name:
             parts = []
             for k in ["givenName", "additionalName", "familyName"]:
                 if v := values.get(k):
                     parts.append(v)
-            values["name"] = " ".join(parts)
+            fullname = " ".join(parts)
+            if not fullname:
+                msg = "A Person must have name or familyName set!"
+                raise ValueError(msg)
+            values["name"] = fullname
         return values
 
 

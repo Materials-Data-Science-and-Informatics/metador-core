@@ -133,6 +133,10 @@ def plugin_args(
 
     if isinstance(plugin, str):
         name = plugin
+    if isinstance(plugin, tuple) and len(plugin) == 2:
+        name = plugin[0]
+        if not vers:
+            vers = plugin[1]
     elif isinstance(plugin, HasNameVersion):
         name = plugin.name
         if not vers:

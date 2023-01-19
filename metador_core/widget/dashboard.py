@@ -256,7 +256,8 @@ class Dashboard:
 
         # figure out what schemas to show and what widgets to use and collect
         ws: List[NodeWidgetPair] = []
-        for node, dbmeta in self._container.metador.query(DashboardMeta).items():
+        for node in self._container.metador.query(DashboardMeta):
+            dbmeta = node.meta.get(DashboardMeta)
             restr_node = node.restrict(read_only=True, local_only=True)
             for wmeta in dbmeta.widgets:
                 ws.append((restr_node, self._resolve_node(node, wmeta)))
