@@ -1,5 +1,5 @@
 """Abstract Metador container provider interface."""
-from typing import Any, Dict, Generic, Optional, Protocol, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from .wrappers import MetadorContainer, MetadorDriver
 
@@ -81,8 +81,11 @@ class SimpleContainerProvider(Generic[T], ContainerProxy[T]):
     def __delitem__(self, key: T):
         del self._known[key]
 
-    def __setitem__(self, key: T, value: MetadorContainer):
-        self._known[key] = (value.metador.driver, value.metador.source)
+    def __setitem__(self, key: T, value: Union[ContainerArgs, MetadorContainer]):
+        if isinstance(value, MetadorContainer):
+            self._known[key] = (value.metador.driver, value.metador.source)
+        else:
+            self._known[key] = value
 
     def keys(self):
         return self._known.keys()
