@@ -39,6 +39,9 @@ class Thing(LDSchema):
     name: Optional[Text]
     """Name, title or caption of the entity."""
 
+    alternateName: Optional[List[Text]]
+    """Alternative names of the entity."""
+
     identifier: Optional[Union[URL, Text]]
     """Arbitrary identifier of the entity.
 
