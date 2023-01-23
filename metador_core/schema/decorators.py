@@ -78,7 +78,8 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
 
             if name in mcls.__fields__:
                 if not override:
-                    msg = f"{mcls} already has a field '{name}'! (override={override})"
+                    msg = f"{mcls.__name__} already has a field '{name}'!"
+                    msg += f" (override={override})"
                     raise ValueError(msg)
                 else:
                     overridden.add(name)
