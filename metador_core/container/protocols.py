@@ -20,13 +20,11 @@ from typing import (
     runtime_checkable,
 )
 
-from typing_extensions import Literal
-
-from ..ih5.record import OpenMode
+from typing_extensions import Literal, get_args
 
 
 @runtime_checkable
-class H5NodeLike(Protocol):
+class H5NodeLike(Protocol):  # pragma: no cover
     """HDF5 Files, Groups and Datasets are all Nodes."""
 
     @property
@@ -47,7 +45,7 @@ class H5NodeLike(Protocol):
 
 
 @runtime_checkable
-class H5DatasetLike(H5NodeLike, Protocol):
+class H5DatasetLike(H5NodeLike, Protocol):  # pragma: no cover
     """Datasets provide numpy-style indexing into data.
 
     Metador containers use it for storing bytes,
@@ -72,7 +70,7 @@ VisitCallback = Callable[[str], Optional[CallbackResult]]
 
 
 @runtime_checkable
-class H5GroupLike(H5NodeLike, Protocol):
+class H5GroupLike(H5NodeLike, Protocol):  # pragma: no cover
 
     # MutableMapping-like
 
@@ -141,8 +139,13 @@ class H5GroupLike(H5NodeLike, Protocol):
         ...
 
 
+OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
+"""User open modes that can be passed during initialization."""
+_OPEN_MODES = list(get_args(OpenMode))
+
+
 @runtime_checkable
-class H5FileLike(H5GroupLike, Protocol):
+class H5FileLike(H5GroupLike, Protocol):  # pragma: no cover
     """A HDF5 File acts like the root group and has some extra features."""
 
     @property

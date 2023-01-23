@@ -15,6 +15,17 @@ def plugingroups_test():
     plugingroups.__reset__()
 
 
+@pytest.fixture(scope="module")
+def schemas():
+    """Access available schemas in a test without needing to import.
+
+    Could be more robust in case the plugin system breaks.
+    """
+    from metador_core.plugins import schemas
+
+    return schemas
+
+
 # ----
 
 

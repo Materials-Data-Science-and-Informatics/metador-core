@@ -19,12 +19,16 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
 )
 
 import h5py
 import numpy as np
 
+from ..container.protocols import H5DatasetLike
+
 if TYPE_CHECKING:
+    from ..container.protocols import H5GroupLike
     from .record import IH5Record
 else:
     IH5Record = Any
@@ -197,7 +201,7 @@ class IH5InnerNode(IH5Node):
 
     def __init__(
         self,
-        record,  # IH5Record
+        record: IH5Record,
         gpath: str,
         creation_idx: int,
         attrs: bool = False,
@@ -407,7 +411,7 @@ class IH5Dataset(IH5Node):
         return self._gpath
 
     @property
-    def file(self):  # -> IH5Record
+    def file(self) -> IH5Record:
         return self._record
 
     @property
@@ -415,9 +419,14 @@ class IH5Dataset(IH5Node):
         return self._record[self._parent_path()]
 
     @property
-    def attrs(self):
+    def attrs(self) -> IH5AttributeManager:
         self._guard_open()
         return IH5AttributeManager(self._record, self._gpath, self._cidx)
+
+    # this one is also needed to work with H5DatasetLike
+    @property
+    def ndim(self) -> int:
+        return self._files[self._cidx][self._gpath].ndim  # type: ignore
 
     # for a dataset, instead of paths the numpy data is indexed. at this level
     # the patching mechanism ends, so it's just passing through to h5py
@@ -625,9 +634,12 @@ class IH5Group(IH5InnerNode):
             dst_name = segs[-1]
         else:
             # given dest is a group node, use inferred/passed name
-            dst_group = dest
+
+            dst_group = dest if dest.name != "/" else dest["/"]  # *
+            # * ugly workaround for treating files as groups in the copy method
+
             dst_name = name
-        return h5_copy_from_to(src_node, dst_group, dst_name, **kwargs)
+        return h5_copy_from_to(src_node, cast(Any, dst_group), dst_name, **kwargs)
 
     def move(self, source: str, dest: str):
         self.copy(source, dest)
@@ -677,24 +689,12 @@ class H5Type(str, Enum):
         return f"{type(self).__name__}.{self.value}"
 
 
-_h5types = {
-    # normal h5py files
-    h5py.Group: H5Type.group,
-    h5py.Dataset: H5Type.dataset,
-    h5py.AttributeManager: H5Type.attribute_set,
-    # IH5 datasets
-    IH5Group: H5Type.group,
-    IH5Dataset: H5Type.dataset,
-    IH5AttributeManager: H5Type.attribute_set,
-}
-
-
-def node_h5type(node):
-    """Return whether node is Group, Dataset or AttributeManager (or None)."""
-    return _h5types.get(type(node))
-
-
-def h5_copy_from_to(source_node, target_group, target_path: str, **kwargs):
+def h5_copy_from_to(
+    source_node: Union[H5DatasetLike, H5GroupLike],
+    target_group: H5GroupLike,
+    target_path: str,
+    **kwargs,
+):
     """Copy a dataset or group from one container to a fresh location.
 
     This works also between HDF5 and IH5.
@@ -711,12 +711,6 @@ def h5_copy_from_to(source_node, target_group, target_path: str, **kwargs):
     if kwargs:
         raise ValueError(f"Unknown keyword arguments: {kwargs}")
 
-    src_type = node_h5type(source_node)
-    if src_type is None or src_type == H5Type.attribute_set:
-        raise ValueError("Can only copy from a group or dataset!")
-    if node_h5type(target_group) != H5Type.group:
-        raise ValueError("Copy target must be a group!")
-
     if not target_path or target_path[0] == "/":
         raise ValueError("Target path must be non-empty and relative!")
     if target_path in target_group:
@@ -728,7 +722,7 @@ def h5_copy_from_to(source_node, target_group, target_path: str, **kwargs):
             for k, v in src_node.attrs.items():
                 trg_atrs[k] = v
 
-    if src_type == H5Type.dataset:
+    if isinstance(source_node, H5DatasetLike):
         node = target_group.create_dataset(target_path, data=source_node[()])
         copy_attrs(source_node, node)  # copy dataset attributes
     else:
@@ -737,11 +731,10 @@ def h5_copy_from_to(source_node, target_group, target_path: str, **kwargs):
 
         def copy_children(name, src_child):
             # name is relative to source root -> can use it
-            ntype = node_h5type(src_child)
-            if ntype == H5Type.group:
-                trg_root.create_group(name)
-            elif ntype == H5Type.dataset:
+            if isinstance(src_child, H5DatasetLike):
                 trg_root[name] = src_child[()]
+            else:  # must be grouplike
+                trg_root.create_group(name)
             copy_attrs(src_child, trg_root[name])
 
         if shallow:  # only immediate children

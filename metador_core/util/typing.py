@@ -2,7 +2,9 @@ from collections import ChainMap
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Set, Tuple, Type, Union
 
 import typing_extensions as te
-import typing_utils
+
+# import typing_utils  # for issubtype
+from runtype import validation as rv  # for is_subtype
 from typing_extensions import Annotated, ClassVar, Literal, TypedDict
 
 get_args = te.get_args  # re-export get_args
@@ -189,7 +191,8 @@ def is_subtype(sub, base):
 
     if not ann_sub:
         # proceed as usual
-        return typing_utils.issubtype(sub, base)
+        return rv.is_subtype(sub, base)
+        # return typing_utils.issubtype(sub, base)
     else:
         sub_args, base_args = get_args(sub), get_args(base)
         # NOTE: FieldInfo of pydantic is not comparable :( so we ignore it
@@ -210,3 +213,4 @@ def is_instance_of(t: Any) -> Callable[[Any], bool]:
 def is_subclass_of(t: Any) -> Callable[[Any], bool]:
     """Return a predicate to check issubclass for a given type."""
     return lambda obj: isinstance(obj, type) and issubclass(obj, t)
+    # return lambda obj: rv.issubclass(obj, t)

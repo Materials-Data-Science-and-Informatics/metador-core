@@ -146,6 +146,15 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         self._partials: Dict[MetadataSchema, PartialModel] = {}
         self._forwardrefs: Dict[str, MetadataSchema] = {}
 
+    def plugin_deps(self, plugin) -> Set[AnyPluginRef]:
+        self._parent_schema[plugin] = infer_parent(plugin)
+        if pcls := self._parent_schema[plugin]:
+            # make sure a parent schema plugin is initialized before the child
+            info = pcls.Plugin
+            return {self.PluginRef(name=info.name, version=info.version)}
+        else:
+            return set()
+
     def check_plugin(self, name: str, plugin: Type[MetadataSchema]):
         check_types(plugin)  # ensure that (overrides of) fields are valid
 
@@ -164,9 +173,6 @@ class PGSchema(pg.PluginGroup[MetadataSchema]):
         return ret
 
     def init_plugin(self, plugin):
-        # infer the parent schema plugin, if any
-        self._parent_schema[plugin] = infer_parent(plugin)
-
         # pre-compute parent schema path
         ref = plugin.Plugin.ref()
         self._parents[ref] = self._compute_parent_path(plugin)

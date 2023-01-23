@@ -1,6 +1,6 @@
 import pytest
 
-from metador_core.util import drop
+from metador_core.util import drop, pythonize_name
 from metador_core.util.pytest import parameters, random_hex
 
 
@@ -28,3 +28,12 @@ def test_parameters():
         ("z", "f"),
     ]
     assert parameters({"x": {"y": ["a", "b", {"c": ["d", "e"]}]}, "z": "f"}) == exp
+
+
+def test_pythonize_name():
+    assert (
+        pythonize_name("/Something, _-something + else")
+        == "_Something____something___else"
+    )
+    assert pythonize_name("1no leading numbers") == "_1no_leading_numbers"
+    assert pythonize_name("HE11o!") == "HE11o_"

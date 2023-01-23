@@ -17,13 +17,14 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID, uuid1
 
 import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final, Literal
 
+from ..container.protocols import _OPEN_MODES, OpenMode
 from ..schema.types import QualHashsumStr
 from ..util.hashsums import qualified_hashsum
 from .overlay import IH5Group, h5_copy_from_to
@@ -150,12 +151,6 @@ class IH5UserBlock(BaseModel):
             f.write(b"\x00")  # mark end of the data
 
 
-OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
-"""User open modes that can be passed during initialization."""
-
-_OPEN_MODES = list(get_args(OpenMode))
-
-
 class IH5Record(IH5Group):
     """
     Class representing a record, which consists of a collection of immutable files.
@@ -198,7 +193,9 @@ class IH5Record(IH5Group):
         return ret
 
     def __eq__(self, o) -> bool:
-        return self.__files__ == o.__files__
+        if not isinstance(o, IH5Group):
+            return False
+        return self._record._files == o._record._files
 
     @property
     def _has_writable(self):
@@ -453,7 +450,9 @@ class IH5Record(IH5Group):
                 ret.append(m.group(0))
         return list(map(lambda name: dir / name, set(ret)))
 
-    def __init__(self, record: Union[str, Path], mode: OpenMode = "r", **kwargs):
+    def __init__(
+        self, record: Union[str, Path, List[Path]], mode: OpenMode = "r", **kwargs
+    ):
         """Open or create a record.
 
         This method uses `find_files` to infer the correct set of files syntactically.
@@ -467,24 +466,32 @@ class IH5Record(IH5Group):
         """
         super().__init__(self)
 
-        record = Path(record)
+        if isinstance(record, list):
+            if mode[0] == "w" or mode == "x":
+                raise ValueError("Pass a prefix path for creating or overwriting!")
+            paths = record
+        else:
+            paths = None
+            path: Path = Path(record)
+
         if mode not in _OPEN_MODES:
             raise ValueError(f"Unknown file open mode: {mode}")
 
         if mode[0] == "w" or mode == "x":
             # create new or overwrite to get new
-            ret = self._create(record, truncate=(mode == "w"))
+            ret = self._create(path, truncate=(mode == "w"))
             self.__dict__.update(ret.__dict__)
             return
 
         if mode == "a" or mode[0] == "r":
-            paths = self.find_files(record)
+            if not paths:  # user passed a path prefix -> find files
+                paths = self.find_files(path)  # type: ignore
 
-            if not paths:
+            if not paths:  # no files were found
                 if mode != "a":  # r/r+ need existing containers
-                    raise FileNotFoundError(f"No files found for record: {record}")
-                else:  # a means create new if not existing (will be writable)
-                    ret = self._create(record, truncate=False)
+                    raise FileNotFoundError(f"No files found for record: {path}")
+                else:  # 'a' means create new if not existing (will be writable)
+                    ret = self._create(path, truncate=False)
                     self.__dict__.update(ret.__dict__)
                     return
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -37,12 +38,36 @@ from .drivers import (
     get_driver_type,
     get_source,
 )
-from .types import H5DatasetLike, H5FileLike, H5GroupLike
+from .protocols import H5DatasetLike, H5FileLike, H5GroupLike
 
 if TYPE_CHECKING:
     from .wrappers import MetadorContainer, MetadorNode
 
 S = TypeVar("S", bound=MetadataSchema)
+
+
+class NodeAcl(Enum):
+    """Metador node soft access control flags.
+
+    Soft means - they can be bypassed, it is about trying to prevent errors.
+
+    Group nodes inherit their ACL flags to child nodes.
+    """
+
+    # NOTE: maybe refactor this to IntFlag? Then e.g. restrict() interface can be like:
+    # node.restrict(acl=NodeAcl.read_only | NodeAcl.local_only)
+
+    read_only = auto()
+    """Forbid calling methods mutating contents of (meta)data."""
+
+    local_only = auto()
+    """Forbid access to parents beyond the initial local node."""
+
+    skel_only = auto()
+    """Forbid reading datasets and metadata, only existence can be checked."""
+
+
+NodeAclFlags: TypeAlias = Dict[NodeAcl, bool]
 
 
 @dataclass
@@ -62,12 +87,17 @@ class StoredMetadata:
     """Node with serialized metadata object."""
 
     def to_path(self):
+        """Return path of metadata object.
+
+        (E.g. to return canonical path for copying TOC link nodes)
+        """
         prefix = self.node.parent.name
         ep_name = to_ep_name(self.schema.name, self.schema.version)
         return f"{prefix}/{ep_name}={self.uuid}"
 
     @staticmethod
     def from_node(obj: H5DatasetLike) -> StoredMetadata:
+        """Instantiate info about a stored metadata node."""
         path = obj.name
         segs = path.lstrip("/").split("/")
         ep_name, uuid_str = segs.pop().split("=")
@@ -221,11 +251,11 @@ class MetadorMeta:
         return self._objs.keys()
 
     def values(self) -> ValuesView[StoredMetadata]:
-        self._node._guard_skel_only()
+        self._node._guard_acl(NodeAcl.skel_only)
         return self._objs.values()
 
     def items(self) -> ItemsView[str, StoredMetadata]:
-        self._node._guard_skel_only()
+        self._node._guard_acl(NodeAcl.skel_only)
         return self._objs.items()
 
     # ----
@@ -248,7 +278,9 @@ class MetadorMeta:
 
     def query(
         self,
-        schema: Union[str, Type[MetadataSchema]] = "",
+        schema: Union[
+            str, Tuple[str, Optional[SemVerTuple]], PluginRef, Type[MetadataSchema]
+        ] = "",
         version: Optional[SemVerTuple] = None,
     ) -> Iterator[PluginRef]:
         """Return schema names for which objects at this node are compatible with passed schema.
@@ -256,10 +288,10 @@ class MetadorMeta:
         Will also consider compatible child schema instances.
 
         Returned iterator will yield passed schema first, if an object is available.
-        Otherwise, the order is not specified.
+        Apart from this, the order is not specified.
         """
         schema_name, schema_ver = plugin_args(schema, version)
-        # no schema selected -> anything goes
+        # no schema selected -> list everything
         if not schema_name:
             for obj in self.values():
                 yield obj.schema
@@ -269,19 +301,29 @@ class MetadorMeta:
         if obj := self._get_raw(schema_name, schema_ver):
             yield obj.schema
 
-        # next, try schemas compatible with any child schemas
-        compat = self._mc.metador.schemas.children(schema_name, schema_ver)
+        # next, try compatible child schemas of compatible versions of requested schema
+        compat = set().union(
+            *(
+                self._mc.metador.schemas.children(ref)
+                for ref in self._mc.metador.schemas.versions(schema_name, schema_ver)
+            )
+        )
         avail = {self._get_raw(s).schema for s in self.keys()}
         for s_ref in avail.intersection(compat):
             yield s_ref
 
-    def __contains__(self, schema: Union[str, MetadataSchema]) -> bool:
+    def __contains__(
+        self,
+        schema: Union[
+            str, Tuple[str, Optional[SemVerTuple]], PluginRef, Type[MetadataSchema]
+        ],
+    ) -> bool:
         """Check whether a compatible metadata object for given schema exists.
 
         Will also consider compatible child schema instances.
         """
-        if schema == "":
-            return False
+        if schema == "" or isinstance(schema, tuple) and schema[0] == "":
+            return False  # empty query lists everything, here the logic is inverted!
         return next(self.query(schema), None) is not None
 
     @overload
@@ -317,13 +359,17 @@ class MetadorMeta:
 
         Will also consider compatible child schema instances.
         """
-        self._node._guard_skel_only()
+        self._node._guard_acl(NodeAcl.skel_only)
+
+        # normalize arguments
         schema_name, schema_ver = plugin_args(schema, version)
 
+        # get a compatible schema instance that is available at this node
         compat_schema = next(self.query(schema_name, schema_ver), None)
         if not compat_schema:
-            return None
+            return None  # not found
 
+        # get class of schema and parse object
         schema_class = self._require_schema(schema_name, schema_ver)
         if obj := self._get_raw(compat_schema.name, compat_schema.version):
             return cast(S, self._parse_obj(schema_class, obj.node[()]))
@@ -342,7 +388,7 @@ class MetadorMeta:
 
         Raises ValidationError if passed object is not valid for the schema.
         """
-        self._node._guard_read_only()
+        self._node._guard_acl(NodeAcl.read_only)
         schema_name, schema_ver = plugin_args(schema)
 
         # if self.get(schema_name, schema_ver):  # <- also subclass schemas
@@ -364,7 +410,7 @@ class MetadorMeta:
 
         Raises KeyError if no metadata object for that schema exists.
         """
-        self._node._guard_read_only()
+        self._node._guard_acl(NodeAcl.read_only)
         schema_name, _ = plugin_args(schema)
 
         if self._get_raw(schema_name) is None:
@@ -496,7 +542,12 @@ class TOCLinks:
         def collect_missing(_, node):
             if not M.is_internal_path(node.name, M.METADOR_META_PREF):
                 return  # not a metador metadata path
+            if M.is_meta_base_path(node.name):
+                # top dir, not a "link dataset",
+                # e.g. /.../foo/metador_meta_ or /.../metador_meta_foo
+                return
 
+            # now we assume we have a path to a metadata link object in the group
             obj = StoredMetadata.from_node(node)
             known = obj.uuid in self._toc_path
             # check UUID collision: i.e., used in TOC, but points elsewhere
@@ -522,9 +573,13 @@ class TOCLinks:
                 self.update(obj.uuid, node.name)
             else:
                 # assign new UUID (e.g. for copy)
+                # (copied metadata node refers to some other uuid in the name)
                 obj.uuid = self.fresh_uuid()
                 new_path = obj.to_path()
+                # rename the metadata node to point to the new UUID
                 self._raw.move(node.name, new_path)
+                obj.node = cast(H5DatasetLike, self._raw[new_path])
+                # register the object with the new UUID in the TOC
                 self.register(obj)
 
 
@@ -635,7 +690,7 @@ class TOCSchemas:
         """TOC package metadata manager object."""
 
         self._schemas: Set[PluginRef] = set()
-        """Stored JSON Schemas of used schemas."""
+        """Stored JSON Schemas of actually used schemas."""
 
         self._parents: Dict[PluginRef, List[PluginRef]] = {}
         """Parents of a used json schema (i.e. other partially compatible schemas)."""
@@ -686,6 +741,23 @@ class TOCSchemas:
         s_ref = schemas.PluginRef(name=name, version=vers)
         return self._parents[s_ref]
 
+    def versions(
+        self, p_name: str, version: Optional[SemVerTuple] = None
+    ) -> List[PluginRef]:
+        """Like PGSchema.versions, but with respect to container deps."""
+        # NOTE: using _children instead of _schemas because some are only listed
+        # due to their appearance in the parent_path of some actually used schema
+        # but we need them here for "parent compatibility" to work right.
+        refs = list(filter(lambda s: s.name == p_name, self._children))
+
+        if version is None:
+            return refs
+        # filter plugins for compatible version
+        requested = schemas.PluginRef(name=p_name, version=version)
+        # NOTE: here "supports" arguments are reversed (compared to "plugin versions")!
+        # because its about instances (that must be "below" the requested schema version)
+        return [ref for ref in refs if requested.supports(ref)]
+
     def children(self, schema, version: Optional[SemVerTuple] = None) -> Set[PluginRef]:
         """Like PGSchema.children, but with respect to container deps."""
         name, vers = plugin_args(schema, version)
@@ -694,7 +766,10 @@ class TOCSchemas:
         else:
             # if no version is given, collect all possibilities
             s_refs = [ref for ref in self._children.keys() if ref.name == name]
-        return set.union(set(), *map(self._children.__getitem__, s_refs))
+        # return all that can be actually retrieved
+        return set().union(
+            *filter(lambda x: x is not None, map(self._children.get, s_refs))
+        )
 
     # ----
 
@@ -710,7 +785,7 @@ class TOCSchemas:
     def __getitem__(self, schema_ref: PluginRef):
         node_path = self._jsonschema_path_for(schema_ref)
         assert node_path in self._raw
-        return self._load_json(self._raw.require_dataset(node_path))
+        return self._load_json(cast(H5DatasetLike, self._raw[node_path]))
 
     def get(self, schema_ref: PluginRef):
         try:
@@ -824,18 +899,20 @@ class MetadorContainerTOC:
         self._raw = self._container.__wrapped__
 
         ver = self.spec_version if M.METADOR_VERSION_PATH in self._raw else None
-        if ver is None and self._container.mode == "r":
-            msg = "Container is read-only and does not look like a Metador container! "
-            msg += "Please open in writable mode to initialize Metador structures!"
-            raise ValueError(msg)
-        if ver is not None and ver >= [2]:
-            msg = f"Unsupported Metador container version: {ver}"
-            raise ValueError(msg)
+        if ver:
+            if ver >= [2]:
+                msg = f"Unsupported Metador container version: {ver}"
+                raise ValueError(msg)
+        else:
+            if self._container.acl[NodeAcl.read_only]:
+                msg = "Container is read-only and does not look like a Metador container! "
+                msg += "Please open in writable mode to initialize Metador structures!"
+                raise ValueError(msg)
 
-        # writable + no version = fresh (for metador), initialize it
-        if ver is None:
+            # writable + no version = fresh (for metador), initialize it
             self._raw[M.METADOR_VERSION_PATH] = M.METADOR_SPEC_VERSION
             self._raw[M.METADOR_UUID_PATH] = str(uuid1())
+
         # if we're here, we have a prepared container TOC structure
 
         # proceed to initialize TOC
@@ -882,30 +959,38 @@ class MetadorContainerTOC:
         """Information about all schemas used for metadata objects in this container."""
         return self._schemas
 
-    @overload
     def query(
-        self, schema: str, version: Optional[SemVerTuple] = None
-    ) -> Dict[MetadorNode, MetadataSchema]:
-        ...
-
-    @overload
-    def query(
-        self, schema: Type[S], version: Optional[SemVerTuple] = None
-    ) -> Dict[MetadorNode, S]:
-        ...
-
-    def query(
-        self, schema: Union[str, Type[S]] = "", version: Optional[SemVerTuple] = None
-    ) -> Dict[MetadorNode, Union[MetadataSchema, S]]:
-        """Return nodes that contain a metadata object valid for the given schema."""
+        self,
+        schema: Union[str, Type[S]],
+        version: Optional[SemVerTuple] = None,
+        *,
+        node: Optional[MetadorNode] = None,
+    ) -> Iterator[MetadorNode]:
+        """Return nodes that contain a metadata object compatible with the given schema."""
         schema_name, schema_ver = plugin_args(schema, version)
-        ret: Dict[MetadorNode, Union[MetadataSchema, S]] = {}
-        if obj := self._container.meta.get(schema_name, schema_ver):
-            ret[self._container["/"]] = obj
+        if not schema_name:  # could be e.g. empty string
+            msg = "A schema name, plugin reference or class must be provided!"
+            raise ValueError(msg)
+
+        start_node: MetadorNode = node or self._container["/"]
+
+        # check start node metadata explicitly
+        if (schema_name, schema_ver) in start_node.meta:
+            yield start_node
+
+        if not isinstance(start_node, H5GroupLike):
+            return  # the node is not group-like, cannot be traversed down
+
+        # collect nodes below start node recursively
+        # NOTE: yielding from the collect_nodes does not work :'(
+        # so we have to actually materialize the list >.<
+        # but we expose only the generator interface anyway (better design)
+        # (maybe consider replacing visititems with a custom traversal here)
+        ret: List[MetadorNode] = []
 
         def collect_nodes(_, node: MetadorNode):
-            if obj := node.meta.get(schema_name, schema_ver):
-                ret[node] = obj
+            if (schema_name, schema_ver) in node.meta:
+                ret.append(node)
 
-        self._container.visititems(collect_nodes)
-        return ret
+        start_node.visititems(collect_nodes)
+        yield from iter(ret)

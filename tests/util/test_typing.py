@@ -178,7 +178,12 @@ def test_predicates():
     d1, d2 = DummyClass(), DummyClass2()
     lst = [DummyClass, DummyClass2, d1, d2]
 
+    class DummyClass3:
+        ...
+
+    lst2 = [DummyClass, DummyClass2, DummyClass3]
+
     # test predicates in a filter
     assert list(filter(t.is_subclass_of(DummyClass2), lst)) == [DummyClass2]
     assert list(filter(t.is_instance_of(DummyClass2), lst)) == [d2]
-    assert list(filter(t.is_subtype_of(DummyClass), lst)) == [DummyClass, DummyClass2]
+    assert list(filter(t.is_subtype_of(DummyClass), lst2)) == [DummyClass, DummyClass2]
