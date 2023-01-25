@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import panel as pn
 from panel.viewable import Viewable
-from phantom.interval import Open
+from phantom.interval import Inclusive
 
 from ..container import MetadorContainer, MetadorNode
 from ..plugins import schemas, widgets
@@ -15,12 +15,12 @@ from ..schema.plugins import PluginRef
 from ..schema.types import NonEmptyStr, SemVerTuple
 
 
-class DashboardPriority(int, Open, low=1, high=10):
-    ...
+class DashboardPriority(int, Inclusive, low=1, high=10):
+    """Dashboard priority of a widget."""
 
 
-class DashboardGroup(int, Open, low=1):
-    ...
+class DashboardGroup(int, Inclusive, low=1):
+    """Dashboard group of a widget."""
 
 
 class DashboardWidgetMeta(MetadataSchema):
