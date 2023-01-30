@@ -77,7 +77,7 @@ class Harvester(ABC, metaclass=HarvesterMeta):
     metadata according to some schema plugin (the returned schema
     must be defined as the `Plugin.returns` attribute)
 
-    Override the inner `Args` class with a subclass to add arguments.
+    Override the inner `Harvester.Args` class with a subclass to add arguments.
     This works exactly like schema definition and is simply
     another pydantic model, so you can use both field and root
     validators to check whether the arguments are making sense.
@@ -91,13 +91,10 @@ class Harvester(ABC, metaclass=HarvesterMeta):
 
     Plugin: ClassVar[HarvesterPlugin]
 
-    if TYPE_CHECKING:
-        Args: TypeAlias = HarvesterArgs
-    else:
-        Args = HarvesterArgs
-        """Arguments to be passed to the harvester."""
+    Args: TypeAlias = HarvesterArgs
+    """Arguments to be passed to the harvester."""
 
-    args: Union[Args, HarvesterArgsPartial]
+    args: Union[Harvester.Args, HarvesterArgsPartial]
 
     @property
     def schema(self):

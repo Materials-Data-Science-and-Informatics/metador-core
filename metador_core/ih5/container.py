@@ -5,3 +5,5 @@
 from .manifest import IH5Manifest, IH5MFRecord  # noqa: F401
 from .overlay import IH5AttributeManager, IH5Dataset, IH5Group  # noqa: F401
 from .record import IH5Record, IH5UserBlock  # noqa: F401
+
+__all__ = ["IH5Dataset", "IH5Group", "IH5AttributeManager", "IH5Record"]

@@ -81,16 +81,20 @@ $ git clone git@github.com:Materials-Data-Science-and-Informatics/metador-core.g
 $ cd metador-core
 $ poetry install
 ```
+Common tasks are setup using [poethepoet](https://github.com/nat-n/poethepoet), that can
+be installed as a poetry plugin running `poetry self add 'poethepoet[poetry_plugin]'`.
 
-Run `pre-commit install` (see [https://pre-commit.com](https://pre-commit.com))
+Run `poetry poe init-dev` (see [https://pre-commit.com](https://pre-commit.com))
 after cloning. This enables pre-commit to enforce the required linting hooks.
 
-Run `pytest` (see [https://docs.pytest.org](https://docs.pytest.org)) before
-merging your changes to make sure you did not break anything. To check
-coverage, use `pytest --cov`.
+Run `poetry poe lint` to run the pre-commit checks and linters manually.
+
+Run `poetry poe test` (see [https://docs.pytest.org](https://docs.pytest.org)) before
+merging your changes to make sure you did not break anything, add `--cov` as a flag to
+also compute test coverage as a flag to also see a test coverage report.
 
 To generate local documentation (as the one linked above), run
-`pdoc -o docs metador_core` (see [https://pdoc.dev](https://pdoc.dev)).
+`poetry poe docs` (see [https://pdoc.dev](https://pdoc.dev)).
 
 ## Acknowledgements
 
