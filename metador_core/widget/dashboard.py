@@ -290,7 +290,7 @@ class Dashboard:
 
         # Outermost element: The Dashboard is a column of widget groups
         db = pn.FlexBox(
-            flex_direction="row",
+            flex_direction="column",
             justify_content="space-evenly",
             align_content="space-evenly",
             align_items="center",
