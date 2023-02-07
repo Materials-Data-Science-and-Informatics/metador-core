@@ -2,7 +2,7 @@
 
 ![Project status](https://img.shields.io/badge/project%20status-alpha-%23ff8000)
 [
-![Test](https://img.shields.io/github/workflow/status/Materials-Data-Science-and-Informatics/metador-core/test?label=test)
+![Test](https://img.shields.io/github/actions/workflow/status/Materials-Data-Science-and-Informatics/metador-core/ci.yml?branch=dev&label=test)
 ](https://github.com/Materials-Data-Science-and-Informatics/metador-core/actions?query=workflow:test)
 [
 ![Coverage](https://img.shields.io/codecov/c/gh/Materials-Data-Science-and-Informatics/metador-core?token=4JU2SZFZDZ)
