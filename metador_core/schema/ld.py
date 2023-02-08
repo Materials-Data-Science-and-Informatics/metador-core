@@ -85,8 +85,15 @@ class LDIdRef(LDSchema):
 
 
 T = TypeVar("T", bound=LDSchema)
+
 LDOrRef: TypeAlias = Union[LDIdRef, T]
 """LDOrRef[T] is either an object of LD Schema T, or a reference to an object.
+
+An LD reference is just an object with an @id.
+"""
+
+LDRef: TypeAlias = LDIdRef  # Annotated[LDIdRef, T]  # <- does not work :(
+"""LDRef[T] is a reference to an object of type T.
 
 An LD reference is just an object with an @id.
 """

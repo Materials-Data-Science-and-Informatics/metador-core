@@ -1,7 +1,9 @@
+import enum
 from typing import Optional
 
 import pytest
 from pydantic import BaseModel, ValidationError
+from typing_extensions import Literal
 
 from metador_core.plugin.util import register_in_group
 from metador_core.schema import MetadataSchema
@@ -81,6 +83,54 @@ def test_add_const_fields(dummy_schema):
 
         class ChildFail(dummy_schema):
             foo: int
+
+
+def test_add_const_fields_enum():
+    SomeEnum = enum.Enum("SomeEnum", dict(a="A", b="B"))  # type: ignore
+
+    class A(MetadataSchema):
+        x: SomeEnum
+
+    # works without override (restriction)
+    @add_const_fields({"x": SomeEnum.a})
+    class B(A):
+        ...
+
+    # invalid without override
+    with pytest.raises(TypeError):
+        # not enum value
+        @add_const_fields({"x": "invalid"})
+        class C(A):
+            ...
+
+    with pytest.raises(ValueError):
+        # already defined as constant field
+        @add_const_fields({"x": SomeEnum.b})
+        class D(B):
+            ...
+
+
+def test_add_const_fields_literal():
+    class A(MetadataSchema):
+        x: Literal["foo", 42]
+
+    # works without override (restriction)
+    @add_const_fields({"x": "foo"})
+    class B(A):
+        ...
+
+    # invalid without override
+    with pytest.raises(TypeError):
+        # not type value
+        @add_const_fields({"x": "invalid"})
+        class C(A):
+            ...
+
+    with pytest.raises(ValueError):
+        # already defined as constant field
+        @add_const_fields({"x": 42})
+        class D(B):
+            ...
 
 
 def test_make_mandatory(dummy_schema):

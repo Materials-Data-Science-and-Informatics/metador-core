@@ -1,10 +1,10 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic.fields import ModelField
 
 from ..util import is_public_name
 from ..util.models import field_parent_type
-from ..util.typing import get_annotations, unoptional
+from ..util.typing import get_annotations, is_enum, is_literal, is_subtype, unoptional
 from .core import MetadataSchema
 
 
@@ -76,12 +76,34 @@ def add_const_fields(consts: Dict[str, Any], *, override: bool = False):
         overridden = set()
         for name, value in consts.items():
 
-            if name in mcls.__fields__:
-                if not override:
+            if field_def := mcls.__fields__.get(name):  # overriding a field
+                # we allow to silently override of enum/literal types with suitable values
+                # to support a schema design pattern of marked subclasses
+                # but check that it is actually used correctly.
+                enum_specialization = is_enum(field_def.type_)
+                literal_specialization = is_literal(field_def.type_)
+
+                valid_specialization = False
+                if enum_specialization:
+                    valid_specialization = isinstance(value, field_def.type_)
+                elif literal_specialization:
+                    lit_const = Literal[value]  # type: ignore
+                    valid_specialization = is_subtype(lit_const, field_def.type_)
+
+                if (
+                    enum_specialization or literal_specialization
+                ) and not valid_specialization:
+                    msg = f"{mcls.__name__}.{name} cannot be overriden with '{value}', "
+                    msg += f"because it is not a valid value of {field_def.type_}!"
+                    raise TypeError(msg)
+
+                # reject if not force override or allowed special cases
+                if not (override or enum_specialization or literal_specialization):
                     msg = f"{mcls.__name__} already has a field '{name}'!"
                     msg += f" (override={override})"
                     raise ValueError(msg)
-                else:
+
+                else:  # new field
                     overridden.add(name)
 
             # this would force the exact constant on load

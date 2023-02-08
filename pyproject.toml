@@ -3,8 +3,19 @@ name = "metador-core"
 version = "0.0.3"
 description = "Core of Metador, the metadata-first research data management framework."
 authors = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
-repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 license = "MIT"
+readme = "README.md"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+homepage = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+documentation = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+keywords = ["metadata", "rdm", "FAIR", "framework"]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -17,6 +28,7 @@ jsonschema = "^4.4.0"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
 importlib-metadata = "^4.11.4"
 wrapt = "^1.14.1"
+rdflib = "^6.2.0"
 # for common schemas/types:
 isodate = "^0.6.1"
 Pint = "^0.18"
