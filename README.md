@@ -11,13 +11,13 @@
 ![Docs](https://img.shields.io/badge/read-docs-success)
 ](https://materials-data-science-and-informatics.github.io/metador-core/)
 
-Core library of the Metador platform. It provides:
+The core library of the Metador framework. It provides:
 
 * an interface for managing structured and validated metadata (`MetadorContainer`)
 * an API to manage immutable (but still "patchable") HDF5 files (`IH5Record`)
-* an extensible entry-points based plugin system defining plugin groups and plugins
-* core plugin group interfaces (schemas, packers, widgets, ...)
-* general semantically aligned schemas that should be used and extended
+* an extensible entry-points based plugin system for defining plugin groups and plugins
+* core plugin group types and interfaces (schemas, packers, widgets, ...)
+* general semantically aligned schemas that can be used and extended
 * visualization widgets for common data types based on Bokeh and Panel
 * generic dashboard presenting (meta)data for which suitable widgets are installed
 
@@ -25,24 +25,16 @@ Core library of the Metador platform. It provides:
 
 This library is not a batteries-included solution, it is intended for people interested in
 using and extending the Metador ecosystem and who are willing to write their own plugins
-to adapt Metador to their use-case and provide services based on it.
-
-Please check out the tutorials that explain general concepts,
-interfaces and specific plugin development topics are provided [here](./tutorial).
+to adapt Metador to their use-case and provide tools and services based on it.
 
 For a first taste, you can install this package just as any other package into your
 current Python environment using:
-
-<!--
-old install link based on https:
-metador-core@git+https://github.com/Materials-Data-Science-and-Informatics/metador-core.git
--->
 
 ```
 $ pip install git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
 ```
 
-or if you are adding it as a dependency into your poetry project:
+or, if you are adding it as a dependency into a poetry project:
 
 ```
 $ poetry add git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
@@ -53,16 +45,19 @@ As usual, it is highly recommended that you use a
 to ensure isolation of dependencies between unrelated projects.
 
 If you want to write or extend plugins, such as metadata schemas or widgets,
-the provided tutorials will get you started.
+the [tutorial notebooks](./tutorial) will get you started. They explain general concepts,
+interfaces and specific plugin development topics. To launch the notebooks you can run:
 
-If you want to contribute to the actual core, see further below.
+```
+pip install notebook
+jupyter notebook ./tutorial
+```
+
+If you are interested in contributing to the actual core, see further below.
 
 ## Compatibility and Known Issues
 
 This package supports Python `>=3.8`.
-
-There was a mysterious bug when using inside Jupyter `6.4.6`,
-but there are no known problems when upgrading to Jupyter `6.4.10`.
 
 If you encounter any problems, ensure that your bug is reproducible in a simple and
 minimal standalone Python script that is runnable in a venv with this package installed
@@ -70,31 +65,29 @@ and can demonstrate your issue.
 
 ## Development
 
-This project uses [Poetry](https://python-poetry.org/) for dependency
-management, so you will need to have poetry
+This project uses [Poetry](https://python-poetry.org/) for dependency management,
+so you will need to have it
 [installed](https://python-poetry.org/docs/master/#installing-with-the-official-installer)
-in order to contribute.
+for a development setup for working on this package.
 
-Then you can run the following lines to setup the project and install the package:
+Then you can run the following lines to setup the project:
+
 ```
 $ git clone git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
 $ cd metador-core
 $ poetry install
 ```
-Common tasks are setup using [poethepoet](https://github.com/nat-n/poethepoet), that can
-be installed as a poetry plugin running `poetry self add 'poethepoet[poetry_plugin]'`.
 
-Run `poetry poe init-dev` (see [https://pre-commit.com](https://pre-commit.com))
-after cloning. This enables pre-commit to enforce the required linting hooks.
+Common tasks are accessible via [poethepoet](https://github.com/nat-n/poethepoet),
+which can be installed by running `poetry self add 'poethepoet[poetry_plugin]'`.
 
-Run `poetry poe lint` to run the pre-commit checks and linters manually.
+* Use `poetry poe init-dev` after cloning to enable automatic linting before each commit.
 
-Run `poetry poe test` (see [https://docs.pytest.org](https://docs.pytest.org)) before
-merging your changes to make sure you did not break anything, add `--cov` as a flag to
-also compute test coverage as a flag to also see a test coverage report.
+* Use `poetry poe lint` to run the same linters manually.
 
-To generate local documentation (as the one linked above), run
-`poetry poe docs` (see [https://pdoc.dev](https://pdoc.dev)).
+* Use `poetry poe test` to run tests, add `--cov` to also show test coverage.
+
+* Use `poetry poe docs` to generate local documentation.
 
 ## Acknowledgements
 
