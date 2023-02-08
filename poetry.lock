@@ -494,7 +494,7 @@ tests = ["flake8", "pytest", "pytest-cov"]
 
 [[package]]
 name = "pdoc"
-version = "10.0.4"
+version = "12.3.1"
 description = "API Documentation for Python Projects"
 category = "dev"
 optional = false
@@ -504,10 +504,10 @@ python-versions = ">=3.7"
 astunparse = {version = "*", markers = "python_version < \"3.9\""}
 Jinja2 = ">=2.11.0"
 MarkupSafe = "*"
-pygments = "*"
+pygments = ">=2.12.0"
 
 [package.extras]
-dev = ["flake8", "hypothesis", "mypy", "pytest", "pytest-cov", "pytest-timeout", "tox"]
+dev = ["black", "hypothesis", "mypy", "pytest", "pytest-cov", "pytest-timeout", "ruff", "tox", "types-pygments"]
 
 [[package]]
 name = "phantom-types"
@@ -1034,7 +1034,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "d104385346b41b38e4508e4c0ce06b433c175aa51ac30c0acfeebbc1b88b9a40"
+content-hash = "4a35aad503e463f59825736c9c7228956b651bb351299cea8d2722fe90c7c661"
 
 [metadata.files]
 astunparse = [
@@ -1450,7 +1450,8 @@ param = [
     {file = "param-1.12.3.tar.gz", hash = "sha256:81080d7c3a78fc2f5e7048c0fa2a16a8d3b9f408a4b3e7cac58b8cf417cbfc68"},
 ]
 pdoc = [
-    {file = "pdoc-10.0.4-py3-none-any.whl", hash = "sha256:39186fa0a12b903388fc6e8a85cbe682dc40de59ea97f2fa45ae316bdbad8d40"},
+    {file = "pdoc-12.3.1-py3-none-any.whl", hash = "sha256:c3f24f31286e634de9c76fa6e67bd5c0c5e74360b41dc91e6b82499831eb52d8"},
+    {file = "pdoc-12.3.1.tar.gz", hash = "sha256:453236f225feddb8a9071428f1982a78d74b9b3da4bc4433aedb64dbd0cc87ab"},
 ]
 phantom-types = [
     {file = "phantom-types-1.1.0.tar.gz", hash = "sha256:5225e759e4672c8a8fd617fe8389d150091b9a993a504fea8b4d125edb32f8b4"},
