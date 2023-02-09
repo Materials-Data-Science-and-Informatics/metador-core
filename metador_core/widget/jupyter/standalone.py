@@ -1,11 +1,13 @@
 """
 Ad-hoc standalone dashboard/widget server for use within Jupyter notebooks.
 
-Runs everything needed to see a dashboard or widget in threads.
+It runs everything needed to see a dashboard or widget in threads.
 
 This is mostly intended for convenient local use (e.g. by a researcher),
 or could be adapted for a containerized (in the Docker-sense) environment, e.g.
 where the user has metador libraries available and can inspect containers.
+
+**Do not use this to deploy a widget server backing the widgets on a website.**
 """
 import logging
 import socket

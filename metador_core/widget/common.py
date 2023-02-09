@@ -1,4 +1,7 @@
-"""Common widgets."""
+"""Common generic widgets.
+
+These basically integrate many default widgets provided by panel/bokeh into Metador.
+"""
 
 import json
 from typing import List, Set, Type

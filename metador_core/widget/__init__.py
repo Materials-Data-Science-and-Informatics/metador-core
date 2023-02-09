@@ -1,4 +1,4 @@
-"""Pluggable widgets for Metador."""
+"""Interface of Metador widget plugins."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
