@@ -1,4 +1,9 @@
-"""Central place to access all plugin groups."""
+"""Central place for convenient access to all registered plugin groups.
+
+For example, to access the `schema` plugingroup, you can use:
+
+`from metador_core.plugins import schemas`
+"""
 from typing import TYPE_CHECKING, Dict, List, TypeVar, cast
 
 import wrapt
@@ -13,9 +18,9 @@ class PGPluginGroup(wrapt.ObjectProxy):
 
     This wrapper returns instances of other loaded plugin groups.
 
-    To access the actual plugingroup class that gives out *classes*
-    instead of instances (like all other plugingroups),
-    request the "plugingroup" plugingroup.
+    In the esoteric case that you need to access the actual plugingroup class
+    that gives out *classes* instead of instances (like all other plugingroups),
+    request the "plugingroup" plugingroup. But usually you will not want this.
     """
 
     _self_groups: Dict[AnyPluginRef, PluginGroup]
@@ -71,7 +76,6 @@ class PGPluginGroup(wrapt.ObjectProxy):
 # access to available plugin groups:
 
 plugingroups: PGPluginGroup = PGPluginGroup()
-plugingroup_classes = plugingroups.__wrapped__
 
 # help mypy (obviously only for groups in this package):
 # NOTE: this would be better: https://github.com/python/mypy/issues/13643
@@ -95,13 +99,13 @@ __all__ = list(sorted(map(lambda ref: f"{ref.name}s", plugingroups.keys())))
 
 
 def __dir__() -> List[str]:
-    # show the existing plugin groups for tab completion
+    # show the existing plugin groups for tab completion in e.g. ipython
     return __all__
 
 
 def __getattr__(key: str):
-    # get desired plugin group and add as module attribute
-    # (i.e. this is called once per group)
+    # get desired plugin group and add it as module attribute
+    # (i.e. this is called at most once per group)
     if not isinstance(key, str) or key[-1] != "s":
         raise AttributeError(key)
     if group := plugingroups.get(key[:-1]):

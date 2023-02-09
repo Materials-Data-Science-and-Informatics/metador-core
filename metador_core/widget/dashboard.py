@@ -1,3 +1,9 @@
+"""Generic container dashboard.
+
+To **configure** a container dashboard: attach `DashboardConf` metadata to `MetadorContainer` nodes.
+
+To **show** a container dashboard: create a `Dashboard` instance.
+"""
 from __future__ import annotations
 
 from functools import partial
@@ -23,8 +29,8 @@ class DashboardGroup(int, Inclusive, low=1):
     """Dashboard group of a widget."""
 
 
-class DashboardWidgetMeta(MetadataSchema):
-    """Configuration for a widget in the dashboard."""
+class WidgetConf(MetadataSchema):
+    """Configuration of a widget in the dashboard."""
 
     priority: Optional[DashboardPriority] = DashboardPriority(1)
     """Priority of the widget (1-10), higher priority nodes are shown first."""
@@ -39,59 +45,67 @@ class DashboardWidgetMeta(MetadataSchema):
     Widgets without an assigned group come last.
     """
 
-    schema_name: Optional[NonEmptyStr]
-    """Name of schema of an metadata object at the current node to be visualized.
+    # ----
 
-    If not given, any suitable presentable object will be used.
+    schema_name: Optional[NonEmptyStr]
+    """Name of schema of an metadata object at the current node that is to be visualized.
+
+    If not given, any suitable will be selected if possible.
     """
 
     schema_version: Optional[SemVerTuple]
+    """Version of schema to be used.
+
+    If not given, any suitable will be selected if possible.
+    """
 
     widget_name: Optional[str]
-    """Name of widget to be used to present the (meta)data.
+    """Name of widget to be used.
 
-    If not given, any suitable will be used.
+    If not given, any suitable will be selected if possible.
     """
 
     widget_version: Optional[SemVerTuple]
+    """Version of widget to be used.
+
+    If not given, any suitable will be selected if possible.
+    """
 
 
-class DashboardMeta(MetadataSchema):
+class DashboardConf(MetadataSchema):
     """Schema describing dashboard configuration for a node in a container.
 
     Instantiating without passing a list of widget configurations will
     return an instance that will show an arbitrary suitable widget, i.e.
-    is equivalent to `DashboardMeta.show()`
+    is equivalent to `DashboardConf.show()`
     """
 
     class Plugin:
         name = "core.dashboard"
         version = (0, 1, 0)
 
-    widgets: List[DashboardWidgetMeta] = [DashboardWidgetMeta()]
+    widgets: List[WidgetConf] = [WidgetConf()]
     """Widgets to present for this node in the dashboard.
 
     If left empty, will try present any widget usable for this node.
     """
 
-    @classmethod
-    def widget(cls, **kwargs) -> DashboardWidgetMeta:
+    @staticmethod
+    def widget(**kwargs) -> WidgetConf:
+        """Construct a dashboard widget configuration (see `WidgetConf`)."""
         # for convenience
-        return DashboardWidgetMeta(**kwargs)
+        return WidgetConf(**kwargs)
 
     @classmethod
-    def show(cls, _arg: List[DashboardWidgetMeta] = None, **kwargs):
-        """Return an instance of dashboard configuration metadata.
-
-        Convenience method to construct a configuration for the node
-        for one or multiple widgets.
+    def show(cls, _arg: List[WidgetConf] = None, **kwargs):
+        """Construct a dashboard configuration for the widget(s) of one container node.
 
         For one widget, pass the widget config (if any) as keyword arguments,
-        e.g.  `DashboardMeta.show(group=1)`.
+        e.g.  `DashboardConf.show(group=1)`.
 
-        For multiple widgets, instantiate widget configurations with `widget(...)`,
+        For multiple widgets, create widget configurations with `widget(...)`,
         and pass them to `show`, e.g.:
-        `DashboardMeta.show([DashboardMeta.widget(), DashboardMeta.widget(group=2)])`.
+        `DashboardConf.show([DashboardConf.widget(), DashboardConf.widget(group=2)])`.
         """
         if _arg and kwargs:
             msg = "Pass widget config arguments or list of widget configs - not both!"
@@ -108,7 +122,7 @@ class DashboardMeta(MetadataSchema):
 
 # ----
 
-NodeWidgetPair = Tuple[MetadorNode, DashboardWidgetMeta]
+NodeWidgetPair = Tuple[MetadorNode, WidgetConf]
 """A container node paired up with a widget configuration."""
 
 NodeWidgetRow = List[NodeWidgetPair]
@@ -152,7 +166,7 @@ def sorted_widgets(
 # ----
 
 
-def _resolve_schema(node: MetadorNode, wmeta: DashboardWidgetMeta) -> PluginRef:
+def _resolve_schema(node: MetadorNode, wmeta: WidgetConf) -> PluginRef:
     """Return usable schema+version pair for the node based on widget metadata.
 
     If a schema name or schema version is missing, will complete these values.
@@ -246,8 +260,13 @@ def _resolve_widget(
 class Dashboard:
     """The dashboard presents a view of all marked nodes in a container.
 
-    To be included in the dashboard, a node must be marked by a DashboardMeta
-    object that has show=True and contains possibly additional directives.
+    To be included in the dashboard, a node must be marked by a `DashboardConf`
+    object configuring at least one widget for that node.
+
+
+    Note that the `Dashboard` needs
+    * either a widget server to be passed (embedding in a website),
+    * or the container is wrapped by `metador_core.widget.jupyter.Previewable` (notebook mode)
     """
 
     def __init__(self, container: MetadorContainer, *, server=None):
@@ -256,8 +275,8 @@ class Dashboard:
 
         # figure out what schemas to show and what widgets to use and collect
         ws: List[NodeWidgetPair] = []
-        for node in self._container.metador.query(DashboardMeta):
-            dbmeta = node.meta.get(DashboardMeta)
+        for node in self._container.metador.query(DashboardConf):
+            dbmeta = node.meta.get(DashboardConf)
             restr_node = node.restrict(read_only=True, local_only=True)
             for wmeta in dbmeta.widgets:
                 ws.append((restr_node, self._resolve_node(node, wmeta)))
@@ -266,9 +285,7 @@ class Dashboard:
         self._groups = grps
         self._ungrouped = ungrp
 
-    def _resolve_node(
-        self, node: MetadorNode, wmeta: DashboardWidgetMeta
-    ) -> DashboardWidgetMeta:
+    def _resolve_node(self, node: MetadorNode, wmeta: WidgetConf) -> WidgetConf:
         """Check and resolve widget dashboard metadata for a node."""
         wmeta = wmeta.copy()  # use copy, abandon original
 

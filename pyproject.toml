@@ -71,7 +71,7 @@ hypothesis = "^6.58.0"
 'core.imagefile__0.1.0' = "metador_core.schema.common:ImageFileMeta"
 'core.table__0.1.0' = "metador_core.schema.common:TableMeta"
 # This one needed for configuring the generic dashboard for a container:
-'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardMeta"
+'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardConf"
 
 [tool.poetry.plugins.metador_harvester]
 'core.file.generic__0.1.0' = "metador_core.harvester.common:FileMetaHarvester"
