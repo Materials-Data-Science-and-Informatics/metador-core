@@ -474,7 +474,10 @@ class PartialFactory:
 
         # ----
         # create a partial for a model:
-        mcls.update_forward_refs()  # to be sure
+        # localns = {cls._partial_forwardref_name(k): v for k,v in _partials[cls].items() if v}
+        localns: Dict[str, Any] = {}
+        mcls.update_forward_refs(**localns)  # to be sure
+
         partial, nested = cls._create_partial(mcls, typehints=typehints)
         partial_ref = cls._partial_forwardref_name(mcls)
         # store result

@@ -160,7 +160,6 @@ class WidgetServer:
         )
 
     def get_flask_blueprint(self, *args):
-        print(args)
         assert self._bokeh_endpoint
         api = Blueprint(*args)
 

@@ -29,7 +29,9 @@ from .inspect import (
     lift_dict,
     make_field_inspector,
 )
-from .jsonschema import finalize_schema_extra, schema_of
+
+# from .jsonschema import finalize_schema_extra, schema_of
+from .jsonschema import schema_of
 from .partial import PartialFactory, is_mergeable_type
 from .types import to_semver_str
 
@@ -87,8 +89,8 @@ class SchemaBase(BaseModelPlus):
                     # store the constant alongside the schema
                     schema[KEY_SCHEMA_CONSTFLDS][cname] = cval
 
-            # do magic
-            finalize_schema_extra(schema, model, base_model=MetadataSchema)
+            # do magic (TODO: fix/rewrite)
+            # finalize_schema_extra(schema, model, base_model=MetadataSchema)
 
     @classmethod
     def schema(cls, *args, **kwargs):
@@ -346,7 +348,8 @@ class PartialSchemas(PartialFactory):
     @classmethod
     def _create_partial(cls, mcls, *, typehints=...):
         th = getattr(mcls, "_typehints", None)
-        ret, nested = super()._create_partial(mcls, typehints=th)
+        unw = UndefVersion._unwrap(mcls) or mcls
+        ret, nested = super()._create_partial(unw, typehints=th)
         # attach constant field list for field filtering
         setattr(ret, "__constants__", getattr(mcls, "__constants__", set()))
         # copy custom parser to partial
@@ -363,6 +366,7 @@ class PartialSchemas(PartialFactory):
 def check_types(schema: Type[MetadataSchema], *, recheck: bool = False):
     if schema is MetadataSchema or schema.__types_checked__ and not recheck:
         return
+    schema.__types_checked__ = True
 
     # recursively check compositional and inheritance dependencies
     for b in schema.__bases__:
@@ -378,8 +382,6 @@ def check_types(schema: Type[MetadataSchema], *, recheck: bool = False):
 
     check_allowed_types(schema)
     check_overrides(schema)
-
-    schema.__types_checked__ = True
 
 
 def check_allowed_types(schema: Type[MetadataSchema]):

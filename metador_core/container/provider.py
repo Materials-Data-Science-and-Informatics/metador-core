@@ -82,8 +82,10 @@ class SimpleContainerProvider(Generic[T], ContainerProxy[T]):
         del self._known[key]
 
     def __setitem__(self, key: T, value: Union[ContainerArgs, MetadorContainer]):
-        if isinstance(value, MetadorContainer):
-            self._known[key] = (value.metador.driver, value.metador.source)
+        # NOTE: can't do instance check here, because MetadorContainer is a wrapper itself
+        # so we check if a container is passed by presence of the .metador attribute
+        if container_toc := getattr(value, "metador", None):
+            self._known[key] = (container_toc.driver, container_toc.source)
         else:
             self._known[key] = value
 
