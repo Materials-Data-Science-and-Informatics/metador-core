@@ -243,8 +243,11 @@ class MetadorNode(wrapt.ObjectProxy):
         if self.acl[NodeAcl.local_only]:
             # allow child nodes of local-only nodes to go up to the marked parent
             # (or it is None, if this is the local root)
-            # see https://github.com/GrahamDumpleton/wrapt/issues/215
-            return self._self_local_parent
+            if lp := self._self_local_parent:
+                return lp
+            else:
+                # raise exception (illegal non-local access)
+                self._guard_acl(NodeAcl.local_only, "parent")
 
         return MetadorGroup(
             self._self_container,
@@ -255,8 +258,8 @@ class MetadorNode(wrapt.ObjectProxy):
     @property
     def file(self) -> MetadorContainer:
         if self.acl[NodeAcl.local_only]:
-            # see https://github.com/GrahamDumpleton/wrapt/issues/215
-            return None  # type: ignore
+            # raise exception (illegal non-local access)
+            self._guard_acl(NodeAcl.local_only, "parent")
         return self._self_container
 
 
