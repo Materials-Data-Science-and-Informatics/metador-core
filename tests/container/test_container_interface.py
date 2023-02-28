@@ -106,8 +106,10 @@ def test_container_acl(tmp_mc_path, mc_driver):
 
         # test local_only restriction:
         # can't access container or parent group
-        assert g2.file is None
-        assert g2.parent is None
+        with pytest.raises(UnsupportedOperationError):
+            g2.file
+        with pytest.raises(UnsupportedOperationError):
+            g2.parent
         with pytest.raises(ValueError):
             g2["/"]  # absolute paths forbidden
 

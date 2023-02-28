@@ -1,3 +1,4 @@
+"""The Metador widget server."""
 import io
 from typing import Dict, Optional, Union
 from uuid import UUID
@@ -23,13 +24,20 @@ def get_arg(args, name) -> Optional[str]:
 
 
 class WidgetServer:
-    """Bokeh server providing instances of Metador widgets (and dashboard).
+    """Server backing the instances of Metador widgets (and dashboard).
 
-    See: https://docs.bokeh.org/en/latest/docs/user_guide/server.html#embedding-bokeh-server-as-a-library
+    Metador widgets depend on a `WidgetServer` to:
+    * get data from Metador containers (via special flask API, provided as a mountable blueprint)
+    * wire up the information flow with a bokeh server instance (requirement for interactive bokeh widgets)
+
+    For information on running a bokeh server see:
+    https://docs.bokeh.org/en/latest/docs/user_guide/server.html#embedding-bokeh-server-as-a-library
     """
 
     def __init__(self, containers: ContainerProxy, populate: bool = True):
         """Widget server to serve widget- and dashboard-like bokeh entities.
+
+        Requires a `ContainerProxy` that is used to retrieve containers by their UUID.
 
         If populate is True (default), will load and serve all installed widgets
         and also add the generic panel dashboard.
@@ -48,7 +56,8 @@ class WidgetServer:
     def parse_and_retrieve(self, doc) -> Optional[Union[MetadorContainer, MetadorNode]]:
         """Parse query parameters, lookup container and possibly node at path.
 
-        If path is provided, will return the node, otherwise full container.
+        If `path` is provided in the query parameters,
+        will return the container node, otherwise returns the full container.
         """
         args = doc.session_context.request.arguments
         uuid = get_arg(args, "uuid")
@@ -105,7 +114,7 @@ class WidgetServer:
             )
 
     def run(self, **kwargs):
-        """Run bokeh server with the registered apps (will block)."""
+        """Run bokeh server with the registered apps (will block the current process)."""
         # kwargs["io_loop"] = kwargs.get("io_loop") or IOLoop()
         # server = pn.io.server.get_server(self._bokeh_apps, **kwargs)
 
@@ -160,6 +169,10 @@ class WidgetServer:
         )
 
     def get_flask_blueprint(self, *args):
+        """Return the internal widget API Flask blueprint.
+
+        Widgets require a flask app with this API mounted to work.
+        """
         assert self._bokeh_endpoint
         api = Blueprint(*args)
 
@@ -173,7 +186,10 @@ class WidgetServer:
 
         @api.route("/file/<record_uuid>/<path:record_path>")
         def download(record_uuid, record_path):
-            """Return file download of embedded file in the container."""
+            """Return a file download of an embedded file in the container.
+
+            Needed for widgets that need the raw data resolvable via an URL in the frontend.
+            """
             uuid = UUID(record_uuid)
             container = self._containers.get(uuid)
             if container is None:
@@ -208,7 +224,8 @@ class WidgetServer:
         return api
 
 
-# TODO: snippet to make script tag not evaluate by default
+# NOTE: snippet to make script tag not evaluate by default
+# it can be used to prevent the auto-loading during DOM injection, if needed for some reason
 #     # disable self-evaluation (save call in variable, call when requested)
 #     sc_id = re.match(r"\s*<script id=\"(.*)\">", script).group(1)
 #     script = script.replace("(function", f"w{sc_id} = (function").replace(
