@@ -138,11 +138,11 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         self._VERSIONS[name].append(p_ref)
         self._VERSIONS[name].sort()  # should be cheap
 
-    def __init__(self, entrypoints):
+    def __init__(self, entrypoints: Dict[str, EntryPoint]):
         self._ENTRY_POINTS = {}
         self._VERSIONS = {}
 
-        for k, v in entrypoints.values():
+        for k, v in entrypoints.items():
             self._add_ep(k, v)
 
         self._LOADED_PLUGINS = {}
