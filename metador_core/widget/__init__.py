@@ -103,7 +103,7 @@ class Widget(ABC):
             else:
                 raise ValueError("The node does not contain '{schema_name}' metadata!")
 
-        # resizing images to fit within set bounds
+        # recalibrate maximum width and height of widgets if specified during instantiation
         if self._meta.width is not None and self._meta.height is not None:
             scale_factor = min(
                 max_height / self._meta.height.value, max_width / self._meta.width.value
@@ -111,7 +111,7 @@ class Widget(ABC):
             max_width = int(self._meta.width.value * scale_factor)
             max_height = int(self._meta.height.value * scale_factor)
 
-        # maximal width and height to use / try to fill
+        # maximum width and height that can be used
         self._w = max_width
         self._h = max_height
 

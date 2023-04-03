@@ -19,6 +19,7 @@ from ..plugins import schemas, widgets
 from ..schema import MetadataSchema
 from ..schema.plugins import PluginRef
 from ..schema.types import NonEmptyStr, SemVerTuple
+from ..util.dashboard import get_grp_row
 
 
 class DashboardPriority(int, Inclusive, low=1, high=10):
@@ -303,8 +304,6 @@ class Dashboard:
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        w_width, w_height = 500, 500  # max size of a widget tile, arbitrarily set
-
         # Outermost element: The Dashboard is a column of widget groups
         db = pn.FlexBox(
             flex_direction="column",
@@ -314,96 +313,19 @@ class Dashboard:
             sizing_mode="scale_both",
         )
 
-        # helper, to fill widget instances into row or flexbox
-        def add_widgets(w_grp, ui_grp):
-            for node, wmeta in w_grp:
-                w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
-                label = pn.pane.Str(f"{node.name}:")
-                w_obj = w_cls(
-                    node,
-                    wmeta.schema_name,
-                    wmeta.schema_version,
-                    server=self._server,
-                    max_width=700  # reset max size of a widget tiles, arbitrarily set, if its for a pdf or text file
-                    if "pdf" in wmeta.widget_name
-                    or "text" in wmeta.widget_name
-                    or "video" in wmeta.widget_name
-                    else w_width,
-                    max_height=700 if "text" in wmeta.widget_name else w_height,
-                )
-
-                ui_grp.append(
-                    pn.Column(
-                        label,
-                        w_obj.show(),
-                        sizing_mode="scale_both",
-                        scroll=False
-                        if "image" in wmeta.widget_name or "pdf" in wmeta.widget_name
-                        else True,
-                    )
-                )
-            return ui_grp
-
-        # instantiate each widget group as row (those are non-wrapping)
+        # add each widget group within individual, flexibly-wrapping rows
         for idx, widget_group in enumerate(self._groups.values()):
-            grp_label = pn.pane.Str(
-                f"Group {idx+1}",
-                style={
-                    "font-size": "15px",
-                    "font-weight": "bold",
-                    "text-decoration": "underline",
-                },
-            )
             db.append(
-                pn.FlexBox(
-                    grp_label,
-                    add_widgets(
-                        widget_group,
-                        pn.FlexBox(
-                            flex_direction="row",
-                            justify_content="space-around",
-                            align_content="space-around",
-                            align_items="center",
-                            sizing_mode="scale_both",
-                        ),
-                    ),
-                    pn.layout.Divider(margin=(100, 0, 20, 0)),
-                    flex_direction="column",
-                    justify_content="space-evenly",
-                    align_content="space-evenly",
-                    align_items="center",
-                    sizing_mode="scale_both",
+                get_grp_row(
+                    idx=idx,
+                    widget_group=widget_group,
+                    server=self._server,
+                    divider=True,
                 )
             )
 
-        # dump remaining ungrouped widgets into flexbox (auto-wrapping)
+        # dump remaining ungrouped widgets into a separate flexibly-wrapping row
         ungrp_exist = len(self._ungrouped) != 0
         if ungrp_exist:
-            db.append(
-                pn.FlexBox(
-                    pn.pane.Str(
-                        "Ungrouped resources",
-                        style={
-                            "font-size": "15px",
-                            "font-weight": "bold",
-                            "text-decoration": "underline",
-                        },
-                    ),
-                    add_widgets(
-                        self._ungrouped,
-                        pn.FlexBox(
-                            flex_direction="row",
-                            justify_content="space-evenly",
-                            align_content="space-evenly",
-                            align_items="center",
-                            sizing_mode="scale_both",
-                        ),
-                    ),
-                    flex_direction="column",
-                    justify_content="space-around",
-                    align_content="space-around",
-                    align_items="center",
-                    sizing_mode="scale_both",
-                )
-            )
+            db.append(get_grp_row(widget_group=self._ungrouped, server=self._server))
         return db

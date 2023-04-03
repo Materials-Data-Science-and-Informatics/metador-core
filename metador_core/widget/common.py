@@ -217,9 +217,9 @@ class ImageWidget(FileWidget):
         )
 
 
-# switching to HTML based audio/video panes because one from Panel not working
-# same problem in both case - url in str format throws an error
-# potential fixes from github not working
+# NOTE: Panel based widget does not work.
+# see - https://github.com/holoviz/panel/issues/3203
+# using HTML based audio & video panes for the audio and video widgets respectively
 class AudioWidget(FileWidget):
     class Plugin(FileWidget.Plugin):
         name = "core.file.audio"
@@ -229,11 +229,10 @@ class AudioWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        # TODO check how to set type value from file metadata
         return pn.pane.HTML(
             f"""
                 <audio controls>
-                    <source src={self.file_url()} type="audio/mp3">
+                    <source src={self.file_url()} type={self._meta.encodingFormat}>
                 </audio>
             """,
         )
@@ -248,12 +247,10 @@ class VideoWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        # switching to HTML based video pane because one from Panel is not working
-        # TODO check how to set type value from file metadata
         return pn.pane.HTML(
             f"""
                 <video width={self._w} height={self._h} controls style="object-position: center; object-fit:cover;">
-                <source src={self.file_url()} type="video/mp4">
+                <source src={self.file_url()} type={self._meta.encodingFormat}>
                 </video>
             """,
         )
