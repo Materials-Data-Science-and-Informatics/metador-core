@@ -23,9 +23,9 @@ def get_arg(args, name) -> Optional[str]:
     return None
 
 
-def is_valid_uuid(uuid_to_test, version=4):
+def is_valid_uuid(uuid_to_test):
     try:
-        uuid_obj = UUID(uuid_to_test, version=version)
+        uuid_obj = UUID(uuid_to_test)
     except ValueError:
         return False
     return str(uuid_obj) == uuid_to_test
@@ -68,14 +68,14 @@ class WidgetServer:
         will return the container node, otherwise returns the full container.
         """
         args = doc.session_context.request.arguments
-        uuid = get_arg(args, "uuid")
+        id = get_arg(args, "uuid")
         path = get_arg(args, "path")
 
         try:
-            if not is_valid_uuid(uuid):
-                container = self._containers.get(uuid)
+            if not is_valid_uuid(id):
+                container = self._containers.get(id)
             else:
-                container = self._containers.get(UUID(uuid))
+                container = self._containers.get(UUID(id))
         except TypeError:
             container = None
         if path is None or container is None:
