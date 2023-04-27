@@ -23,6 +23,14 @@ def get_arg(args, name) -> Optional[str]:
     return None
 
 
+def is_valid_uuid(uuid_to_test, version=4):
+    try:
+        uuid_obj = UUID(uuid_to_test, version=version)
+    except ValueError:
+        return False
+    return str(uuid_obj) == uuid_to_test
+
+
 class WidgetServer:
     """Server backing the instances of Metador widgets (and dashboard).
 
@@ -64,7 +72,10 @@ class WidgetServer:
         path = get_arg(args, "path")
 
         try:
-            container = self._containers.get(UUID(uuid))
+            if not is_valid_uuid(uuid):
+                container = self._containers.get(uuid)
+            else:
+                container = self._containers.get(UUID(uuid))
         except TypeError:
             container = None
         if path is None or container is None:
