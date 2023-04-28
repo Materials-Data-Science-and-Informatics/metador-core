@@ -150,6 +150,7 @@ def map_ref(defmap, refstr: str):
 
 def update_refs(defmap, obj):
     """Recursively update `$ref` in `obj` based on defmap."""
+    print("update", obj)
     if isinstance(obj, (type(None), bool, int, float, str)):
         return obj
     elif isinstance(obj, list):
@@ -197,6 +198,7 @@ def schema_of(model: Type[BaseModel], *args, **kwargs):
     in $defs normal form, with $ref pointing to the model.
     """
     schema = pyd_schema_of(model, *args, **kwargs)
+    print(type(schema), schema)
     schema.pop("title", None)
     fixup_jsonschema(schema)
     return schema

@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from importlib_metadata import Distribution, entry_points
 
 from ..schema.plugins import PluginPkgMeta, SemVerTuple
-from .types import from_ep_group_name, is_metador_ep_group, to_ep_group_name
+from .types import (
+    EPGroupName,
+    from_ep_group_name,
+    is_metador_ep_group,
+    to_ep_group_name,
+)
 
 _eps = entry_points()
 """All entry points."""
@@ -62,20 +67,17 @@ def distmeta_for(dist: Distribution) -> DistMeta:
         dist.entry_points.groups,
     )
     eps = {
-        from_ep_group_name(epg): list(
+        from_ep_group_name(EPGroupName(epg)): list(
             map(lambda x: x.name, dist.entry_points.select(group=epg))
         )
         for epg in epgs
     }
 
-    def is_repo_url(kv):
-        return kv[0] == "Project-URL" and kv[1].startswith("Repository,")
-
     repo_url: Optional[str] = None
     try:
-        url = next(filter(is_repo_url, dist.metadata.items()))
-        url = url[1].split()[1]  # from "Repository, http://..."
-        repo_url = url
+        urls = dist.metadata.get_all("Project-URL")
+        url = next(filter(lambda u: u.startswith("Repository,"), urls or []))
+        repo_url = url.split()[1]  # from "Repository, http://..."
     except StopIteration:
         pass
     return DistMeta(

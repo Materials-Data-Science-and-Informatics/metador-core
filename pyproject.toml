@@ -108,7 +108,8 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning:ruamel.yaml.*",
     "ignore::PendingDeprecationWarning:pydantic_yaml.*",
     "ignore::PendingDeprecationWarning:metador_core.schema.base",
-    "ignore::DeprecationWarning:importlib_metadata.*"
+    "ignore::DeprecationWarning:importlib_metadata.*",
+    "ignore::DeprecationWarning:bokeh.core.*",
 ]
 
 # .coveragerc replacement
