@@ -31,7 +31,6 @@ from .inspect import (
 )
 
 # from .jsonschema import finalize_schema_extra, schema_of
-from .jsonschema import schema_of
 from .partial import PartialFactory, is_mergeable_type
 from .types import to_semver_str
 
@@ -92,10 +91,11 @@ class SchemaBase(BaseModelPlus):
             # do magic (TODO: fix/rewrite)
             # finalize_schema_extra(schema, model, base_model=MetadataSchema)
 
-    @classmethod
-    def schema(cls, *args, **kwargs):
-        """Return customized JSONSchema for this model."""
-        return schema_of(UndefVersion._unwrap(cls) or cls, *args, **kwargs)
+    # NOTE: custom JSON schema feature is broken
+    # @classmethod
+    # def schema(cls, *args, **kwargs):
+    #    """Return customized JSONSchema for this model."""
+    #    return schema_of(UndefVersion._unwrap(cls) or cls, *args, **kwargs)
 
     @root_validator(pre=True)
     def override_consts(cls, values):

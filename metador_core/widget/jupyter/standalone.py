@@ -13,7 +13,6 @@ import logging
 import socket
 from threading import Thread
 from typing import List, Optional
-from uuid import UUID
 
 import panel as pn
 from flask import Flask
@@ -47,7 +46,7 @@ DEFAULT_PANEL_EXTS = ["ace"]
 host: str = "127.0.0.1"
 port: int = -1
 
-_known_containers: SimpleContainerProvider[UUID] = SimpleContainerProvider[UUID]()
+_known_containers: SimpleContainerProvider[str] = SimpleContainerProvider[str]()
 _widget_server: WidgetServer = WidgetServer(_known_containers)
 
 
@@ -55,7 +54,7 @@ def widget_server() -> WidgetServer:
     return _widget_server
 
 
-def container_provider() -> SimpleContainerProvider[UUID]:
+def container_provider() -> SimpleContainerProvider[str]:
     return _known_containers
 
 

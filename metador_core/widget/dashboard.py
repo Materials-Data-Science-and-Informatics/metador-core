@@ -257,6 +257,79 @@ def _resolve_widget(
 # ----
 
 
+def get_grp_label(idx):
+    """Create and return a styled group label."""
+    return pn.pane.Str(
+        f"Group {idx+1}" if idx is not None else "Ungrouped resources",
+        style={
+            "font-size": "15px",
+            "font-weight": "bold",
+            "text-decoration": "underline",
+        },
+    )
+
+
+def add_widgets(w_grp, ui_grp, server=None):
+    """Instantiate and add widget to the flexibly wrapping row that handles the entire group."""
+    w_width, w_height = 500, 500  # max size of a widget tile, arbitrarily set
+    for node, wmeta in w_grp:
+        w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
+        label = pn.pane.Str(f"{node.name}:")
+
+        # instantiating the appropriate widget
+        w_obj = w_cls(
+            node,
+            wmeta.schema_name,
+            wmeta.schema_version,
+            server=server,
+            # reset max widget of a widget tile,  only if it is for a pdf, text or video file
+            max_width=700
+            if "pdf" in wmeta.widget_name
+            or "text" in wmeta.widget_name
+            or "video" in wmeta.widget_name
+            else w_width,
+            # reset max height of a widget tile, only if it is for a text file
+            max_height=700 if "text" in wmeta.widget_name else w_height,
+        )
+
+        # adding the new widget to the given row
+        ui_grp.append(
+            pn.Column(
+                label,
+                w_obj.show(),
+                sizing_mode="scale_both",
+                scroll=False
+                if "image" in wmeta.widget_name or "pdf" in wmeta.widget_name
+                else True,
+            )
+        )
+    return ui_grp
+
+
+def get_grp_row(idx=None, widget_group=None, server=None, divider=False):
+    """Create a flexible and wrapping row for all widgets within a single group."""
+    return pn.FlexBox(
+        get_grp_label(idx=idx),
+        add_widgets(
+            widget_group,
+            pn.FlexBox(
+                flex_direction="row",
+                justify_content="space-evenly",
+                align_content="space-evenly",
+                align_items="center",
+                sizing_mode="scale_both",
+            ),
+            server=server,
+        ),
+        pn.layout.Divider(margin=(100, 0, 20, 0)) if divider == True else None,
+        flex_direction="column",
+        justify_content="space-evenly",
+        align_content="space-evenly",
+        align_items="center",
+        sizing_mode="scale_both",
+    )
+
+
 class Dashboard:
     """The dashboard presents a view of all marked nodes in a container.
 
@@ -303,37 +376,28 @@ class Dashboard:
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        w_width, w_height = 640, 480  # max size of a widget tile
-        db_height = int(3.5 * w_height)  # max size of the dashboard
-        db_width = int(2.5 * w_width)
-
         # Outermost element: The Dashboard is a column of widget groups
-        db = pn.Column(scroll=True, height=db_height, width=db_width)
+        db = pn.FlexBox(
+            flex_direction="column",
+            justify_content="space-evenly",
+            align_content="space-evenly",
+            align_items="center",
+            sizing_mode="scale_both",
+        )
 
-        # helper, to fill widget instances into row or flexbox
-        def add_widgets(w_grp, ui_row):
-            for node, wmeta in w_grp:
-                w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
-                label = pn.pane.Str(f"{node.name}:")
-                w_obj = w_cls(
-                    node,
-                    wmeta.schema_name,
-                    wmeta.schema_version,
-                    server=self._server,
-                    max_width=w_width,
-                    max_height=w_height,
-                )
-                ui_row.append(pn.Column(label, w_obj.show()))
-            return ui_row
-
-        # instantiate each widget group as row (those are non-wrapping)
-        for widget_group in self._groups.values():
+        # add each widget group within individual, flexibly-wrapping rows
+        for idx, widget_group in enumerate(self._groups.values()):
             db.append(
-                add_widgets(
-                    widget_group,
-                    pn.Row(width=db_width, height=int(1.2 * w_height), scroll=True),
+                get_grp_row(
+                    idx=idx,
+                    widget_group=widget_group,
+                    server=self._server,
+                    divider=True,
                 )
             )
-        # dump remaining ungrouped widgets into flexbox (auto-wrapping)
-        db.append(add_widgets(self._ungrouped, pn.FlexBox()))
+
+        # dump remaining ungrouped widgets into a separate flexibly-wrapping row
+        ungrp_exist = len(self._ungrouped) != 0
+        if ungrp_exist:
+            db.append(get_grp_row(widget_group=self._ungrouped, server=self._server))
         return db
