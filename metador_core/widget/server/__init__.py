@@ -168,13 +168,13 @@ class WidgetServer:
             f"{self._bokeh_endpoint}/{known[name]}", arguments=req_args
         )
 
-    def get_flask_blueprint(self, *args):
+    def get_flask_blueprint(self, *args, **kwargs):
         """Return the internal widget API Flask blueprint.
 
         Widgets require a flask app with this API mounted to work.
         """
         assert self._bokeh_endpoint
-        api = Blueprint(*args)
+        api = Blueprint(*args, **kwargs)
 
         @api.route("/")
         def index():
