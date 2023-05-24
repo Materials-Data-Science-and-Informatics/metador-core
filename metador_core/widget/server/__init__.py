@@ -175,7 +175,7 @@ class WidgetServer:
             "dashboards": list(self._reg_dashboards),
         }
 
-    def download(self, record_uuid, record_path):
+    def download(self, record_uuid: str, record_path: str):
         """Return file download of embedded file in the container."""
         container = self._containers.get(record_uuid)
         if container is None:
