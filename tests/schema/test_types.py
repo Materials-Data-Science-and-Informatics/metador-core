@@ -50,6 +50,17 @@ def test_def_types_accept(t, h, data):
 # ----
 
 
+@pytest.mark.parametrize("x", ["foo", " \tbar "])
+def test_nonemptystr_accept(x):
+    parse_obj_as(t.NonEmptyStr, x)
+
+
+@pytest.mark.parametrize("x", ["", "\t", "  "])
+def test_nonemptystr_reject(x):
+    with pytest.raises(ValidationError):
+        parse_obj_as(t.NonEmptyStr, x)
+
+
 @pytest.mark.parametrize("x", ["application/json", "application/JSON;q=0.9;v=abc"])
 def test_mimetypestr_accept(x):
     parse_obj_as(t.MimeTypeStr, x)

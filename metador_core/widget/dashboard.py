@@ -1,3 +1,9 @@
+"""Generic container dashboard.
+
+To **configure** a container dashboard: attach `DashboardConf` metadata to `MetadorContainer` nodes.
+
+To **show** a container dashboard: create a `Dashboard` instance.
+"""
 from __future__ import annotations
 
 from functools import partial
@@ -23,8 +29,8 @@ class DashboardGroup(int, Inclusive, low=1):
     """Dashboard group of a widget."""
 
 
-class DashboardWidgetMeta(MetadataSchema):
-    """Configuration for a widget in the dashboard."""
+class WidgetConf(MetadataSchema):
+    """Configuration of a widget in the dashboard."""
 
     priority: Optional[DashboardPriority] = DashboardPriority(1)
     """Priority of the widget (1-10), higher priority nodes are shown first."""
@@ -39,59 +45,67 @@ class DashboardWidgetMeta(MetadataSchema):
     Widgets without an assigned group come last.
     """
 
-    schema_name: Optional[NonEmptyStr]
-    """Name of schema of an metadata object at the current node to be visualized.
+    # ----
 
-    If not given, any suitable presentable object will be used.
+    schema_name: Optional[NonEmptyStr]
+    """Name of schema of an metadata object at the current node that is to be visualized.
+
+    If not given, any suitable will be selected if possible.
     """
 
     schema_version: Optional[SemVerTuple]
+    """Version of schema to be used.
+
+    If not given, any suitable will be selected if possible.
+    """
 
     widget_name: Optional[str]
-    """Name of widget to be used to present the (meta)data.
+    """Name of widget to be used.
 
-    If not given, any suitable will be used.
+    If not given, any suitable will be selected if possible.
     """
 
     widget_version: Optional[SemVerTuple]
+    """Version of widget to be used.
+
+    If not given, any suitable will be selected if possible.
+    """
 
 
-class DashboardMeta(MetadataSchema):
+class DashboardConf(MetadataSchema):
     """Schema describing dashboard configuration for a node in a container.
 
     Instantiating without passing a list of widget configurations will
     return an instance that will show an arbitrary suitable widget, i.e.
-    is equivalent to `DashboardMeta.show()`
+    is equivalent to `DashboardConf.show()`
     """
 
     class Plugin:
         name = "core.dashboard"
         version = (0, 1, 0)
 
-    widgets: List[DashboardWidgetMeta] = [DashboardWidgetMeta()]
+    widgets: List[WidgetConf] = [WidgetConf()]
     """Widgets to present for this node in the dashboard.
 
     If left empty, will try present any widget usable for this node.
     """
 
-    @classmethod
-    def widget(cls, **kwargs) -> DashboardWidgetMeta:
+    @staticmethod
+    def widget(**kwargs) -> WidgetConf:
+        """Construct a dashboard widget configuration (see `WidgetConf`)."""
         # for convenience
-        return DashboardWidgetMeta(**kwargs)
+        return WidgetConf(**kwargs)
 
     @classmethod
-    def show(cls, _arg: List[DashboardWidgetMeta] = None, **kwargs):
-        """Return an instance of dashboard configuration metadata.
-
-        Convenience method to construct a configuration for the node
-        for one or multiple widgets.
+    def show(cls, _arg: List[WidgetConf] = None, **kwargs):
+        """Construct a dashboard configuration for the widget(s) of one container node.
 
         For one widget, pass the widget config (if any) as keyword arguments,
-        e.g.  `DashboardMeta.show(group=1)`.
+        e.g.  `DashboardConf.show(group=1)`.
 
-        For multiple widgets, instantiate widget configurations with `widget(...)`,
+        For multiple widgets, create widget configurations with `widget(...)`,
         and pass them to `show`, e.g.:
-        `DashboardMeta.show([DashboardMeta.widget(), DashboardMeta.widget(group=2)])`.
+        `DashboardConf.show([DashboardConf.widget(), DashboardConf.widget(group=2)])`.
         """
         if _arg and kwargs:
             msg = "Pass widget config arguments or list of widget configs - not both!"
@@ -108,7 +122,7 @@ class DashboardMeta(MetadataSchema):
 
 # ----
 
-NodeWidgetPair = Tuple[MetadorNode, DashboardWidgetMeta]
+NodeWidgetPair = Tuple[MetadorNode, WidgetConf]
 """A container node paired up with a widget configuration."""
 
 NodeWidgetRow = List[NodeWidgetPair]
@@ -152,7 +166,7 @@ def sorted_widgets(
 # ----
 
 
-def _resolve_schema(node: MetadorNode, wmeta: DashboardWidgetMeta) -> PluginRef:
+def _resolve_schema(node: MetadorNode, wmeta: WidgetConf) -> PluginRef:
     """Return usable schema+version pair for the node based on widget metadata.
 
     If a schema name or schema version is missing, will complete these values.
@@ -243,11 +257,89 @@ def _resolve_widget(
 # ----
 
 
+def get_grp_label(idx):
+    """Create and return a styled group label."""
+    return pn.pane.Str(
+        f"Group {idx+1}" if idx is not None else "Ungrouped resources",
+        style={
+            "font-size": "15px",
+            "font-weight": "bold",
+            "text-decoration": "underline",
+        },
+    )
+
+
+def add_widgets(w_grp, ui_grp, server=None):
+    """Instantiate and add widget to the flexibly wrapping row that handles the entire group."""
+    w_width, w_height = 500, 500  # max size of a widget tile, arbitrarily set
+    for node, wmeta in w_grp:
+        w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
+        label = pn.pane.Str(f"{node.name}:")
+
+        # instantiating the appropriate widget
+        w_obj = w_cls(
+            node,
+            wmeta.schema_name,
+            wmeta.schema_version,
+            server=server,
+            # reset max widget of a widget tile,  only if it is for a pdf, text or video file
+            max_width=700
+            if "pdf" in wmeta.widget_name
+            or "text" in wmeta.widget_name
+            or "video" in wmeta.widget_name
+            else w_width,
+            # reset max height of a widget tile, only if it is for a text file
+            max_height=700 if "text" in wmeta.widget_name else w_height,
+        )
+
+        # adding the new widget to the given row
+        ui_grp.append(
+            pn.Column(
+                label,
+                w_obj.show(),
+                sizing_mode="scale_both",
+                scroll=False
+                if "image" in wmeta.widget_name or "pdf" in wmeta.widget_name
+                else True,
+            )
+        )
+    return ui_grp
+
+
+def get_grp_row(idx=None, widget_group=None, server=None, divider=False):
+    """Create a flexible and wrapping row for all widgets within a single group."""
+    return pn.FlexBox(
+        get_grp_label(idx=idx),
+        add_widgets(
+            widget_group,
+            pn.FlexBox(
+                flex_direction="row",
+                justify_content="space-evenly",
+                align_content="space-evenly",
+                align_items="center",
+                sizing_mode="scale_both",
+            ),
+            server=server,
+        ),
+        pn.layout.Divider(margin=(100, 0, 20, 0)) if divider == True else None,
+        flex_direction="column",
+        justify_content="space-evenly",
+        align_content="space-evenly",
+        align_items="center",
+        sizing_mode="scale_both",
+    )
+
+
 class Dashboard:
     """The dashboard presents a view of all marked nodes in a container.
 
-    To be included in the dashboard, a node must be marked by a DashboardMeta
-    object that has show=True and contains possibly additional directives.
+    To be included in the dashboard, a node must be marked by a `DashboardConf`
+    object configuring at least one widget for that node.
+
+
+    Note that the `Dashboard` needs
+    * either a widget server to be passed (embedding in a website),
+    * or the container is wrapped by `metador_core.widget.jupyter.Previewable` (notebook mode)
     """
 
     def __init__(self, container: MetadorContainer, *, server=None):
@@ -256,8 +348,8 @@ class Dashboard:
 
         # figure out what schemas to show and what widgets to use and collect
         ws: List[NodeWidgetPair] = []
-        for node in self._container.metador.query(DashboardMeta):
-            dbmeta = node.meta.get(DashboardMeta)
+        for node in self._container.metador.query(DashboardConf):
+            dbmeta = node.meta.get(DashboardConf)
             restr_node = node.restrict(read_only=True, local_only=True)
             for wmeta in dbmeta.widgets:
                 ws.append((restr_node, self._resolve_node(node, wmeta)))
@@ -266,9 +358,7 @@ class Dashboard:
         self._groups = grps
         self._ungrouped = ungrp
 
-    def _resolve_node(
-        self, node: MetadorNode, wmeta: DashboardWidgetMeta
-    ) -> DashboardWidgetMeta:
+    def _resolve_node(self, node: MetadorNode, wmeta: WidgetConf) -> WidgetConf:
         """Check and resolve widget dashboard metadata for a node."""
         wmeta = wmeta.copy()  # use copy, abandon original
 
@@ -286,37 +376,28 @@ class Dashboard:
 
     def show(self) -> Viewable:
         """Instantiate widgets for container and return resulting dashboard."""
-        w_width, w_height = 640, 480  # max size of a widget tile
-        db_height = int(3.5 * w_height)  # max size of the dashboard
-        db_width = int(2.5 * w_width)
-
         # Outermost element: The Dashboard is a column of widget groups
-        db = pn.Column(scroll=True, height=db_height, width=db_width)
+        db = pn.FlexBox(
+            flex_direction="column",
+            justify_content="space-evenly",
+            align_content="space-evenly",
+            align_items="center",
+            sizing_mode="scale_both",
+        )
 
-        # helper, to fill widget instances into row or flexbox
-        def add_widgets(w_grp, ui_row):
-            for node, wmeta in w_grp:
-                w_cls = widgets.get(wmeta.widget_name, wmeta.widget_version)
-                label = pn.pane.Str(f"{node.name}:")
-                w_obj = w_cls(
-                    node,
-                    wmeta.schema_name,
-                    wmeta.schema_version,
-                    server=self._server,
-                    max_width=w_width,
-                    max_height=w_height,
-                )
-                ui_row.append(pn.Column(label, w_obj.show()))
-            return ui_row
-
-        # instantiate each widget group as row (those are non-wrapping)
-        for widget_group in self._groups.values():
+        # add each widget group within individual, flexibly-wrapping rows
+        for idx, widget_group in enumerate(self._groups.values()):
             db.append(
-                add_widgets(
-                    widget_group,
-                    pn.Row(width=db_width, height=int(1.2 * w_height), scroll=True),
+                get_grp_row(
+                    idx=idx,
+                    widget_group=widget_group,
+                    server=self._server,
+                    divider=True,
                 )
             )
-        # dump remaining ungrouped widgets into flexbox (auto-wrapping)
-        db.append(add_widgets(self._ungrouped, pn.FlexBox()))
+
+        # dump remaining ungrouped widgets into a separate flexibly-wrapping row
+        ungrp_exist = len(self._ungrouped) != 0
+        if ungrp_exist:
+            db.append(get_grp_row(widget_group=self._ungrouped, server=self._server))
         return db

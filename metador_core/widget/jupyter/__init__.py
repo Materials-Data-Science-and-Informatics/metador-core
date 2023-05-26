@@ -19,11 +19,11 @@ class Previewable(wrapt.ObjectProxy):
             standalone.run()
 
         if provider := standalone.container_provider():
-            provider[self.metador.container_uuid] = self
+            provider[str(self.metador.container_uuid)] = self
 
     def close(self, *args, **kwargs):
         if provider := standalone.container_provider():
-            del provider[self.metador.container_uuid]
+            del provider[str(self.metador.container_uuid)]
 
         self.__wrapped__.close(*args, **kwargs)
 

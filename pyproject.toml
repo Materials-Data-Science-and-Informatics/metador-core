@@ -21,11 +21,11 @@ classifiers = [
 python = "^3.8"
 h5py = "^3.6.0"
 toml = "^0.10.2"
-typing-extensions = "^4.1.1"
-runtype = { git = "https://github.com/erezsh/runtype.git", rev = "a407462" }
-pydantic = "^1.10.2"
+typing-extensions = "~4.5.0"
+runtype = "^0.3.2"
+pydantic = "~1.9.2"
 jsonschema = "^4.4.0"
-pydantic-yaml = {extras = ["ruamel"], version = "^0.6.3"}
+pydantic-yaml = {extras = ["ruamel"], version = "^0.11.1"}
 importlib-metadata = "^4.11.4"
 wrapt = "^1.14.1"
 rdflib = "^6.2.0"
@@ -71,7 +71,7 @@ hypothesis = "^6.58.0"
 'core.imagefile__0.1.0' = "metador_core.schema.common:ImageFileMeta"
 'core.table__0.1.0' = "metador_core.schema.common:TableMeta"
 # This one needed for configuring the generic dashboard for a container:
-'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardMeta"
+'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardConf"
 
 [tool.poetry.plugins.metador_harvester]
 'core.file.generic__0.1.0' = "metador_core.harvester.common:FileMetaHarvester"
@@ -91,6 +91,10 @@ hypothesis = "^6.58.0"
 [tool.poetry.plugins.metador_packer]
 'core.generic__0.1.0' = "metador_core.packer.example:GenericPacker"
 
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.19.0"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
@@ -108,7 +112,8 @@ filterwarnings = [
     "ignore::PendingDeprecationWarning:ruamel.yaml.*",
     "ignore::PendingDeprecationWarning:pydantic_yaml.*",
     "ignore::PendingDeprecationWarning:metador_core.schema.base",
-    "ignore::DeprecationWarning:importlib_metadata.*"
+    "ignore::DeprecationWarning:importlib_metadata.*",
+    "ignore::DeprecationWarning:bokeh.core.*",
 ]
 
 # .coveragerc replacement

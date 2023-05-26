@@ -1,4 +1,4 @@
-"""Pluggable widgets for Metador."""
+"""Interface of Metador widget plugins."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -55,6 +55,7 @@ class Widget(ABC):
         metadata: Optional[MetadataSchema] = None,
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
+        keep_ratio: bool = False,
     ):
         """Instantiate a widget for a node.
 
@@ -83,10 +84,6 @@ class Widget(ABC):
             srv = widget_server()
         self._server = srv
 
-        # maximal width and height to use / try to fill
-        self._w = max_width
-        self._h = max_height
-
         # setup correct metadata
         if metadata is not None:
             if not self.supports_meta(metadata):
@@ -106,6 +103,19 @@ class Widget(ABC):
                 self._meta = metadata
             else:
                 raise ValueError("The node does not contain '{schema_name}' metadata!")
+
+        # maximum width and height that can be used (if None, unlimited)
+        self._w: Optional[int] = max_width
+        self._h: Optional[int] = max_height
+
+        # recalibrate maximum width and height of widgets to preserve ration, if possible + desired
+        can_scale = self._meta.width is not None and self._meta.height is not None
+        if keep_ratio and can_scale:
+            scale_factor = min(
+                self._h / self._meta.height.value, self._w / self._meta.width.value
+            )
+            self._w = int(self._meta.width.value * scale_factor)
+            self._h = int(self._meta.height.value * scale_factor)
 
         # widget-specific setup hook
         self.setup()

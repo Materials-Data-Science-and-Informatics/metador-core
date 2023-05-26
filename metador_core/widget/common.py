@@ -1,4 +1,7 @@
-"""Common widgets."""
+"""Common generic widgets.
+
+These basically integrate many default widgets provided by panel/bokeh into Metador.
+"""
 
 import json
 from typing import List, Set, Type
@@ -171,6 +174,8 @@ class JSONWidget(FileWidget):
             name=self.title,
             max_width=self._w,
             max_height=self._h,
+            hover_preview=True,
+            depth=-1,
         )
 
 
@@ -205,10 +210,16 @@ class ImageWidget(FileWidget):
     @overrides
     def show(self) -> Viewable:
         return self.PANEL_WIDGET[self._meta.encodingFormat](
-            self.file_url(), width=self._w, height=self._h
+            self.file_url(),
+            width=self._w,
+            height=self._h,
+            alt_text="Sorry. Something went wrong while loading the resource",
         )
 
 
+# NOTE: Panel based widget does not work.
+# see - https://github.com/holoviz/panel/issues/3203
+# using HTML based audio & video panes for the audio and video widgets respectively
 class AudioWidget(FileWidget):
     class Plugin(FileWidget.Plugin):
         name = "core.file.audio"
@@ -218,7 +229,13 @@ class AudioWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        return pn.pane.Audio(self.file_url(), name=self.title)
+        return pn.pane.HTML(
+            f"""
+                <audio controls>
+                    <source src={self.file_url()} type={self._meta.encodingFormat}>
+                </audio>
+            """,
+        )
 
 
 class VideoWidget(FileWidget):
@@ -230,6 +247,10 @@ class VideoWidget(FileWidget):
 
     @overrides
     def show(self) -> Viewable:
-        return pn.pane.Video(
-            self.file_url(), name=self.title, max_width=self._w, max_height=self._h
+        return pn.pane.HTML(
+            f"""
+                <video width={self._w} height={self._h} controls style="object-position: center; object-fit:cover;">
+                <source src={self.file_url()} type={self._meta.encodingFormat}>
+                </video>
+            """,
         )

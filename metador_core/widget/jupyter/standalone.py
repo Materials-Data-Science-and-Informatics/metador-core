@@ -1,17 +1,18 @@
 """
 Ad-hoc standalone dashboard/widget server for use within Jupyter notebooks.
 
-Runs everything needed to see a dashboard or widget in threads.
+It runs everything needed to see a dashboard or widget in threads.
 
 This is mostly intended for convenient local use (e.g. by a researcher),
 or could be adapted for a containerized (in the Docker-sense) environment, e.g.
 where the user has metador libraries available and can inspect containers.
+
+**Do not use this to deploy a widget server backing the widgets on a website.**
 """
 import logging
 import socket
 from threading import Thread
 from typing import List, Optional
-from uuid import UUID
 
 import panel as pn
 from flask import Flask
@@ -45,7 +46,7 @@ DEFAULT_PANEL_EXTS = ["ace"]
 host: str = "127.0.0.1"
 port: int = -1
 
-_known_containers: SimpleContainerProvider[UUID] = SimpleContainerProvider[UUID]()
+_known_containers: SimpleContainerProvider[str] = SimpleContainerProvider[str]()
 _widget_server: WidgetServer = WidgetServer(_known_containers)
 
 
@@ -53,7 +54,7 @@ def widget_server() -> WidgetServer:
     return _widget_server
 
 
-def container_provider() -> SimpleContainerProvider[UUID]:
+def container_provider() -> SimpleContainerProvider[str]:
     return _known_containers
 
 
