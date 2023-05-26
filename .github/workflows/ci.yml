@@ -71,7 +71,7 @@ jobs:
           python-version: '3.10'
           cache: 'poetry'
 
-      - run: poetry install --with docs
+      - run: poetry install
       - run: poetry run poe docs
 
       # see https://github.com/peaceiris/actions-gh-pages#%EF%B8%8F-first-deployment-with-github_token
