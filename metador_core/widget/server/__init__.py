@@ -168,51 +168,52 @@ class WidgetServer:
             f"{self._bokeh_endpoint}/{known[name]}", arguments=req_args
         )
 
-    def get_flask_blueprint(self, *args, **kwargs):
-        """Return the internal widget API Flask blueprint.
+    def index(self):
+        """Return list of registered widgets (node-based) and dashboards (container-based)."""
+        return {
+            "widgets": list(self._reg_widgets),
+            "dashboards": list(self._reg_dashboards),
+        }
 
-        Widgets require a flask app with this API mounted to work.
-        """
+    def download(self, record_uuid: str, record_path: str):
+        """Return file download of embedded file in the container."""
+        container = self._containers.get(record_uuid)
+        if container is None:
+            return "no such container"
+        if record_path not in container:
+            raise NotFound(f"Path not in record: /{record_path}")
+
+        obj = container[record_path][()]
+        if isinstance(obj, np.void):
+            bs = obj.tolist()
+        else:
+            bs = obj
+        if not isinstance(bs, bytes):
+            raise BadRequest(f"Path not a binary object: /{record_path}")
+
+        dl = bool(request.args.get("download", False))  # as explicit file download?
+        # if object has attached file metadata, use it to serve:
+        filemeta = container[record_path].meta.get("core.file")
+        def_name = f"{record_uuid}_{record_path.replace('/', '__')}"
+        name = filemeta.id_ if filemeta else def_name
+        mime = filemeta.encodingFormat if filemeta else None
+        return send_file(
+            io.BytesIO(bs), download_name=name, mimetype=mime, as_attachment=dl
+        )
+
+    def get_flask_blueprint(self, *args):
         assert self._bokeh_endpoint
-        api = Blueprint(*args, **kwargs)
+        api = Blueprint(*args)
 
         @api.route("/")
         def index():
             """Return list of registered widgets (node-based) and dashboards (container-based)."""
-            return {
-                "widgets": list(self._reg_widgets),
-                "dashboards": list(self._reg_dashboards),
-            }
+            return self.index()
 
-        @api.route("/file/<container_id>/<path:container_path>")
-        def download(container_id: str, container_path: str):
-            """Return a file download of an embedded file in the container.
-
-            Needed for widgets that need the raw data resolvable via an URL in the frontend.
-            """
-            container = self._containers.get(container_id)
-            if container is None:
-                return "no such container"
-            if container_path not in container:
-                raise NotFound(f"Path not in record: /{container_path}")
-
-            obj = container[container_path][()]
-            if isinstance(obj, np.void):
-                bs = obj.tolist()
-            else:
-                bs = obj
-            if not isinstance(bs, bytes):
-                raise BadRequest(f"Path not a binary object: /{container_path}")
-
-            dl = bool(request.args.get("download", False))  # as explicit file download?
-            # if object has attached file metadata, use it to serve:
-            filemeta = container[container_path].meta.get("core.file")
-            def_name = f"{container_id}_{container_path.replace('/', '__')}"
-            name = filemeta.id_ if filemeta else def_name
-            mime = filemeta.encodingFormat if filemeta else None
-            return send_file(
-                io.BytesIO(bs), download_name=name, mimetype=mime, as_attachment=dl
-            )
+        @api.route("/file/<record_uuid>/<path:record_path>")
+        def download(record_uuid, record_path):
+            """Return file download of embedded file in the container."""
+            return self.download(record_uuid, record_path)
 
         @api.route("/<viewable_type>/<name>/<container_id>/")
         @api.route("/<viewable_type>/<name>/<container_id>/<path:container_path>")
