@@ -269,7 +269,7 @@ def get_grp_label(idx):
     )
 
 
-def add_widgets(w_grp, ui_grp, server=None):
+def add_widgets(w_grp, ui_grp, *, server=None, container_id: Optional[str] = None):
     """Instantiate and add widget to the flexibly wrapping row that handles the entire group."""
     w_width, w_height = 500, 500  # max size of a widget tile, arbitrarily set
     for node, wmeta in w_grp:
@@ -282,6 +282,7 @@ def add_widgets(w_grp, ui_grp, server=None):
             wmeta.schema_name,
             wmeta.schema_version,
             server=server,
+            container_id=container_id,
             # reset max widget of a widget tile,  only if it is for a pdf, text or video file
             max_width=700
             if "pdf" in wmeta.widget_name
@@ -306,7 +307,14 @@ def add_widgets(w_grp, ui_grp, server=None):
     return ui_grp
 
 
-def get_grp_row(idx=None, widget_group=None, server=None, divider=False):
+def get_grp_row(
+    *,
+    idx=None,
+    widget_group=None,
+    divider=False,
+    server=None,
+    container_id: Optional[str] = None,
+):
     """Create a flexible and wrapping row for all widgets within a single group."""
     return pn.FlexBox(
         get_grp_label(idx=idx),
@@ -320,6 +328,7 @@ def get_grp_row(idx=None, widget_group=None, server=None, divider=False):
                 sizing_mode="scale_both",
             ),
             server=server,
+            container_id=container_id,
         ),
         pn.layout.Divider(margin=(100, 0, 20, 0)) if divider == True else None,
         flex_direction="column",
@@ -342,9 +351,23 @@ class Dashboard:
     * or the container is wrapped by `metador_core.widget.jupyter.Previewable` (notebook mode)
     """
 
-    def __init__(self, container: MetadorContainer, *, server=None):
+    def __init__(
+        self,
+        container: MetadorContainer,
+        *,
+        server=None,
+        container_id: Optional[str] = None,
+    ):
+        """Return instance of a dashboard.
+
+        Args:
+            container: Actual Metador container that is open and readable
+            server: `WidgetServer` to use for the widgets (default: standalone server / Jupyter mode)
+            container_id: Container id usable with the server to get this container (default: container UUID)
+        """
         self._container: MetadorContainer = container
         self._server = server
+        self._container_id: str = container_id
 
         # figure out what schemas to show and what widgets to use and collect
         ws: List[NodeWidgetPair] = []
@@ -391,13 +414,20 @@ class Dashboard:
                 get_grp_row(
                     idx=idx,
                     widget_group=widget_group,
-                    server=self._server,
                     divider=True,
+                    server=self._server,
+                    container_id=self._container_id,
                 )
             )
 
         # dump remaining ungrouped widgets into a separate flexibly-wrapping row
         ungrp_exist = len(self._ungrouped) != 0
         if ungrp_exist:
-            db.append(get_grp_row(widget_group=self._ungrouped, server=self._server))
+            db.append(
+                get_grp_row(
+                    widget_group=self._ungrouped,
+                    server=self._server,
+                    container_id=self._container_id,
+                )
+            )
         return db

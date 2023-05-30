@@ -15,11 +15,19 @@ from werkzeug.exceptions import BadRequest, NotFound
 from metador_core.container import ContainerProxy, MetadorContainer, MetadorNode
 
 
-def get_arg(args, name) -> Optional[str]:
+def get_widget_arg(args, name) -> Optional[str]:
     """Extract argument from bokeh server request argument dict."""
     if name in args and args[name]:
         return args[name][0].decode("utf-8")
     return None
+
+
+def get_widget_args(doc):
+    """Extract arguments from bokeh server request parameters."""
+    args = doc.session_context.request.arguments
+    return dict(
+        container_id=get_widget_arg(args, "id"), path=get_widget_arg(args, "path")
+    )
 
 
 class WidgetServer:
@@ -52,24 +60,22 @@ class WidgetServer:
         self._flask_endpoint = ""
         self._bokeh_endpoint = ""
 
-    def parse_and_retrieve(self, doc) -> Optional[Union[MetadorContainer, MetadorNode]]:
-        """Parse query parameters, lookup container and possibly node at path.
+    def get_container_node(
+        self, container_id: str, container_path: Optional[str] = None
+    ) -> Optional[Union[MetadorContainer, MetadorNode]]:
+        """Retrieve desired container and possibly path.
 
         If `path` is provided in the query parameters,
         will return the container node, otherwise returns the full container.
         """
-        args = doc.session_context.request.arguments
-        container_id = get_arg(args, "id")
-        path = get_arg(args, "path")
-
         try:
             container = self._containers.get(container_id)
         except TypeError:
             container = None
-        if path is None or container is None:
+        if container_path is None or container is None:
             return container
 
-        if node := container.get(path):
+        if node := container.get(container_path):
             return node.restrict(read_only=True, local_only=True)
         return None
 
@@ -84,9 +90,13 @@ class WidgetServer:
             The app will understand take `id` and optionally a `path` as query params.
             These are parsed and used to look up the correct container (node).
             """
-            if obj := self.parse_and_retrieve(doc):
+            w_args = get_widget_args(doc)
+            if c_obj := self.get_container_node(**w_args):
                 # if we retrieved container / node, instantiate a widget and show it
-                doc.add_root(viewable_class(obj, server=self).show().get_root(doc))
+                widget = viewable_class(
+                    c_obj, server=self, container_id=w_args["container_id"]
+                ).show()
+                doc.add_root(widget.get_root(doc))
 
         return Application(FunctionHandler(handler))
 
@@ -129,13 +139,9 @@ class WidgetServer:
             return c
         raise NotFound(f"Container not found: '{container_id}'")
 
-    def file_url_for(self, node: MetadorNode) -> str:
-        # TODO: this won't work for other container proxies
-        # must add method to container proxy to do reverse lookup of container id
-        # based on the metador container uuid (which the node knows)
-        return (
-            f"{self._flask_endpoint}/file/{str(node.metador.container_uuid)}{node.name}"
-        )
+    def file_url_for(self, container_id: str, node: MetadorNode) -> str:
+        """Return URL for given container ID and file at Metador Container node."""
+        return f"{self._flask_endpoint}/file/{container_id}{node.name}"
 
     def set_flask_endpoint(self, uri: str):
         """Set URI where the blueprint from `get_flask_blueprint` is mounted."""
@@ -175,26 +181,26 @@ class WidgetServer:
             "dashboards": list(self._reg_dashboards),
         }
 
-    def download(self, record_uuid: str, record_path: str):
+    def download(self, container_id: str, container_path: str):
         """Return file download of embedded file in the container."""
-        container = self._containers.get(record_uuid)
+        container = self._containers.get(container_id)
         if container is None:
-            return "no such container"
-        if record_path not in container:
-            raise NotFound(f"Path not in record: /{record_path}")
+            raise NotFound(f"Container with given ID not found: {container_id}")
+        if container_path not in container:
+            raise NotFound(f"Path not in container: /{container_path}")
 
-        obj = container[record_path][()]
+        obj = container[container_path][()]
         if isinstance(obj, np.void):
             bs = obj.tolist()
         else:
             bs = obj
         if not isinstance(bs, bytes):
-            raise BadRequest(f"Path not a binary object: /{record_path}")
+            raise BadRequest(f"Path not a binary object: /{container_path}")
 
         dl = bool(request.args.get("download", False))  # as explicit file download?
         # if object has attached file metadata, use it to serve:
-        filemeta = container[record_path].meta.get("core.file")
-        def_name = f"{record_uuid}_{record_path.replace('/', '__')}"
+        filemeta = container[container_path].meta.get("core.file")
+        def_name = f"{container_id}_{container_path.replace('/', '__')}"
         name = filemeta.id_ if filemeta else def_name
         mime = filemeta.encodingFormat if filemeta else None
         return send_file(

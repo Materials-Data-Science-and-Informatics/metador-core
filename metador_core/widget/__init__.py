@@ -52,6 +52,7 @@ class Widget(ABC):
         schema_version: Optional[SemVerTuple] = None,
         *,
         server: Optional[WidgetServer] = None,
+        container_id: Optional[str] = None,
         metadata: Optional[MetadataSchema] = None,
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
@@ -69,6 +70,8 @@ class Widget(ABC):
         """
         # NOTE: we restrict the node so that widgets don't try to escape their scope
         self._node = node.restrict(read_only=True, local_only=True)
+        # NOTE: if no container_id is passed, we assume its jupyter mode (based on the metador UUIDs)
+        self._container_id = container_id or str(node.metador.container_uuid)
 
         # if no server passed, we're in Jupyter mode - use standalone
         srv: WidgetServer
@@ -142,7 +145,7 @@ class Widget(ABC):
             raise ValueError(
                 f"Passed node {node.name} does not look like a dataset node!"
             )
-        return self._server.file_url_for(node)
+        return self._server.file_url_for(self._container_id, node)
 
     @classmethod
     def supports(cls, *schemas: PluginRef) -> bool:
