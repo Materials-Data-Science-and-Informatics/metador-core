@@ -26,7 +26,8 @@ def get_widget_args(doc):
     """Extract arguments from bokeh server request parameters."""
     args = doc.session_context.request.arguments
     return dict(
-        container_id=get_widget_arg(args, "id"), path=get_widget_arg(args, "path")
+        container_id=get_widget_arg(args, "id"),
+        container_path=get_widget_arg(args, "path"),
     )
 
 
