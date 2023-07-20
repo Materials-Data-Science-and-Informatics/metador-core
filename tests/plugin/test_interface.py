@@ -167,7 +167,7 @@ def test_plugingroup_dictlike_consistency(pg):
     assert not pg.is_plugin(invalid)
     assert invalid not in pg
     assert invalid not in pg_keys
-    pg.get(invalid) is None
+    assert pg.get(invalid) is None
     with pytest.raises(KeyError):
         pg[invalid]
 
@@ -233,6 +233,7 @@ def test_add_ep_twice(plugingroups_test):
 
 
 # ----
+
 
 # try adding invalid plugins
 def test_plugingroups(pg_dummy, ep_factory):

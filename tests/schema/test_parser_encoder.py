@@ -93,7 +93,6 @@ def test_custom_parser():
 
 
 def test_invalid_custom_encoder():
-
     with pytest.raises(TypeError):
         # not allowed on pydantic models
         @json_encoder(lambda _: "foo")

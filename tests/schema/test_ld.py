@@ -69,7 +69,6 @@ def test_ld_no_override():
 
 
 def test_custom_ld():
-
     myld = ld_decorator(context="https://hello.com", type="Dummy")
 
     # works even without arguments

@@ -134,7 +134,6 @@ def test_add_const_fields_literal():
 
 
 def test_make_mandatory(dummy_schema):
-
     with pytest.raises(ValueError):
         # no such field
         @make_mandatory("bar")

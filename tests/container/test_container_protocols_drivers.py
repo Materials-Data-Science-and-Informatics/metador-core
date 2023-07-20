@@ -130,7 +130,7 @@ def test_h5filelike(tmp_mc_path, mc_driver):
 
     f = mc_driver.value(tmp_mc_path, "r")
     f.close()
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         f["a"]  # access to a closed file should not work
 
 
@@ -203,9 +203,9 @@ def test_h5grouplike(fresh_raw_managed):
     assert isinstance(tmp_d, H5DatasetLike)
     tmp_g = g2.require_group("f")
     assert isinstance(tmp_g, H5GroupLike)
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         g2.require_group("e")
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         g2.require_dataset("f", shape=(10, 10), dtype="float64")
 
     assert len(g2) == 2

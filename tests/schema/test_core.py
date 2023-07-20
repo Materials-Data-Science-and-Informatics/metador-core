@@ -12,7 +12,6 @@ from metador_core.util.models import updated_fields
 
 
 def test_schema_metaclass_exceptions():
-
     with pytest.raises(TypeError):
 
         class Foo(MetadataSchema):

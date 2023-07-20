@@ -147,7 +147,9 @@ def test_pint_schema_description(cls, val):
     class SomeModel(BaseModel):
         u: cls
 
-    SomeModel(u=val).schema()["properties"]["u"]["title"].lower().find("pint") >= 0
+    assert (
+        SomeModel(u=val).schema()["properties"]["u"]["title"].lower().find("pint") >= 0
+    )
 
 
 # from metador_core.ih5.record import IH5Record

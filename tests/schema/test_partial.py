@@ -75,7 +75,6 @@ def test_partial_inheritance():
 
 
 def test_partial_behavior():
-
     PartF = MyPartialFactory.get_partial(ModelF)
 
     # empty object is always possible
