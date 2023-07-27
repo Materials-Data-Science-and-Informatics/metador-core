@@ -63,32 +63,6 @@ unless forced to drop it for technical reasons.
 **You can find more information on using and contributing to this repository in the
 [documentation](https://materials-data-science-and-informatics.github.io/metador-core/main).**
 
-## Development
-
-This project uses [Poetry](https://python-poetry.org/) for dependency management,
-so you will need to have it
-[installed](https://python-poetry.org/docs/master/#installing-with-the-official-installer)
-for a development setup for working on this package.
-
-Then you can run the following lines to setup the project:
-
-```
-$ git clone git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
-$ cd metador-core
-$ poetry install
-```
-
-Common tasks are accessible via [poethepoet](https://github.com/nat-n/poethepoet),
-which can be installed by running `poetry self add 'poethepoet[poetry_plugin]'`.
-
-* Use `poetry poe init-dev` after cloning to enable automatic linting before each commit.
-
-* Use `poetry poe lint` to run the same linters manually.
-
-* Use `poetry poe test` to run tests, add `--cov` to also show test coverage.
-
-* Use `poetry poe docs` to generate local documentation.
-
 <!-- --8<-- [start:citation] -->
 
 ## How to Cite
