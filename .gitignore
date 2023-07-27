@@ -1,13 +1,18 @@
 # don't add test containers
-.vscode
 *.h5
 *.hd5
 *.ih5
 *.ih5mf.json
-tmp*/
 
-# don't add custom python shell scratchpad file
+# don't add custom scratchpads / temporary files
+scratch/*
 scratch*.py
+
+# generated badges
+docs/*_badge.svg
+
+# vscode config
+.vscode
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

@@ -4,16 +4,15 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from io import UnsupportedOperation
 from pathlib import Path
-from typing import Tuple, Type
+from typing import Callable, Tuple, Type
 
 import wrapt
 from overrides import EnforceOverrides, overrides
 
-from metador_core.ih5.manifest import IH5MFRecord
-from metador_core.plugins import plugingroups
-
 from ..container import MetadorContainer
+from ..ih5.manifest import IH5MFRecord
 from ..plugin import interface as pg
+from ..plugins import plugingroups
 from ..schema.core import MetadataSchema
 from ..schema.plugins import PluginPkgMeta
 from ..util.diff import DirDiff
@@ -263,7 +262,9 @@ class PGPacker(pg.PluginGroup[Packer]):
             raise errs
         return (packer, dir_hashsums(srcdir))
 
-    def pack(self, packer_name: str, data_dir: Path, target: Path, h5like_cls):
+    def pack(
+        self, packer_name: str, data_dir: Path, target: Path, h5like_cls: Callable
+    ):
         """Pack a directory into a container using an installed packer.
 
         `packer_name` must be an installed packer plugin.

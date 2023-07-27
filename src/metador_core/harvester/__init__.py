@@ -5,6 +5,7 @@ from abc import ABC, ABCMeta, abstractmethod
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     ClassVar,
     Dict,
@@ -137,7 +138,7 @@ class Harvester(ABC, metaclass=HarvesterMeta):
     # to be overridden
 
     @abstractmethod
-    def run(self):
+    def run(self) -> MetadataSchema:
         """Do the harvesting according to instance configuration and return metadata.
 
         Override this method with your custom metadata harvesting logic, based
@@ -156,7 +157,6 @@ class Harvester(ABC, metaclass=HarvesterMeta):
         Returns:
             A fresh instance of type `self.schema` containing harvested metadata.
         """
-        raise NotImplementedError
 
 
 class FileHarvester(Harvester):
@@ -338,20 +338,21 @@ def configure(*harvesters: Union[Harvester, Type[Harvester]], **kwargs):
     return (h(**kwargs) for h in harvesters)
 
 
-def file_harvester_pipeline(*args: Union[FileHarvester, Type[FileHarvester]]):
+def file_harvester_pipeline(
+    *hvs: Union[FileHarvester, Type[FileHarvester]]
+) -> Callable[[Path], Any]:
     """Generate a harvesting pipeline for a file.
 
     Args:
-        FileHarvester classes or pre-configured instances to use.
-
-        The passed objects must be preconfigured as needed,
-        except for fixing a filepath (it will be overwritten).
+        hvs: FileHarvester classes or pre-configured instances to use.
+            The passed objects must be preconfigured as needed,
+            except for fixing a filepath (it will be overwritten).
 
     Returns:
         Function that takes a file path and will return
         the harvesters configured for the passed path.
     """
-    return lambda path: configure(*args, filepath=path)
+    return lambda path: configure(*hvs, filepath=path)
 
 
 def harvest(

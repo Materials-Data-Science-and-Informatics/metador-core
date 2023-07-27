@@ -150,7 +150,7 @@ traverse_typehint = make_tree_traversal(get_args)
 """Perform depth-first pre-order traversal of a type annotation.
 
 Args:
-    th: type hint object to be traversed
+    th (object): type hint object to be traversed
 """
 
 

@@ -65,8 +65,8 @@ def embed_file(
     Will also ensure that the attached metadata has RO-Crate compatible @id set correctly.
 
     Args:
-        container: Container where to embed the file contents
-        container_path: Fresh path in container where to place the file
+        node: Container where to embed the file contents
+        node_path: Fresh path in container where to place the file
         file_path: Path of an existing file to be embedded
         metadata: If provided, will attach this instead of harvesting defaults.
 

@@ -99,8 +99,8 @@ TEST_DIR = Path(__file__).resolve().parent
 TEST_DATA_DIR = TEST_DIR / "data"
 """Location of the test input data."""
 
-TUTORIAL_FILES_DIR = TEST_DIR.parent / "tutorial" / "files"
-"""Location of the tutorial input files."""
+TUTORIAL_FILES_DIR = TEST_DIR.parent / "docs" / "notebooks" / "files"
+"""Location of the tutorial notebook input files."""
 
 
 @pytest.fixture

@@ -17,12 +17,16 @@ class MetadorDriverEnum(Enum):
     HDF5 = h5py.File
     IH5 = IH5Record
 
+    @classmethod
+    def to_dict(cls):
+        return {x: x.value for x in iter(cls)}
+
 
 # NOTE: must be duplicated or static checkers can't pick it up
 MetadorDriver = Union[h5py.File, IH5Record]
 """Union of all supported classes (for static type check)."""
 
-METADOR_DRIVERS = {x: x.value for x in iter(MetadorDriverEnum)}
+METADOR_DRIVERS = MetadorDriverEnum.to_dict()
 """Dict representation of MetadorDriverEnum."""
 
 METADOR_DRIVER_CLASSES = tuple(METADOR_DRIVERS.values())

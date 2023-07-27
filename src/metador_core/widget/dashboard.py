@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import partial
 from itertools import groupby
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple
 
 import panel as pn
 from panel.viewable import Viewable
@@ -19,6 +19,9 @@ from ..plugins import schemas, widgets
 from ..schema import MetadataSchema
 from ..schema.plugins import PluginRef
 from ..schema.types import NonEmptyStr, SemVerTuple
+
+if TYPE_CHECKING:
+    from . import WidgetServer
 
 
 class DashboardPriority(int, Inclusive, low=1, high=10):
@@ -355,7 +358,7 @@ class Dashboard:
         self,
         container: MetadorContainer,
         *,
-        server=None,
+        server: WidgetServer = None,
         container_id: Optional[str] = None,
     ):
         """Return instance of a dashboard.

@@ -202,11 +202,7 @@ class PluginGroup(Generic[T], metaclass=PluginGroupMeta):
         return self._PKG_META[cast(Any, ep).dist.name]
 
     def is_plugin(self, p_cls):
-        """Return whether this class is a (possibly marked) installed plugin.
-
-        Args:
-            p_cls: class to be checked
-        """
+        """Return whether this class is a (possibly marked) installed plugin."""
         if not isinstance(p_cls, type) or not issubclass(
             p_cls, self.Plugin.plugin_class
         ):

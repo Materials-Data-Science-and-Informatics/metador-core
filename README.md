@@ -1,15 +1,19 @@
-# metador-core
-
 ![Project status](https://img.shields.io/badge/project%20status-alpha-%23ff8000)
 [
-![Test](https://img.shields.io/github/actions/workflow/status/Materials-Data-Science-and-Informatics/metador-core/ci.yml?branch=main&label=test)
-](https://github.com/Materials-Data-Science-and-Informatics/metador-core/actions?query=workflow:test)
-[
-![Coverage](https://img.shields.io/codecov/c/gh/Materials-Data-Science-and-Informatics/metador-core?token=4JU2SZFZDZ)
-](https://app.codecov.io/gh/Materials-Data-Science-and-Informatics/metador-core)
-[
 ![Docs](https://img.shields.io/badge/read-docs-success)
-](https://materials-data-science-and-informatics.github.io/metador-core/)
+](https://materials-data-science-and-informatics.github.io/metador-core)
+[
+![CI](https://img.shields.io/github/actions/workflow/status/Materials-Data-Science-and-Informatics/metador-core/ci.yml?branch=main&label=ci)
+](https://github.com/Materials-Data-Science-and-Informatics/metador-core/actions/workflows/ci.yml)
+[
+![Test Coverage](https://materials-data-science-and-informatics.github.io/metador-core/main/coverage_badge.svg)
+](https://materials-data-science-and-informatics.github.io/metador-core/main/coverage)
+[
+![PyPIPkgVersion](https://img.shields.io/pypi/v/metador-core)
+](https://pypi.org/project/metador-core/)
+
+<!-- --8<-- [start:abstract] -->
+# metador-core
 
 The core library of the Metador framework. It provides:
 
@@ -21,47 +25,43 @@ The core library of the Metador framework. It provides:
 * visualization widgets for common data types based on Bokeh and Panel
 * generic dashboard presenting (meta)data for which suitable widgets are installed
 
+<!-- --8<-- [end:abstract] -->
+<!-- --8<-- [start:quickstart] -->
+
+## Installation
+
+You can install the current stable version of Metador from PyPI:
+
+```
+pip install metador-core
+```
+
 ## Getting Started
 
-This library is not a batteries-included solution, it is intended for people interested in
-using and extending the Metador ecosystem and who are willing to write their own plugins
-to adapt Metador to their use-case and provide tools and services based on it.
+If you successfully installed the package, check out the tutorial notebooks
+we provide in `./docs/notebooks`. These are intended to showcase what Metador has to offer
+and get you started with usage and development of your own schemas, widgets or other
+plugins.
 
-For a first taste, you can install this package just as any other package into your
-current Python environment using:
-
-```
-$ pip install git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
-```
-
-or, if you are adding it as a dependency into a poetry project:
-
-```
-$ poetry add git+ssh://git@github.com:Materials-Data-Science-and-Informatics/metador-core.git
-```
-
-As usual, it is highly recommended that you use a
-[virtual environment](https://stackoverflow.com/questions/41573587/what-is-the-difference-between-venv-pyvenv-pyenv-virtualenv-virtualenvwrappe)
-to ensure isolation of dependencies between unrelated projects.
-
-If you want to write or extend plugins, such as metadata schemas or widgets,
-the [tutorial notebooks](./tutorial) will get you started. They explain general concepts,
-interfaces and specific plugin development topics. To launch the notebooks you can run:
+You can browse a non-interactive version in the documentation. To explore the notebooks
+interactively, you can run:
 
 ```
 pip install notebook
 jupyter notebook ./tutorial
 ```
 
-If you are interested in contributing to the actual core, see further below.
-
 ## Compatibility and Known Issues
 
-This package supports Python `>=3.8`.
+Currently this package supports Python `>=3.8`.
 
-If you encounter any problems, ensure that your bug is reproducible in a simple and
-minimal standalone Python script that is runnable in a venv with this package installed
-and can demonstrate your issue.
+We will try to support all still officially updated versions of Python,
+unless forced to drop it for technical reasons.
+
+<!-- --8<-- [end:quickstart] -->
+
+**You can find more information on using and contributing to this repository in the
+[documentation](https://materials-data-science-and-informatics.github.io/metador-core/main).**
 
 ## Development
 
@@ -89,7 +89,21 @@ which can be installed by running `poetry self add 'poethepoet[poetry_plugin]'`.
 
 * Use `poetry poe docs` to generate local documentation.
 
+<!-- --8<-- [start:citation] -->
+
+## How to Cite
+
+If you want to cite this project in your scientific work,
+please use the [citation file](https://citation-file-format.github.io/)
+in the [repository](https://github.com/Materials-Data-Science-and-Informatics/metador-core/blob/main/CITATION.cff).
+
+<!-- --8<-- [end:citation] -->
+<!-- --8<-- [start:acknowledgements] -->
+
 ## Acknowledgements
+
+We kindly thank all
+[authors and contributors](https://materials-data-science-and-informatics.github.io/metador-core/latest/credits).
 
 <div>
 <img style="vertical-align: middle;" alt="HMC Logo" src="https://github.com/Materials-Data-Science-and-Informatics/Logos/raw/main/HMC/HMC_Logo_M.png" width=50% height=50% />
@@ -102,3 +116,5 @@ This project was developed at the Institute for Materials Data Science and Infor
 (IAS-9) of the Jülich Research Center and funded by the Helmholtz Metadata Collaboration
 (HMC), an incubator-platform of the Helmholtz Association within the framework of the
 Information and Data Science strategic initiative.
+
+<!-- --8<-- [end:acknowledgements] -->

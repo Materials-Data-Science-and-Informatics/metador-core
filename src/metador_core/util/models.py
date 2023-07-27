@@ -33,8 +33,8 @@ def atomic_types(m: BaseModel, *, bound=object) -> Dict[str, Set[Type]]:
 
     Args:
         m: Pydantic model
-        bound: If provided, will be used to filter results to
-          contain only subclasses of the bound.
+        bound (object): If provided, will be used to filter results to
+            contain only subclasses of the bound.
     """
     return {k: set(field_atomic_types(v, bound=bound)) for k, v in m.__fields__.items()}
 
