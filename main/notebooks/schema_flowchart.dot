@@ -1,0 +1,190 @@
+# http://www.graphviz.org/content/cluster
+digraph G {
+  bgcolor=transparent;
+    fontname="Helvetica,Arial,sans-serif"
+    node [fontname="Helvetica,Arial,sans-serif"]
+    edge [fontname="Helvetica,Arial,sans-serif"]
+
+  start [label="I want to define...", shape="box", penwidth=10];
+  #start -> def
+  #def [label="...define..."]
+  #def -> def_schema [label = "...a schema"];
+  #def -> def_field [label = "...a field"];
+  start -> def_schema [label = "...a schema"];
+  start -> def_field [label = "...a field"];
+
+  subgraph cluste_update {
+    node [style = "invis"];
+    edge [style = "invis"];
+
+    start -> upd
+    upd [label="...update an existing schema...\n(that is (used by) a Plugin)"];
+    upd -> upd_field, bump_deps  [label = "...by..."];
+    bump_deps [label = "... updating a schema Plugin\nthat it depends on (i.e. parent or nested schema)"];
+    bump_deps -> bump_deps_do;
+    bump_deps_do [label = "bump version on at least the same level\n(e.g. 1.3.3 -> 1.4.1 in dep. forces 1.1.5 -> 1.2.0 in your schema)"];
+
+    upd_field [label="[X] a field in the schema\n(or in a nested schema)"];
+    upd_field -> upd_new_field [label = "adding"];
+    upd_field -> chg_ex_field [label = "changing"];
+
+    upd_new_field [label="Breaking change (affects child schemas), bump MAJOR"];
+    chg_ex_field [label="If it excludes any previously allowed values, bump MAJOR\nif it only allows new values, bump MINOR\notherwise bump PATCH"];
+  }
+
+
+
+  # schema creation:
+  subgraph cluste_schema {
+  def_schema [label = "Is there an existing Metador schema you could use?"];
+  def_schema -> fresh_schema [label = "no"];
+  def_schema -> found_schema [label = "yes..."];
+
+  found_schema [label = "use it"];
+  found_schema -> found_parent [label="...but it's too general / incomplete!"];
+  found_parent [label = "define a child schema with new / restricted fields"];
+
+  fresh_schema [label = "Is there an existing semantic standard?"];
+  no_standards [label = "Proceed defining your fields freely"];
+  yes_standards [label = "Design your fields respecting the naming and types of your standard,\nattach your semantic context and types..."];
+  ld [ label="@ld"];
+  ld_decorator [ label="my_decorator = ld_decorator(context=...)"];
+  yes_standards -> ld [label = "... ad-hoc:"]
+  yes_standards -> ld_decorator [label = "... systematically:"]
+
+  found_parent, yes_standards, no_standards -> schema_done [style="dotted"];
+
+  schema_done[label = "Check that it's well documented and tested,\ndeclare it as a Plugin"];
+  schema_done -> auxiliary [label="it's very general / not self-contained!"];
+  auxiliary [label = "auxiliary = True"]
+  fresh_schema -> no_standards [label="no"];
+  fresh_schema -> yes_standards [label="yes"];
+  }
+    found_parent, yes_standards, no_standards -> def_field [style="dotted"];
+
+  # field creation guide:
+  subgraph cluste_field {
+
+  def_field [label = "Does the field exist in the parent schema (if any)?"];
+  def_field -> make_mandatory [label = "it's not mandatory"];
+  def_field -> narrow_field [label = "it's too permissive"];
+  def_field -> def_new_field [label = "no"];
+
+  make_mandatory [ label = "@make_mandatory(\"fieldName\")" ]
+
+  narrow_field [label = "Define a more restricted type\nrespecting parent compatibility"];
+  narrow_field -> def_new_field [style="dotted"];
+
+  def_new_field [label = "Is it a primitive value?\n(i.e. cannot be decomposed further)", shape="diamond"];
+  def_new_field -> def_complex [label = "no"];
+  def_new_field -> def_simple  [label = "yes"];
+
+  # compound types
+  subgraph cluste_compound {
+
+  def_complex [label = "parts homogenious (same type)\nand interchangable (same meaning)?"];
+  def_complex -> def_items_number [label = "yes"];
+
+  def_items_number [label = "number of (possible) parts fixed?"];
+  def_items_order [label = "Does the order and/or\nduplication of items matter?"];
+  def_items_order -> use_list [label = "yes"];
+  def_items_order -> use_set [label = "no"];
+
+  def_items_number -> def_items_order [label = "no"];
+  use_set [label = "Set[X]"]
+  use_list [label = "List[X]"]
+  determine_x [ label = "Determine type for item(s)"];
+  determine_x -> def_new_field [style="dotted"];
+
+  def_complex -> comp_opt [label="no"];
+  def_items_number -> comp_opt [label="yes"];
+
+  comp_opt [label = "It is..."];
+  comp_opt -> vector_like [label = "vector-like"];
+  comp_opt -> datetime [label = "date/time-like"];
+  comp_opt -> si_value [label = "value + unit"];
+  comp_opt -> def_types [label = "(something else)"];
+
+  datetime [label = "date / time / datetime / Duration"];
+  si_value [label = "metador.schema.types\nSIValue, PintQuantity, ..."];
+
+  def_types [label = "Use metador / pydantic default types"];
+  def_types -> use_nested_schema [label = "nothing suitable"];
+  pydantic [label = "pydantic.*\nColor, HttpUrl, ..."];
+  def_types -> si_value, pydantic [style = "dotted"];
+
+  vector_like [label = "trivial meaning of items?"];
+  vector_like -> use_tuple [label = "yes"];
+  vector_like -> use_nested_schema [label = "no"];
+
+
+  use_nested_schema [label = "Find/define a nested schema"];
+  use_nested_schema -> def_schema [style = "dotted"];
+  use_tuple [label = "Tuple[X, Y, ...]"];
+
+  determine_constr[label = "apply constraints as needed\n(range for item number)"]
+
+  }
+
+
+  # primitive types
+  subgraph cluste_simple {
+
+  def_simple  [label = "Is it a controlled list of n choices?"];
+  def_simple -> interval_like [label = "no"];
+  def_simple -> controlled_list [label = "yes"];
+
+  any [ label = "Is it completely arbitrary?"];
+  any -> boolintfloat [label = "yes"];
+  boolintfloat [ label = "Bool / Int / Float / NonEmptyStr" ];
+
+  interval_like [ label = "Is there a restricted range\nof meaningful values?" ];
+  interval_like -> subclass_range [label = "yes"];
+  interval_like -> any [label = "no"];
+
+  controlled_list [label = "One valid choice? (n=1)"];
+  controlled_list -> is_constant [label = "yes"];
+  controlled_list -> restrict_clist [label = "no"];
+
+
+  restrict_clist [label="Would restricting the choices\nfurther make sense to someone else?"];
+  restrict_clist -> Enum [label = "no"];
+  restrict_clist -> Literal [label = "yes"];
+
+  is_constant [label="Should the constant\nbe checked (if provided)?"];
+  is_constant -> Literal [label="yes"];
+  is_constant -> const_field [label="no, just infer it"];
+  const_field[label = "@add_const"];
+
+  subclass_range [ label = "Could narrowing your range\nmake sense for someone else?" ];
+  subclass_range -> phantom [label = "yes"];
+  subclass_range -> phantom_works [label = "no"];
+  phantom_works [label = "Can you represent it with phantom types?"];
+  phantom_works -> phantom [label = "yes"];
+  phantom_works -> pydantic_field [label = "no"];
+  phantom [label = "phantom.*"];
+  pydantic_field [label = "Annotated[X, Field(..., constraints)]"];
+  }
+
+  use_set, use_list -> determine_constr [style = "dotted"];
+
+  determine_constr, use_tuple -> determine_x [style = "dotted"];
+  phantom, pydantic_field -> boolintfloat [style = "dotted"];
+  }
+
+  Literal, Enum, boolintfloat, determine_x, pydantic, si_value -> mandatory [style="dotted"];
+  mandatory [label = "Great, you're done with the field!"];
+  mandatory -> Optional [label = "but it REALLY can't be mandatory..."];
+
+
+  # apply styles:
+
+  # question node
+  def_field, def_simple, def_complex, def_schema, fresh_schema, def_items_number, def_items_order, vector_like, interval_like, subclass_range, phantom_works, controlled_list, any, restrict_clist, is_constant [shape="diamond"]
+  # Metador function/feature node:
+  make_mandatory, ld, ld_decorator, auxiliary, use_set, use_list, si_value, use_tuple, datetime, boolintfloat, phantom, pydantic_field, pydantic, Optional, Literal, Enum, const_field [penwidth=5, color="green", shape = "box", fontname = "Courier New"];
+  # Advice / Action node:
+  found_schema, found_parent, no_standards, yes_standards, schema_done, narrow_field, bump_deps_do, upd_new_field, chg_ex_field, determine_x, use_nested_schema, def_types, mandatory, determine_constr [penwidth=5, color="blue"]
+  # attention / warning:
+  #parent_compat [penwidth=5, color="red"]
+}

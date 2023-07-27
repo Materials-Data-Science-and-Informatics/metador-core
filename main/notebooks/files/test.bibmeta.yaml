@@ -1,0 +1,11 @@
+name: Test Dataset
+abstract: Some abstract
+dateCreated: 2022-01-23
+author:
+  - familyName: Doe
+    givenName: John
+    affiliation: {name: FZJ}
+creator:
+  familyName: Pirogov
+  givenName: A.
+  affiliation: {name: FZJ}
