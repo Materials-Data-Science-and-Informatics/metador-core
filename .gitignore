@@ -9,9 +9,6 @@ tmp*/
 # don't add custom python shell scratchpad file
 scratch*.py
 
-# we don't keep the auto-generated docs in the source repo
-docs/
-
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

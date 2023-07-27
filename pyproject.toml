@@ -1,14 +1,16 @@
 [tool.poetry]
+# ---- DO NOT EDIT, managed by somesy ----
 name = "metador-core"
 version = "0.0.3"
 description = "Core of Metador, the metadata-first research data management framework."
 authors = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 license = "MIT"
-readme = "README.md"
 repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 homepage = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 documentation = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
-keywords = ["metadata", "rdm", "FAIR", "framework"]
+keywords = ["metadata", "rdm", "FAIR", "framework", "python"]
+# ----------------------------------------
+readme = "README.md"
 classifiers = [
     "Operating System :: POSIX :: Linux",
     "Development Status :: 3 - Alpha",
@@ -32,15 +34,14 @@ include = [
   { path = "docs", format = "sdist" },
   { path = "tests", format = "sdist" },
 ]
+maintainers = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-h5py = "^3.6.0"
-toml = "^0.10.2"
+h5py = "^3.8.0"
 typing-extensions = "~4.5.0"
 runtype = "^0.3.2"
 pydantic = "~1.9.2"
-jsonschema = "^4.4.0"
 pydantic-yaml = {extras = ["ruamel"], version = "^0.11.1"}
 importlib-metadata = "^4.11.4"
 wrapt = "^1.14.1"
@@ -67,6 +68,23 @@ pytest = "^7.0.1"
 pytest-cov = "^3.0.0"
 hypothesis = "^6.58.0"
 pdoc = "^12.3.1"
+somesy = {path = "../somesy", develop = true}
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.4.2"
+mkdocstrings = {extras = ["python"], version = "^0.21.2"}
+mkdocs-material = "^9.1.6"
+mkdocs-gen-files = "^0.4.0"
+mkdocs-literate-nav = "^0.6.0"
+mkdocs-section-index = "^0.3.5"
+mkdocs-macros-plugin = "^0.7.0"
+markdown-include = "^0.8.1"
+pymdown-extensions = "^9.11"
+markdown-exec = {extras = ["ansi"], version = "^1.6.0"}
+mkdocs-coverage = "^0.2.7"
+mike = "^1.1.2"
+anybadge = "^1.14.0"
+black = "^23.3.0"
 
 [tool.poetry.plugins.metador_plugingroup]
 # Metador supports defining custom validated plugin groups.

@@ -1,0 +1,198 @@
+{
+    "@context": [
+        "https://doi.org/10.5063/schema/codemeta-2.0",
+        "https://w3id.org/software-iodata",
+        "https://raw.githubusercontent.com/jantman/repostatus.org/master/badges/latest/ontology.jsonld",
+        "https://schema.org",
+        "https://w3id.org/software-types"
+    ],
+    "@type": "SoftwareSourceCode",
+    "applicationCategory": [
+        "Scientific/Engineering",
+        "Software Development > Libraries > Application Frameworks"
+    ],
+    "audience": [
+        {
+            "@type": "Audience",
+            "audienceType": "Developers"
+        },
+        {
+            "@type": "Audience",
+            "audienceType": "Science/Research"
+        }
+    ],
+    "author": [
+        {
+            "@id": "https://orcid.org/0000-0002-5077-7497",
+            "@type": "Person",
+            "familyName": "Pirogov",
+            "givenName": "Anton"
+        }
+    ],
+    "codeRepository": "https://github.com/Materials-Data-Science-and-Informatics/metador-core",
+    "description": "Core of Metador, the metadata-first research data management framework.",
+    "developmentStatus": "https://www.repostatus.org/#wip",
+    "identifier": "metador-core",
+    "keywords": [
+        "FAIR",
+        "framework",
+        "metadata",
+        "python",
+        "rdm"
+    ],
+    "license": "http://spdx.org/licenses/MIT",
+    "name": "metador-core",
+    "operatingSystem": "POSIX > Linux",
+    "runtimePlatform": "Python 3",
+    "softwareRequirements": [
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "'version':",
+            "name": "'version':",
+            "runtimePlatform": "Python 3",
+            "version": "'^0.11.1'}"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "Flask",
+            "name": "Flask",
+            "runtimePlatform": "Python 3",
+            "version": "^2.1.3"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "Pillow",
+            "name": "Pillow",
+            "runtimePlatform": "Python 3",
+            "version": "^9.1.1"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "Pint",
+            "name": "Pint",
+            "runtimePlatform": "Python 3",
+            "version": "^0.18"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "frozendict",
+            "name": "frozendict",
+            "runtimePlatform": "Python 3",
+            "version": "^2.3.4"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "h5py",
+            "name": "h5py",
+            "runtimePlatform": "Python 3",
+            "version": "^3.8.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "importlib-metadata",
+            "name": "importlib-metadata",
+            "runtimePlatform": "Python 3",
+            "version": "^4.11.4"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "isodate",
+            "name": "isodate",
+            "runtimePlatform": "Python 3",
+            "version": "^0.6.1"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "overrides",
+            "name": "overrides",
+            "runtimePlatform": "Python 3",
+            "version": "^7.0.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "pandas",
+            "name": "pandas",
+            "runtimePlatform": "Python 3",
+            "version": "^1.4.1"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "panel",
+            "name": "panel",
+            "runtimePlatform": "Python 3",
+            "version": "^0.14.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "phantom-types",
+            "name": "phantom-types",
+            "runtimePlatform": "Python 3",
+            "version": "^1.1.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "pydantic",
+            "name": "pydantic",
+            "runtimePlatform": "Python 3",
+            "version": "~ 1.9.2"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "pydantic-yaml",
+            "name": "pydantic-yaml",
+            "runtimePlatform": "Python 3",
+            "version": "{'extras': ['ruamel'"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "python",
+            "name": "python",
+            "runtimePlatform": "Python 3",
+            "version": "^3.8"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "python-magic",
+            "name": "python-magic",
+            "runtimePlatform": "Python 3",
+            "version": "^0.4.25"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "rdflib",
+            "name": "rdflib",
+            "runtimePlatform": "Python 3",
+            "version": "^6.2.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "runtype",
+            "name": "runtype",
+            "runtimePlatform": "Python 3",
+            "version": "^0.3.2"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "simple-parsing",
+            "name": "simple-parsing",
+            "runtimePlatform": "Python 3",
+            "version": "^0.0.20"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "typing-extensions",
+            "name": "typing-extensions",
+            "runtimePlatform": "Python 3",
+            "version": "~ 4.5.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "wrapt",
+            "name": "wrapt",
+            "runtimePlatform": "Python 3",
+            "version": "^1.14.1"
+        }
+    ],
+    "url": "https://github.com/Materials-Data-Science-and-Informatics/metador-core",
+    "version": "0.0.3"
+}

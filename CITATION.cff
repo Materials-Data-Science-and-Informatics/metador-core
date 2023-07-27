@@ -1,26 +1,26 @@
-# NOTE: keep in sync with pyproject.toml!
-# or solve https://github.com/Materials-Data-Science-and-Informatics/metador-core/issues/43
-# in order to automate this.
 cff-version: 1.2.0
 type: software
 message: If you use this software, please cite it using these metadata.
 
 title: metador-core
-version: 0.1.0
-abstract: Core of Metador, the FAIR metadata-first research data management framework.
+version: 0.0.3
+abstract: Core of Metador, the metadata-first research data management framework.
 repository-code: "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 license: MIT
 keywords:
-  - metadata
-  - rdm
-  - standards
-  - FAIR
-  - framework
-  - hdf5
-  - python3
-
+- metadata
+- rdm
+- FAIR
+- framework
+- python
 authors:
-  - family-names: Pirogov
-    given-names: Anton
-    email: a.pirogov@fz-juelich.de
-    orcid: "https://orcid.org/0000-0002-5077-7497"
+- family-names: Pirogov
+  given-names: Anton
+  email: a.pirogov@fz-juelich.de
+  orcid: https://orcid.org/0000-0002-5077-7497
+contact:
+- family-names: Pirogov
+  orcid: https://orcid.org/0000-0002-5077-7497
+  given-names: Anton
+  email: a.pirogov@fz-juelich.de
+url: https://github.com/Materials-Data-Science-and-Informatics/metador-core

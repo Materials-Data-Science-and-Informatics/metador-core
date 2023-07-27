@@ -3,7 +3,7 @@ Upstream-Name: metador-core
 Upstream-Contact: Anton Pirogov <a.pirogov@fz-juelich.de>
 Source: https://github.com/Materials-Data-Science-and-Informatics/metador-core
 
-Files: .gitignore pyproject.toml poetry.lock .pre-commit-config.yaml codemeta.json CITATION.cff README.md RELEASE_NOTES.md CHANGELOG.md CODE_OF_CONDUCT.md AUTHORS.md CONTRIBUTING.md .gitlab-ci.yml .gitlab/* .github/* mkdocs.yml tutorial/*
+Files: .gitignore pyproject.toml somesy.toml poetry.lock .pre-commit-config.yaml codemeta.json CITATION.cff README.md RELEASE_NOTES.md CHANGELOG.md CODE_OF_CONDUCT.md AUTHORS.md CONTRIBUTING.md .gitlab-ci.yml .gitlab/* .github/* mkdocs.yml tutorial/*
 Copyright: 2021 Forschungszentrum Jülich GmbH - Institute for Materials Data Science and Informatics (IAS9) - Stefan Sandfeld <s.sandfeld@fz-juelich.de>
 License: CC0-1.0
 

@@ -1,0 +1,18 @@
+[project]
+name = "metador-core"
+version = "0.0.3"
+description = "Core of Metador, the metadata-first research data management framework."
+license = "MIT"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+homepage = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+documentation = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
+keywords = ["metadata", "rdm", "FAIR", "framework", "python"]
+
+[[project.people]]
+given-names = "Anton"
+family-names = "Pirogov"
+email = "a.pirogov@fz-juelich.de"
+orcid = "https://orcid.org/0000-0002-5077-7497"
+
+author = true
+maintainer = true
