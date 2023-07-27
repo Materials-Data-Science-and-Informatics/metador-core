@@ -38,17 +38,17 @@ pip install metador-core
 
 ## Getting Started
 
-If you successfully installed the package, check out the tutorial notebooks
-we provide in `./docs/notebooks`. These are intended to showcase what Metador has to offer
-and get you started with usage and development of your own schemas, widgets or other
-plugins.
+If you successfully installed the package, check out the
+[tutorial notebooks](https://materials-data-science-and-informatics.github.io/metador-core/main/notebooks/about/).
 
-You can browse a non-interactive version in the documentation. To explore the notebooks
-interactively, you can run:
+These are intended to showcase what Metador has to offer and get you started with usage
+and development of your own schemas, widgets or other plugins.
+
+To explore the notebooks interactively, clone this repo, install it, and then run:
 
 ```
 pip install notebook
-jupyter notebook ./tutorial
+jupyter notebook ./docs/notebooks
 ```
 
 ## Compatibility and Known Issues

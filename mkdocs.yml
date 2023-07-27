@@ -16,6 +16,7 @@ nav:
   - Usage:
     - Quickstart: quickstart.md
     - Notebooks:
+      - Overview: notebooks/about.md
       - Creating a MetadorContainer: notebooks/01_MetadorContainer.ipynb
       - Writing Metador Plugins: notebooks/02_YourFirstMetadorPlugin.ipynb
       - Designing Metadata Schemas: notebooks/03_Schemas.ipynb
