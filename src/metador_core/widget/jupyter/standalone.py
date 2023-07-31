@@ -83,8 +83,8 @@ def run(*, debug: bool = False, pn_exts: Optional[List[str]] = None):
 
     # prepare flask server
     flask_app = Flask(__name__)
-    _widget_server.set_bokeh_endpoint(bokeh_base)
-    _widget_server.set_flask_endpoint(flask_base)
+    _widget_server.bokeh_endpoint = bokeh_base
+    _widget_server.flask_endpoint = flask_base
     flask_bokeh = _widget_server.get_flask_blueprint("widget-api", __name__)
     flask_app.register_blueprint(flask_bokeh)
 
