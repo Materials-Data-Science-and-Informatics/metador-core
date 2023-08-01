@@ -2062,7 +2062,8 @@ i.e. without having the actual container.</p>
 
             <details class="quote">
               <summary>Source code in <code>src/metador_core/ih5/skeleton.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">50</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">49</span>
+<span class="normal">50</span>
 <span class="normal">51</span>
 <span class="normal">52</span>
 <span class="normal">53</span>
@@ -2088,8 +2089,7 @@ i.e. without having the actual container.</p>
 <span class="normal">73</span>
 <span class="normal">74</span>
 <span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">IH5Skeleton</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">IH5Skeleton</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">__root__</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SkeletonNodeInfo</span><span class="p">]</span>
 
     <span class="k">def</span> <span class="nf">with_patch_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
@@ -2151,13 +2151,13 @@ i.e. without having the actual container.</p>
 
           <details class="quote">
             <summary>Source code in <code>src/metador_core/ih5/skeleton.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">53</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">52</span>
+<span class="normal">53</span>
 <span class="normal">54</span>
 <span class="normal">55</span>
 <span class="normal">56</span>
 <span class="normal">57</span>
-<span class="normal">58</span>
-<span class="normal">59</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_patch_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="normal">58</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">with_patch_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Copy of skeletonwith  patch index of all nodes and attributes modified.&quot;&quot;&quot;</span>
     <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">ret</span><span class="o">.</span><span class="n">__root__</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__root__</span><span class="p">)</span>
@@ -2197,7 +2197,8 @@ Second component is more detailed type for attribute values and <code>IH5Dataset
 
           <details class="quote">
             <summary>Source code in <code>src/metador_core/ih5/skeleton.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">61</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
+<span class="normal">61</span>
 <span class="normal">62</span>
 <span class="normal">63</span>
 <span class="normal">64</span>
@@ -2212,8 +2213,7 @@ Second component is more detailed type for attribute values and <code>IH5Dataset
 <span class="normal">73</span>
 <span class="normal">74</span>
 <span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span> <span class="nf">for_record</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">rec</span><span class="p">:</span> <span class="n">IH5Record</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return mapping from all paths in a IH5 record to their type.</span>
 
@@ -2264,7 +2264,8 @@ Second component is more detailed type for attribute values and <code>IH5Dataset
 
           <details class="quote">
             <summary>Source code in <code>src/metador_core/ih5/skeleton.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">84</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">83</span>
+<span class="normal">84</span>
 <span class="normal">85</span>
 <span class="normal">86</span>
 <span class="normal">87</span>
@@ -2276,8 +2277,7 @@ Second component is more detailed type for attribute values and <code>IH5Dataset
 <span class="normal">93</span>
 <span class="normal">94</span>
 <span class="normal">95</span>
-<span class="normal">96</span>
-<span class="normal">97</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">init_stub_skeleton</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">IH5Record</span><span class="p">,</span> <span class="n">skel</span><span class="p">:</span> <span class="n">IH5Skeleton</span><span class="p">):</span>
+<span class="normal">96</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">init_stub_skeleton</span><span class="p">(</span><span class="n">ds</span><span class="p">:</span> <span class="n">IH5Record</span><span class="p">,</span> <span class="n">skel</span><span class="p">:</span> <span class="n">IH5Skeleton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Fill a passed fresh container with stub structure based on a skeleton.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">attrs</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Container not empty, cannot initialize stub structure here!&quot;</span><span class="p">)</span>
@@ -2321,14 +2321,14 @@ Second component is more detailed type for attribute values and <code>IH5Dataset
 
           <details class="quote">
             <summary>Source code in <code>src/metador_core/ih5/skeleton.py</code></summary>
-            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">100</span>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 99</span>
+<span class="normal">100</span>
 <span class="normal">101</span>
 <span class="normal">102</span>
 <span class="normal">103</span>
 <span class="normal">104</span>
 <span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">init_stub_base</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">IH5Record</span><span class="p">,</span> <span class="n">src_ub</span><span class="p">:</span> <span class="n">IH5UserBlock</span><span class="p">,</span> <span class="n">src_skel</span><span class="p">:</span> <span class="n">IH5Skeleton</span><span class="p">):</span>
+<span class="normal">106</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">init_stub_base</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">IH5Record</span><span class="p">,</span> <span class="n">src_ub</span><span class="p">:</span> <span class="n">IH5UserBlock</span><span class="p">,</span> <span class="n">src_skel</span><span class="p">:</span> <span class="n">IH5Skeleton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Prepare a stub base container, given empty target, source user block and skeleton.</span>
 
 <span class="sd">    Patches on top of this container will work with the original container.</span>
