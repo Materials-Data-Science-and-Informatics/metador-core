@@ -1,7 +1,7 @@
 [tool.poetry]
 # ---- DO NOT EDIT, managed by somesy ----
 name = "metador-core"
-version = "0.0.3"
+version = "0.1.0"
 description = "Core of Metador, the metadata-first research data management framework."
 authors = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 license = "MIT"

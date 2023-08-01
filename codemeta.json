@@ -14,11 +14,11 @@
     "audience": [
         {
             "@type": "Audience",
-            "audienceType": "Science/Research"
+            "audienceType": "Developers"
         },
         {
             "@type": "Audience",
-            "audienceType": "Developers"
+            "audienceType": "Science/Research"
         }
     ],
     "author": [
@@ -173,5 +173,5 @@
         }
     ],
     "url": "https://github.com/Materials-Data-Science-and-Informatics/metador-core",
-    "version": "0.0.3"
+    "version": "0.1.0"
 }

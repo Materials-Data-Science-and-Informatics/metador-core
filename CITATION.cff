@@ -3,7 +3,7 @@ type: software
 message: If you use this software, please cite it using these metadata.
 
 title: metador-core
-version: 0.0.3
+version: 0.1.0
 abstract: Core of Metador, the metadata-first research data management framework.
 repository-code: "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
 license: MIT
