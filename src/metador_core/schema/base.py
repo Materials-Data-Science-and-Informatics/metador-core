@@ -1,9 +1,9 @@
 import json
-from typing import Optional, cast
+from pathlib import Path
+from typing import Union
 
-from pydantic import BaseModel, Extra
-from pydantic_yaml import YamlModelMixin
-from pydantic_yaml.mixin import YamlModelMixinConfig, YamlStyle
+from pydantic import BaseModel, Extra, ValidationError
+from pydantic_yaml import parse_yaml_file_as, parse_yaml_raw_as, to_yaml_str
 
 from .encoder import DynEncoderModelMetaclass
 from .parser import ParserMixin
@@ -18,9 +18,7 @@ def _mod_def_dump_args(kwargs):
     return kwargs
 
 
-class BaseModelPlus(
-    ParserMixin, YamlModelMixin, BaseModel, metaclass=DynEncoderModelMetaclass
-):
+class BaseModelPlus(ParserMixin, BaseModel, metaclass=DynEncoderModelMetaclass):
     """Extended pydantic BaseModel with some good defaults.
 
     Used as basis for various entities, including:
@@ -68,30 +66,23 @@ class BaseModelPlus(
         """
         return json.loads(self.json(**kwargs))
 
-    def yaml(
-        self,
-        *,
-        # sort_keys: bool = False,
-        default_flow_style: bool = False,
-        default_style: Optional[YamlStyle] = None,
-        indent: Optional[bool] = None,
-        encoding: Optional[str] = None,
-        **kwargs,
-    ) -> str:
+    def yaml(self, **kwargs) -> str:
         """Return serialized YAML as string."""
         # Current way: use round trip through JSON to kick out non-JSON entities
         # (more elegant: allow ruamel yaml to reuse defined custom JSON dumpers)
-        tmp = self.json_dict(**_mod_def_dump_args(kwargs))
-        # NOTE: yaml_dumps is defined by the used yaml mixin in the config
-        cfg = cast(YamlModelMixinConfig, self.__config__)
-        return cfg.yaml_dumps(
-            tmp,
-            # sort_keys=sort_keys, # does not work for some weird arg passing reason
-            default_flow_style=default_flow_style,
-            default_style=default_style,
-            encoding=encoding,
-            indent=indent,
-        )
+        # tmp = self.json_dict(**_mod_def_dump_args(kwargs))
+        return to_yaml_str(self)
+
+    @classmethod
+    def parse_file(cls, path: Union[str, Path]):
+        return parse_yaml_file_as(cls, path)
+
+    @classmethod
+    def parse_raw(cls, dat: Union[str, bytes], **kwargs):
+        try:
+            return super().parse_raw(dat, **kwargs)
+        except ValidationError:
+            return parse_yaml_raw_as(cls, dat)
 
     def __bytes__(self) -> bytes:
         """Serialize to JSON and return UTF-8 encoded bytes to be written in a file."""
