@@ -57,7 +57,7 @@
             "identifier": "Pint",
             "name": "Pint",
             "runtimePlatform": "Python 3",
-            "version": "^0.18"
+            "version": "^0.21"
         },
         {
             "@type": "SoftwareApplication",
@@ -113,7 +113,7 @@
             "identifier": "pydantic",
             "name": "pydantic",
             "runtimePlatform": "Python 3",
-            "version": "~ 1.9.2"
+            "version": "^1.10.12"
         },
         {
             "@type": "SoftwareApplication",
@@ -148,7 +148,7 @@
             "identifier": "runtype",
             "name": "runtype",
             "runtimePlatform": "Python 3",
-            "version": "^0.3.2"
+            "version": "^0.3.5"
         },
         {
             "@type": "SoftwareApplication",
@@ -162,7 +162,7 @@
             "identifier": "typing-extensions",
             "name": "typing-extensions",
             "runtimePlatform": "Python 3",
-            "version": "~ 4.5.0"
+            "version": "^4.6.0"
         },
         {
             "@type": "SoftwareApplication",

@@ -1,5 +1,4 @@
 """Simplify creation of custom parsers for pydantic models."""
-from functools import partial
 from typing import Any, ClassVar, Dict, Type, TypeVar
 
 from pydantic import BaseModel
@@ -14,7 +13,7 @@ class BaseParser:
     strict: bool = True
 
     @classmethod
-    def parse(cls, tcls: Type[T], v: Any) -> T:
+    def parse(cls, target: Type[T], v: Any) -> T:
         """Override and implement this method for custom parsing.
 
         The default implementation will simply pass through
@@ -31,20 +30,21 @@ class BaseParser:
         disable this behavior.
 
         Args:
-            tcls: target class whose instance should be returned
+            target: class the value should be parsed into
             v: value to be parsed
         """
-        if not isinstance(v, tcls):
-            raise TypeError(f"Expected {tcls.__name__}, but got {type(v).__name__}!")
+        if target is not None and not isinstance(v, target):
+            raise TypeError(f"Expected {target.__name__}, but got {type(v).__name__}!")
         return v
 
 
-def run_parser(cls: Type[BaseParser], tcls: Type, v: Any):
+def run_parser(cls: Type[BaseParser], target: Type[T], value: Any):
     """Parse and validate passed value."""
-    # print("call parser", cls, "into", tcls, "on", v, ":", type(v))
-    ret = cls.parse(tcls, v)
-    if cls.strict and not isinstance(ret, tcls):
-        msg = f"Parser returned:  {type(ret)}, expected: {tcls} (strict=True)"
+    # print("call parser", cls, "from", tcls, "on", value, ":", type(value))
+    ret = cls.parse(target, value)
+    if cls.strict and not isinstance(ret, target):
+        msg = f"Parser returned: {type(ret).__name__}, "
+        msg += f"expected: {target.__name__} (strict=True)"
         raise RuntimeError(msg)
     return ret
 
@@ -81,19 +81,23 @@ class ParserMixin:
     @classmethod
     def __get_validators__(cls):
         pfunc = cls.__dict__.get("__parser_func__")
-
         if pfunc is None:
             if parser := get_parser(cls):
-                pfunc = partial(run_parser, parser, cls)
+
+                def wrapper_func(cls, value, values=None, config=None, field=None):
+                    return run_parser(parser, field.type_, value)
+
+                pfunc = wrapper_func
             else:
                 pfunc = NoParserDefined
             cls.__parser_func__ = pfunc  # cache it
 
         if pfunc is not NoParserDefined:  # return cached parser function
-            # print("yield custom parser", pfunc)
             yield pfunc
 
-        # important: if no parser is given, return the default validate function of the model!
+        # important: if no parser is given
+        # and class is a model,
+        # also return the default validate function of the model!
         if issubclass(cls, BaseModel):
             yield cls.validate
 

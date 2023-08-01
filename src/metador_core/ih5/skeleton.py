@@ -6,11 +6,10 @@ ignoring the actual data content (attribute values and datasets).
 This can be used to implement manifest file and support "patching in thin air",
 i.e. without having the actual container.
 """
-from typing import Dict, Union
+from typing import Dict, Literal, Union
 
 import h5py
 from pydantic import BaseModel
-from typing_extensions import Literal
 
 from .overlay import H5Type, IH5Dataset, IH5Group
 from .record import IH5Record, IH5UserBlock

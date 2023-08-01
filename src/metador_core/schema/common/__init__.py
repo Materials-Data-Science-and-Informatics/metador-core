@@ -88,7 +88,7 @@ class NumValue(QuantitativeValue):
                 return tcls.construct(value=val, unitText=cls.infer_unit)
 
             val = parse_obj_as(Tuple[Number, str], arr)
-            if cls.allowed_units and not val[1] in cls.allowed_units:
+            if cls.allowed_units and val[1] not in cls.allowed_units:
                 msg = (
                     f"Invalid unit '{val[1]}', unit must be one of {cls.allowed_units}"
                 )

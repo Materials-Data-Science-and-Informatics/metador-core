@@ -39,15 +39,15 @@ maintainers = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 h5py = "^3.8.0"
-typing-extensions = "~4.5.0"
-runtype = "^0.3.2"
-pydantic = "~1.9.2"
+typing-extensions = "^4.6.0"
+runtype = "^0.3.5"
+pydantic = "^1.10.12"
 pydantic-yaml = "^1.1.1"
 importlib-metadata = "^4.11.4"
 wrapt = "^1.14.1"
 rdflib = "^6.2.0"
 isodate = "^0.6.1"
-Pint = "^0.18"
+Pint = "^0.21"
 Pillow = "^9.1.1"
 python-magic = "^0.4.25"
 pandas = "^1.4.1"
@@ -147,12 +147,7 @@ licensecheck = "licensecheck"  # run this when you add new deps
 [tool.pytest.ini_options]
 addopts = "--cov-report=term-missing:skip-covered"
 filterwarnings = [
-    "ignore::PendingDeprecationWarning:ruamel.yaml.*",
-    "ignore::PendingDeprecationWarning:pydantic_yaml.*",
-    "ignore::PendingDeprecationWarning:metador_core.schema.base",
-    "ignore::DeprecationWarning:importlib_metadata.*",
     "ignore::DeprecationWarning:bokeh.core.*",
-    "ignore::DeprecationWarning:panel.*",
 ]
 
 [tool.coverage.run]

@@ -10,6 +10,7 @@ from typing import (
     ItemsView,
     Iterable,
     KeysView,
+    Literal,
     MutableMapping,
     Optional,
     Protocol,
@@ -19,7 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
-from typing_extensions import Literal, get_args
+from typing_extensions import get_args
 
 
 @runtime_checkable

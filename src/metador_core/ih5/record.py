@@ -16,12 +16,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, TypeVar, Union
 from uuid import UUID, uuid1
 
 import h5py
 from pydantic import BaseModel, Field, PrivateAttr
-from typing_extensions import Annotated, Final, Literal
+from typing_extensions import Annotated, Final
 
 from ..container.protocols import _OPEN_MODES, OpenMode
 from ..schema.types import QualHashsumStr

@@ -1,12 +1,24 @@
 import enum
 from collections import ChainMap
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Set, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Mapping,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 
 import typing_extensions as te
 
 # import typing_utils  # for issubtype
 from runtype import validation as rv  # for is_subtype
-from typing_extensions import Annotated, ClassVar, Literal, TypedDict
+from typing_extensions import Annotated, ClassVar, TypedDict
 
 get_args = te.get_args  # re-export get_args
 

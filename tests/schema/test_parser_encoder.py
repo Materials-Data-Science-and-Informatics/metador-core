@@ -34,8 +34,8 @@ class StringParsed(ParserMixin, SomeModel):
         strict = True
 
         @classmethod
-        def parse(cls, tcls, v):
-            return tcls(x=v)
+        def parse(cls, target, v):
+            return target(x=v)
 
 
 class SubModel(StringParsed):
@@ -49,8 +49,8 @@ class InvalidParsed(ParserMixin, SomeModel):
         strict = True
 
         @classmethod
-        def parse(cls, tcls, v):
-            return v  # <- invalid, not returning tcls instance
+        def parse(cls, target, v):
+            return v  # <- invalid, not returning target instance
 
 
 class OuterModel(BaseModel):
@@ -70,8 +70,10 @@ def test_custom_parser():
         class FaultyModel(BaseModel):
             x: Invalid
 
+        list(FaultyModel.__get_validators__())
+
     with pytest.raises(RuntimeError):  # for i
-        obj = OuterModel(y="hello", i="everyone")
+        obj = OuterModel(y="hello", i={"x": "everyone"})
 
     with pytest.raises(ValidationError):  # for z
         obj = OuterModel(y="hello", z="world")
@@ -164,9 +166,9 @@ def test_custom_parser_encoder():
             strict = True
 
             @classmethod
-            def parse(cls, tcls, val):
+            def parse(cls, target, val):
                 if val == "foo":
-                    return tcls()
+                    return target()
                 raise ValueError(f"Invalid input: {val}")
 
     class DummyModel2(CombinedBaseModel):

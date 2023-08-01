@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import sys
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Set, Tuple, Union
 
 import pytest
 from pydantic import parse_obj_as
-from typing_extensions import Annotated, ClassVar, Literal
+from typing_extensions import Annotated, ClassVar
 
 from metador_core.util import typing as t
 

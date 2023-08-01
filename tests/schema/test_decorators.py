@@ -1,9 +1,8 @@
 import enum
-from typing import Optional
+from typing import Literal, Optional
 
 import pytest
 from pydantic import BaseModel, ValidationError
-from typing_extensions import Literal
 
 from metador_core.plugin.util import register_in_group
 from metador_core.schema import MetadataSchema

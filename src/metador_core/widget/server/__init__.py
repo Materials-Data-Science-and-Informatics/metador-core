@@ -1,6 +1,6 @@
 """The Metador widget server."""
 import io
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import numpy as np
 from bokeh.application import Application
@@ -11,7 +11,6 @@ from bokeh.server.server import Server
 from flask import Blueprint, request, send_file
 from panel.viewable import Viewable
 from tornado.ioloop import IOLoop
-from typing_extensions import Literal
 from werkzeug.exceptions import BadRequest, NotFound
 
 from metador_core.container import ContainerProxy, MetadorContainer, MetadorNode
