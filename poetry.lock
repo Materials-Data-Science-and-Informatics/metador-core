@@ -43,21 +43,6 @@ six = "*"
 test = ["astroid", "pytest"]
 
 [[package]]
-name = "astunparse"
-version = "1.6.3"
-description = "An AST unparser for Python"
-optional = false
-python-versions = "*"
-files = [
-    {file = "astunparse-1.6.3-py2.py3-none-any.whl", hash = "sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8"},
-    {file = "astunparse-1.6.3.tar.gz", hash = "sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872"},
-]
-
-[package.dependencies]
-six = ">=1.6.1,<2.0"
-wheel = ">=0.23.0,<1.0"
-
-[[package]]
 name = "attrs"
 version = "23.1.0"
 description = "Classes Without Boilerplate"
@@ -1899,26 +1884,6 @@ files = [
 ]
 
 [[package]]
-name = "pdoc"
-version = "12.3.1"
-description = "API Documentation for Python Projects"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "pdoc-12.3.1-py3-none-any.whl", hash = "sha256:c3f24f31286e634de9c76fa6e67bd5c0c5e74360b41dc91e6b82499831eb52d8"},
-    {file = "pdoc-12.3.1.tar.gz", hash = "sha256:453236f225feddb8a9071428f1982a78d74b9b3da4bc4433aedb64dbd0cc87ab"},
-]
-
-[package.dependencies]
-astunparse = {version = "*", markers = "python_version < \"3.9\""}
-Jinja2 = ">=2.11.0"
-MarkupSafe = "*"
-pygments = ">=2.12.0"
-
-[package.extras]
-dev = ["black", "hypothesis", "mypy", "pytest", "pytest-cov", "pytest-timeout", "ruff", "tox", "types-pygments"]
-
-[[package]]
 name = "pexpect"
 version = "4.8.0"
 description = "Pexpect allows easy control of interactive console applications."
@@ -3342,20 +3307,6 @@ MarkupSafe = ">=2.1.1"
 watchdog = ["watchdog (>=2.3)"]
 
 [[package]]
-name = "wheel"
-version = "0.41.0"
-description = "A built-package format for Python"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "wheel-0.41.0-py3-none-any.whl", hash = "sha256:7e9be3bbd0078f6147d82ed9ed957e323e7708f57e134743d2edef3a7b7972a9"},
-    {file = "wheel-0.41.0.tar.gz", hash = "sha256:55a0f0a5a84869bce5ba775abfd9c462e3a6b1b7b7ec69d72c0b83d673a5114d"},
-]
-
-[package.extras]
-test = ["pytest (>=6.0.0)", "setuptools (>=65)"]
-
-[[package]]
 name = "wrapt"
 version = "1.15.0"
 description = "Module for decorators, wrappers and monkey patching."
@@ -3457,4 +3408,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "1f49580590de425d5dbd3313fb4feab966dd0998c5a8f799778774a88ec2398c"
+content-hash = "adfe4be18c491c0cd605b1954067e9dcef69930369f86304333e6b187efe5806"
