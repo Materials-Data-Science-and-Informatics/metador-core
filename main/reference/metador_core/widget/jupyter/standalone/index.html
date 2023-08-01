@@ -19,7 +19,7 @@
         <link rel="next" href="../../server/">
       
       <link rel="icon" href="../../../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.5.0, mkdocs-material-9.1.20">
+      <meta name="generator" content="mkdocs-1.5.1, mkdocs-material-9.1.21">
     
     
       
@@ -2105,8 +2105,8 @@ where the user has metador libraries available and can inspect containers.</p>
 
     <span class="c1"># prepare flask server</span>
     <span class="n">flask_app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
-    <span class="n">_widget_server</span><span class="o">.</span><span class="n">set_bokeh_endpoint</span><span class="p">(</span><span class="n">bokeh_base</span><span class="p">)</span>
-    <span class="n">_widget_server</span><span class="o">.</span><span class="n">set_flask_endpoint</span><span class="p">(</span><span class="n">flask_base</span><span class="p">)</span>
+    <span class="n">_widget_server</span><span class="o">.</span><span class="n">bokeh_endpoint</span> <span class="o">=</span> <span class="n">bokeh_base</span>
+    <span class="n">_widget_server</span><span class="o">.</span><span class="n">flask_endpoint</span> <span class="o">=</span> <span class="n">flask_base</span>
     <span class="n">flask_bokeh</span> <span class="o">=</span> <span class="n">_widget_server</span><span class="o">.</span><span class="n">get_flask_blueprint</span><span class="p">(</span><span class="s2">&quot;widget-api&quot;</span><span class="p">,</span> <span class="vm">__name__</span><span class="p">)</span>
     <span class="n">flask_app</span><span class="o">.</span><span class="n">register_blueprint</span><span class="p">(</span><span class="n">flask_bokeh</span><span class="p">)</span>
 
