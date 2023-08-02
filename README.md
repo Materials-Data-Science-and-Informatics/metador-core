@@ -11,6 +11,9 @@
 [
 ![PyPIPkgVersion](https://img.shields.io/pypi/v/metador-core)
 ](https://pypi.org/project/metador-core/)
+[
+![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/7174/badge)
+](https://bestpractices.coreinfrastructure.org/projects/7174)
 
 <!-- --8<-- [start:abstract] -->
 # metador-core
