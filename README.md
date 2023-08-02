@@ -1,4 +1,3 @@
-![Project status](https://img.shields.io/badge/project%20status-alpha-%23ff8000)
 [
 ![Docs](https://img.shields.io/badge/read-docs-success)
 ](https://materials-data-science-and-informatics.github.io/metador-core)
@@ -53,6 +52,11 @@ To explore the notebooks interactively, clone this repo, install it, and then ru
 pip install notebook
 jupyter notebook ./docs/notebooks
 ```
+
+You can use the
+[metador-extension-cookiecutter](https://github.com/Materials-Data-Science-and-Informatics/metador-extension-cookiecutter)
+template to generate a well-structured Python package repository that you can use to
+quickly get started with Metador plugin development.
 
 ## Compatibility and Known Issues
 
