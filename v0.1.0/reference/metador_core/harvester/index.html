@@ -1,0 +1,4003 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Core of Metador, the metadata-first research data management framework.">
+      
+      
+      
+        <link rel="canonical" href="https://materials-data-science-and-informatics.github.io/metador-core/v0.1.0/reference/metador_core/harvester/">
+      
+      
+        <link rel="prev" href="../container/wrappers/">
+      
+      
+        <link rel="next" href="common/">
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.5.1, mkdocs-material-9.1.21">
+    
+    
+      
+        <title>harvester - metador-core</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.eebd395e.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ecc896b0.min.css">
+      
+      
+
+    
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_markdown_exec_ansi.css">
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../css/style.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&"object"==typeof palette.color)for(var key of Object.keys(palette.color))document.body.setAttribute("data-md-color-"+key,palette.color[key])</script>
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#metador_core.harvester" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  This page is for an outdated or development version.
+  <a href="../../../..">
+    <strong>Click here to go to the latest stable version.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),outdated=__md_get("__outdated",sessionStorage);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="metador-core" class="md-header__button md-logo" aria-label="metador-core" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            metador-core
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              harvester
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+          
+            
+            
+            
+            <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+            
+              <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+              </label>
+            
+          
+            
+            
+            
+            <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+            
+              <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12c0-2.42-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+              </label>
+            
+          
+        </form>
+      
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Materials-Data-Science-and-Informatics/metador-core" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Materials-Data-Science-and-Informatics/metador-core
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+
+
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        Home
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+
+
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../quickstart/" class="md-tabs__link md-tabs__link--active">
+        Usage
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+
+
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        Development
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="metador-core" class="md-nav__button md-logo" aria-label="metador-core" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    metador-core
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Materials-Data-Science-and-Informatics/metador-core" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Materials-Data-Science-and-Informatics/metador-core
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+          Home
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_1">
+          <span class="md-nav__icon md-icon"></span>
+          Home
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        Overview
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        Changelog
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../credits/" class="md-nav__link">
+        Credits
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../license/" class="md-nav__link">
+        License
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+    
+  
+  
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+      
+      
+      
+        <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          Usage
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <label class="md-nav__title" for="__nav_2">
+          <span class="md-nav__icon md-icon"></span>
+          Usage
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../quickstart/" class="md-nav__link">
+        Quickstart
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+          Notebooks
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_2">
+          <span class="md-nav__icon md-icon"></span>
+          Notebooks
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../notebooks/about/" class="md-nav__link">
+        Overview
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../notebooks/01_MetadorContainer/" class="md-nav__link">
+        Creating a MetadorContainer
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../notebooks/02_YourFirstMetadorPlugin/" class="md-nav__link">
+        Writing Metador Plugins
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../notebooks/03_Schemas/" class="md-nav__link">
+        Designing Metadata Schemas
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../notebooks/03b_SemanticsInteroperability/" class="md-nav__link">
+        Semantics and Interoperability
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+    
+  
+  
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
+      
+      
+      
+        <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+          API
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
+        <label class="md-nav__title" for="__nav_2_3">
+          <span class="md-nav__icon md-icon"></span>
+          API
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+    
+  
+  
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1" checked>
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../">metador_core</a>
+          
+            <label for="__nav_2_3_1">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_3_1_label" aria-expanded="true">
+        <label class="md-nav__title" for="__nav_2_3_1">
+          <span class="md-nav__icon md-icon"></span>
+          metador_core
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_1" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../container/">container</a>
+          
+            <label for="__nav_2_3_1_1">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_1_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_1">
+          <span class="md-nav__icon md-icon"></span>
+          container
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/drivers/" class="md-nav__link">
+        drivers
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/interface/" class="md-nav__link">
+        interface
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/protocols/" class="md-nav__link">
+        protocols
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/provider/" class="md-nav__link">
+        provider
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/utils/" class="md-nav__link">
+        utils
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container/wrappers/" class="md-nav__link">
+        wrappers
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+    
+  
+  
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_2" checked>
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index md-nav__link--active">
+          <a href="./">harvester</a>
+          
+            <label for="__nav_2_3_1_2">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_2_label" aria-expanded="true">
+        <label class="md-nav__title" for="__nav_2_3_1_2">
+          <span class="md-nav__icon md-icon"></span>
+          harvester
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="common/" class="md-nav__link">
+        common
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_3" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../ih5/">ih5</a>
+          
+            <label for="__nav_2_3_1_3">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_3">
+          <span class="md-nav__icon md-icon"></span>
+          ih5
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ih5/container/" class="md-nav__link">
+        container
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ih5/manifest/" class="md-nav__link">
+        manifest
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ih5/overlay/" class="md-nav__link">
+        overlay
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ih5/record/" class="md-nav__link">
+        record
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ih5/skeleton/" class="md-nav__link">
+        skeleton
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_4" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../packer/">packer</a>
+          
+            <label for="__nav_2_3_1_4">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_4_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_4">
+          <span class="md-nav__icon md-icon"></span>
+          packer
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packer/example/" class="md-nav__link">
+        example
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packer/types/" class="md-nav__link">
+        types
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packer/utils/" class="md-nav__link">
+        utils
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_5" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../plugin/">plugin</a>
+          
+            <label for="__nav_2_3_1_5">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_5_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_5">
+          <span class="md-nav__icon md-icon"></span>
+          plugin
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/entrypoints/" class="md-nav__link">
+        entrypoints
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/interface/" class="md-nav__link">
+        interface
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/metaclass/" class="md-nav__link">
+        metaclass
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/types/" class="md-nav__link">
+        types
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugin/util/" class="md-nav__link">
+        util
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        plugins
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_7" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../rdf/">rdf</a>
+          
+            <label for="__nav_2_3_1_7">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_7_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_7">
+          <span class="md-nav__icon md-icon"></span>
+          rdf
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rdf/lib/" class="md-nav__link">
+        lib
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rdf/skos/" class="md-nav__link">
+        skos
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_8" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../schema/">schema</a>
+          
+            <label for="__nav_2_3_1_8">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_8_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_8">
+          <span class="md-nav__icon md-icon"></span>
+          schema
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/base/" class="md-nav__link">
+        base
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_8_2" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../schema/common/">common</a>
+          
+            <label for="__nav_2_3_1_8_2">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_2_3_1_8_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_8_2">
+          <span class="md-nav__icon md-icon"></span>
+          common
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/common/rocrate/" class="md-nav__link">
+        rocrate
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/common/schemaorg/" class="md-nav__link">
+        schemaorg
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/core/" class="md-nav__link">
+        core
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/decorators/" class="md-nav__link">
+        decorators
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/encoder/" class="md-nav__link">
+        encoder
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/inspect/" class="md-nav__link">
+        inspect
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/jsonschema/" class="md-nav__link">
+        jsonschema
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/ld/" class="md-nav__link">
+        ld
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/parser/" class="md-nav__link">
+        parser
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/partial/" class="md-nav__link">
+        partial
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/pg/" class="md-nav__link">
+        pg
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/plugins/" class="md-nav__link">
+        plugins
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/types/" class="md-nav__link">
+        types
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_9" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../util/">util</a>
+          
+            <label for="__nav_2_3_1_9">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_9_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_9">
+          <span class="md-nav__icon md-icon"></span>
+          util
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/diff/" class="md-nav__link">
+        diff
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/enum/" class="md-nav__link">
+        enum
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/hashsums/" class="md-nav__link">
+        hashsums
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/models/" class="md-nav__link">
+        models
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/pytest/" class="md-nav__link">
+        pytest
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../util/typing/" class="md-nav__link">
+        typing
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_10" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../widget/">widget</a>
+          
+            <label for="__nav_2_3_1_10">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_1_10_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_10">
+          <span class="md-nav__icon md-icon"></span>
+          widget
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../widget/common/" class="md-nav__link">
+        common
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../widget/dashboard/" class="md-nav__link">
+        dashboard
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_1_10_3" >
+      
+      
+      
+        
+        
+        <div class="md-nav__link md-nav__link--index ">
+          <a href="../widget/jupyter/">jupyter</a>
+          
+            <label for="__nav_2_3_1_10_3">
+              <span class="md-nav__icon md-icon"></span>
+            </label>
+          
+        </div>
+      
+      <nav class="md-nav" data-md-level="5" aria-labelledby="__nav_2_3_1_10_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_2_3_1_10_3">
+          <span class="md-nav__icon md-icon"></span>
+          jupyter
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../widget/jupyter/standalone/" class="md-nav__link">
+        standalone
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../widget/server/" class="md-nav__link">
+        server
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          Development
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3">
+          <span class="md-nav__icon md-icon"></span>
+          Development
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        How To Contribute
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../dev_guide/" class="md-nav__link">
+        Developer Guide
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../code_of_conduct/" class="md-nav__link">
+        Code of Conduct
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../coverage/" class="md-nav__link">
+        Coverage Report
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester" class="md-nav__link">
+    metador_core.harvester
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterPlugin" class="md-nav__link">
+    HarvesterPlugin
+  </a>
+  
+    <nav class="md-nav" aria-label="HarvesterPlugin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterPlugin.returns" class="md-nav__link">
+    returns
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterArgs" class="md-nav__link">
+    HarvesterArgs
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterArgsPartial" class="md-nav__link">
+    HarvesterArgsPartial
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterMetaMixin" class="md-nav__link">
+    HarvesterMetaMixin
+  </a>
+  
+    <nav class="md-nav" aria-label="HarvesterMetaMixin">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.HarvesterMetaMixin.PartialArgs" class="md-nav__link">
+    PartialArgs
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester" class="md-nav__link">
+    Harvester
+  </a>
+  
+    <nav class="md-nav" aria-label="Harvester">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.Args" class="md-nav__link">
+    Args
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.schema" class="md-nav__link">
+    schema
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.__init__" class="md-nav__link">
+    __init__()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.__call__" class="md-nav__link">
+    __call__()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.harvest" class="md-nav__link">
+    harvest()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.Harvester.run" class="md-nav__link">
+    run()
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.FileHarvester" class="md-nav__link">
+    FileHarvester
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.PGHarvester" class="md-nav__link">
+    PGHarvester
+  </a>
+  
+    <nav class="md-nav" aria-label="PGHarvester">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.PGHarvester.init_plugin" class="md-nav__link">
+    init_plugin()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metador_core.harvester.PGHarvester.for_schema" class="md-nav__link">
+    for_schema()
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.def_sidecar_func" class="md-nav__link">
+    def_sidecar_func()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.metadata_loader" class="md-nav__link">
+    metadata_loader()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.configure" class="md-nav__link">
+    configure()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.file_harvester_pipeline" class="md-nav__link">
+    file_harvester_pipeline()
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metador_core.harvester.harvest" class="md-nav__link">
+    harvest()
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+    <a href="https://github.com/Materials-Data-Science-and-Informatics/metador-core/blob/main/docs/src/metador_core/harvester/__init__.py" title="Edit this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4v-2m10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1 2.1 2.1Z"/></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/Materials-Data-Science-and-Informatics/metador-core/raw/main/docs/src/metador_core/harvester/__init__.py" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.15 8.15 0 0 1-1.23-2Z"/></svg>
+    </a>
+  
+
+
+  <h1>harvester</h1>
+
+<div class="doc doc-object doc-module">
+
+
+<a id="metador_core.harvester"></a>
+  <div class="doc doc-contents first">
+  
+      <p>Plugin group for metadata harvesters.</p>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.HarvesterPlugin" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">HarvesterPlugin</span>
+
+
+<a href="#metador_core.harvester.HarvesterPlugin" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><a class="autorefs autorefs-internal" title="metador_core.plugin.interface" href="../plugin/interface/#metador_core.plugin.interface">pg</a>.<a class="autorefs autorefs-internal" title="metador_core.plugin.interface.PluginBase" href="../schema/plugins/#metador_core.schema.plugins.PluginBase">PluginBase</a></code></p>
+
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">HarvesterPlugin</span><span class="p">(</span><span class="n">pg</span><span class="o">.</span><span class="n">PluginBase</span><span class="p">):</span>
+    <span class="n">returns</span><span class="p">:</span> <span class="n">SchemaPluginRef</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Schema returned by this harvester.&quot;&quot;&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="metador_core.harvester.HarvesterPlugin.returns" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">returns</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#metador_core.harvester.HarvesterPlugin.returns" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">returns</span><span class="p">:</span> <span class="n">SchemaPluginRef</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Schema returned by this harvester.</p>
+  </div>
+
+</div>
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.HarvesterArgs" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">HarvesterArgs</span>
+
+
+<a href="#metador_core.harvester.HarvesterArgs" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><a class="autorefs autorefs-internal" title="metador_core.schema.core.BaseModelPlus" href="../schema/base/#metador_core.schema.base.BaseModelPlus">BaseModelPlus</a></code></p>
+
+  
+      <p>Base class for harvester arguments.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">HarvesterArgs</span><span class="p">(</span><span class="n">BaseModelPlus</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for harvester arguments.&quot;&quot;&quot;</span>
+
+    <span class="k">class</span> <span class="nc">Config</span><span class="p">(</span><span class="n">BaseModelPlus</span><span class="o">.</span><span class="n">Config</span><span class="p">):</span>
+        <span class="n">extra</span> <span class="o">=</span> <span class="n">Extra</span><span class="o">.</span><span class="n">forbid</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.HarvesterArgsPartial" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">HarvesterArgsPartial</span>
+
+
+<a href="#metador_core.harvester.HarvesterArgsPartial" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><a class="autorefs autorefs-internal" title="metador_core.schema.partial.PartialFactory" href="../schema/partial/#metador_core.schema.partial.PartialFactory">PartialFactory</a></code></p>
+
+  
+      <p>Base class for partial harvester arguments.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">HarvesterArgsPartial</span><span class="p">(</span><span class="n">PartialFactory</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for partial harvester arguments.&quot;&quot;&quot;</span>
+
+    <span class="n">base_model</span> <span class="o">=</span> <span class="n">HarvesterArgs</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.HarvesterMetaMixin" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">HarvesterMetaMixin</span>
+
+
+<a href="#metador_core.harvester.HarvesterMetaMixin" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code>type</code></p>
+
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">HarvesterMetaMixin</span><span class="p">(</span><span class="nb">type</span><span class="p">):</span>
+    <span class="n">_args_partials</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Type</span><span class="p">,</span> <span class="n">Type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="nd">@property</span>
+    <span class="c1"># @cache not needed, partials take care of that themselves</span>
+    <span class="k">def</span> <span class="nf">PartialArgs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Access the partial schema based on the current schema.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">HarvesterArgsPartial</span><span class="o">.</span><span class="n">get_partial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Args</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="metador_core.harvester.HarvesterMetaMixin.PartialArgs" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">PartialArgs</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#metador_core.harvester.HarvesterMetaMixin.PartialArgs" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">PartialArgs</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Access the partial schema based on the current schema.</p>
+  </div>
+
+</div>
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.Harvester" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">Harvester</span>
+
+
+<a href="#metador_core.harvester.Harvester" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><span title="abc.ABC">ABC</span></code></p>
+
+  
+      <p>Base class for metadata harvesters.</p>
+<p>A harvester is a class that can be instantiated to extract
+metadata according to some schema plugin (the returned schema
+must be defined as the <code>Plugin.returns</code> attribute)</p>
+<p>Override the inner <code>Harvester.Args</code> class with a subclass to add arguments.
+This works exactly like schema definition and is simply
+another pydantic model, so you can use both field and root
+validators to check whether the arguments are making sense.</p>
+<p>If all you need is getting a file path, consider using
+<code>FileHarvester</code>, which already defines a <code>filepath</code> argument.</p>
+<p>Override the <code>run()</code> method to implement the metadata harvesting
+based on a validated configuration located at <code>self.args</code>.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">Harvester</span><span class="p">(</span><span class="n">ABC</span><span class="p">,</span> <span class="n">metaclass</span><span class="o">=</span><span class="n">HarvesterMeta</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for metadata harvesters.</span>
+
+<span class="sd">    A harvester is a class that can be instantiated to extract</span>
+<span class="sd">    metadata according to some schema plugin (the returned schema</span>
+<span class="sd">    must be defined as the `Plugin.returns` attribute)</span>
+
+<span class="sd">    Override the inner `Harvester.Args` class with a subclass to add arguments.</span>
+<span class="sd">    This works exactly like schema definition and is simply</span>
+<span class="sd">    another pydantic model, so you can use both field and root</span>
+<span class="sd">    validators to check whether the arguments are making sense.</span>
+
+<span class="sd">    If all you need is getting a file path, consider using</span>
+<span class="sd">    `FileHarvester`, which already defines a `filepath` argument.</span>
+
+<span class="sd">    Override the `run()` method to implement the metadata harvesting</span>
+<span class="sd">    based on a validated configuration located at `self.args`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">Plugin</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="n">HarvesterPlugin</span><span class="p">]</span>
+
+    <span class="n">Args</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="n">HarvesterArgs</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Arguments to be passed to the harvester.&quot;&quot;&quot;</span>
+
+    <span class="n">args</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Harvester</span><span class="o">.</span><span class="n">Args</span><span class="p">,</span> <span class="n">HarvesterArgsPartial</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">schema</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Partial schema class returned by this harvester.</span>
+
+<span class="sd">        Provided for implementation convenience.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">schemas</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">returns</span><span class="o">.</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">Partial</span>
+
+    <span class="c1"># ----</span>
+    <span class="c1"># configuring and checking harvester instances:</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize harvester with (partial) configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">PartialArgs</span><span class="o">.</span><span class="n">parse_obj</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return copy of harvester with updated configuration.&quot;&quot;&quot;</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">PartialArgs</span><span class="o">.</span><span class="n">parse_obj</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">merged</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">merge_with</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="o">**</span><span class="n">merged</span><span class="o">.</span><span class="n">dict</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">(args=</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span>
+
+    <span class="k">def</span> <span class="nf">harvest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check provided arguments and run the harvester.</span>
+
+<span class="sd">        Call this when a harvester is configured and it should be executed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">from_partial</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">hname</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hname</span><span class="si">}</span><span class="s2"> configuration incomplete or invalid:</span><span class="se">\n</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+    <span class="c1"># ----</span>
+    <span class="c1"># to be overridden</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MetadataSchema</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Do the harvesting according to instance configuration and return metadata.</span>
+
+<span class="sd">        Override this method with your custom metadata harvesting logic, based</span>
+<span class="sd">        on configuration provided in `self.args`.</span>
+
+<span class="sd">        All actual, possibly time-intensive harvesting computations (accessing</span>
+<span class="sd">        resources, running external code, etc.) MUST be performed in this method.</span>
+
+<span class="sd">        Ensure that your harvester does not interfere with anything else, such</span>
+<span class="sd">        as other harvesters running on possibly the same data - open resources</span>
+<span class="sd">        such as files in read-only mode. You SHOULD avoid creating tempfiles, or</span>
+<span class="sd">        ensure that these are managed, fresh and cleaned up when you are done</span>
+<span class="sd">        (e.g. if you need to run external processes that dump outputs to a</span>
+<span class="sd">        file).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A fresh instance of type `self.schema` containing harvested metadata.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="metador_core.harvester.Harvester.Args" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">Args</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#metador_core.harvester.Harvester.Args" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Args</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="n">HarvesterArgs</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Arguments to be passed to the harvester.</p>
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="metador_core.harvester.Harvester.schema" class="doc doc-heading">
+          <span class="doc doc-object-name doc-attribute-name">schema</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#metador_core.harvester.Harvester.schema" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">schema</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Partial schema class returned by this harvester.</p>
+<p>Provided for implementation convenience.</p>
+  </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.Harvester.__init__" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">__init__</span>
+
+
+<a href="#metador_core.harvester.Harvester.__init__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Initialize harvester with (partial) configuration.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize harvester with (partial) configuration.&quot;&quot;&quot;</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">PartialArgs</span><span class="o">.</span><span class="n">parse_obj</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.Harvester.__call__" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">__call__</span>
+
+
+<a href="#metador_core.harvester.Harvester.__call__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="fm">__call__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Return copy of harvester with updated configuration.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return copy of harvester with updated configuration.&quot;&quot;&quot;</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">PartialArgs</span><span class="o">.</span><span class="n">parse_obj</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">merged</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">merge_with</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="o">**</span><span class="n">merged</span><span class="o">.</span><span class="n">dict</span><span class="p">())</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.Harvester.harvest" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">harvest</span>
+
+
+<a href="#metador_core.harvester.Harvester.harvest" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">harvest</span><span class="p">()</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Check provided arguments and run the harvester.</p>
+<p>Call this when a harvester is configured and it should be executed.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">harvest</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check provided arguments and run the harvester.</span>
+
+<span class="sd">    Call this when a harvester is configured and it should be executed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">from_partial</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">hname</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hname</span><span class="si">}</span><span class="s2"> configuration incomplete or invalid:</span><span class="se">\n</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.Harvester.run" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">run</span>
+
+  
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-abstractmethod"><code>abstractmethod</code></small>
+  </span>
+
+<a href="#metador_core.harvester.Harvester.run" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">run</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">MetadataSchema</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Do the harvesting according to instance configuration and return metadata.</p>
+<p>Override this method with your custom metadata harvesting logic, based
+on configuration provided in <code>self.args</code>.</p>
+<p>All actual, possibly time-intensive harvesting computations (accessing
+resources, running external code, etc.) MUST be performed in this method.</p>
+<p>Ensure that your harvester does not interfere with anything else, such
+as other harvesters running on possibly the same data - open resources
+such as files in read-only mode. You SHOULD avoid creating tempfiles, or
+ensure that these are managed, fresh and cleaned up when you are done
+(e.g. if you need to run external processes that dump outputs to a
+file).</p>
+
+
+
+  <p><strong>Returns:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>
+                <code><a class="autorefs autorefs-internal" title="metador_core.schema.MetadataSchema" href="../schema/#metador_core.schema.MetadataSchema">MetadataSchema</a></code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>A fresh instance of type <code>self.schema</code> containing harvested metadata.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@abstractmethod</span>
+<span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MetadataSchema</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Do the harvesting according to instance configuration and return metadata.</span>
+
+<span class="sd">    Override this method with your custom metadata harvesting logic, based</span>
+<span class="sd">    on configuration provided in `self.args`.</span>
+
+<span class="sd">    All actual, possibly time-intensive harvesting computations (accessing</span>
+<span class="sd">    resources, running external code, etc.) MUST be performed in this method.</span>
+
+<span class="sd">    Ensure that your harvester does not interfere with anything else, such</span>
+<span class="sd">    as other harvesters running on possibly the same data - open resources</span>
+<span class="sd">    such as files in read-only mode. You SHOULD avoid creating tempfiles, or</span>
+<span class="sd">    ensure that these are managed, fresh and cleaned up when you are done</span>
+<span class="sd">    (e.g. if you need to run external processes that dump outputs to a</span>
+<span class="sd">    file).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A fresh instance of type `self.schema` containing harvested metadata.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.FileHarvester" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">FileHarvester</span>
+
+
+<a href="#metador_core.harvester.FileHarvester" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><a class="autorefs autorefs-internal" title="metador_core.harvester.Harvester" href="#metador_core.harvester.Harvester">Harvester</a></code></p>
+
+  
+      <p>Harvester for processing a single file path.</p>
+<p>The file path is not provided or set during <strong>init</strong>,
+but instead is passed during harvest_file.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">FileHarvester</span><span class="p">(</span><span class="n">Harvester</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Harvester for processing a single file path.</span>
+
+<span class="sd">    The file path is not provided or set during __init__,</span>
+<span class="sd">    but instead is passed during harvest_file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">class</span> <span class="nc">Args</span><span class="p">(</span><span class="n">Harvester</span><span class="o">.</span><span class="n">Args</span><span class="p">):</span>
+        <span class="n">filepath</span><span class="p">:</span> <span class="n">Path</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="metador_core.harvester.PGHarvester" class="doc doc-heading">
+          <span class="doc doc-object-name doc-class-name">PGHarvester</span>
+
+
+<a href="#metador_core.harvester.PGHarvester" class="headerlink" title="Permanent link">&para;</a></h2>
+
+
+  <div class="doc doc-contents ">
+          <p class="doc doc-class-bases">
+            Bases: <code><a class="autorefs autorefs-internal" title="metador_core.plugin.interface" href="../plugin/interface/#metador_core.plugin.interface">pg</a>.<a class="autorefs autorefs-internal" title="metador_core.plugin.interface.PluginGroup" href="../plugin/interface/#metador_core.plugin.interface.PluginGroup">PluginGroup</a>[<a class="autorefs autorefs-internal" title="metador_core.harvester.Harvester" href="#metador_core.harvester.Harvester">Harvester</a>]</code></p>
+
+  
+      <p>Harvester plugin group interface.</p>
+
+            <details class="quote">
+              <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span> <span class="nc">PGHarvester</span><span class="p">(</span><span class="n">pg</span><span class="o">.</span><span class="n">PluginGroup</span><span class="p">[</span><span class="n">Harvester</span><span class="p">]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Harvester plugin group interface.&quot;&quot;&quot;</span>
+
+    <span class="k">class</span> <span class="nc">Plugin</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">HARVESTER_GROUP_NAME</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">requires</span> <span class="o">=</span> <span class="p">[</span><span class="n">PluginRef</span><span class="p">(</span><span class="n">group</span><span class="o">=</span><span class="s2">&quot;plugingroup&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;schema&quot;</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">))]</span>
+        <span class="n">plugin_class</span> <span class="o">=</span> <span class="n">Harvester</span>
+        <span class="n">plugin_info_class</span> <span class="o">=</span> <span class="n">HarvesterPlugin</span>
+
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">plugin_deps</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugin</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">p</span> <span class="o">:=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">returns</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">p</span><span class="p">}</span>
+
+    <span class="nd">@overrides</span>
+    <span class="k">def</span> <span class="nf">check_plugin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ep_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">plugin</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">Harvester</span><span class="p">]):</span>
+        <span class="n">hv_ref</span> <span class="o">=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">returns</span>
+
+        <span class="n">schema_name</span> <span class="o">=</span> <span class="n">hv_ref</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="n">schemas</span><span class="p">[</span><span class="n">schema_name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">schema</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ep_name</span><span class="si">}</span><span class="s2">: Schema &#39;</span><span class="si">{</span><span class="n">schema_name</span><span class="si">}</span><span class="s2">&#39; not installed!&quot;</span><span class="p">)</span>
+
+        <span class="n">inst_ref</span> <span class="o">=</span> <span class="n">schema</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">ref</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">inst_ref</span><span class="o">.</span><span class="n">supports</span><span class="p">(</span><span class="n">hv_ref</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ep_name</span><span class="si">}</span><span class="s2">: Installed schema </span><span class="si">{</span><span class="n">inst_ref</span><span class="si">}</span><span class="s2"> incompatible with harvester schema </span><span class="si">{</span><span class="n">hv_ref</span><span class="si">}</span><span class="s2">!&quot;</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="nd">@overrides</span>
+    <span class="k">def</span> <span class="nf">init_plugin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugin</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add harvester to harvester lookup table.&quot;&quot;&quot;</span>
+        <span class="n">h_name</span> <span class="o">=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">returns</span>
+        <span class="k">if</span> <span class="n">schema</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema</span><span class="o">.</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">h_name</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">for_schema</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">schema</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MetadataSchema</span><span class="p">],</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">include_children</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">include_parents</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;List installed harvesters for the given metadata schema.</span>
+
+<span class="sd">        To extend the query to parent or child schemas, set `include_children`</span>
+<span class="sd">        and/or `include_parents` accordingly.</span>
+
+<span class="sd">        Harvesters for child schemas are always compatible with the schema.</span>
+<span class="sd">        (assuming correct implementation of the child schemas),</span>
+
+<span class="sd">        Harvesters for parent schemas can be incompatible in some circumstances</span>
+<span class="sd">        (specifically, if the parent accepts values for some field that are</span>
+<span class="sd">        forbidden in the more specialized schema).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            schema: schema name or class for which to return harvesters</span>
+<span class="sd">            include_children: Also include results for installed children</span>
+<span class="sd">            include_parents: Also include results for parent schemas</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Set of harvesters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">schema_name</span> <span class="o">=</span> <span class="n">_schema_arg</span><span class="p">(</span><span class="n">schema</span><span class="p">)</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema_name</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">include_children</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">schemas</span><span class="o">.</span><span class="n">children</span><span class="p">(</span><span class="n">schema_name</span><span class="p">):</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">for_schema</span><span class="p">(</span><span class="n">child</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">include_parents</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">parent</span> <span class="ow">in</span> <span class="n">schemas</span><span class="o">.</span><span class="n">parent_path</span><span class="p">(</span><span class="n">schema_name</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">for_schema</span><span class="p">(</span><span class="n">parent</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">ret</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+
+  
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.PGHarvester.init_plugin" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">init_plugin</span>
+
+
+<a href="#metador_core.harvester.PGHarvester.init_plugin" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">init_plugin</span><span class="p">(</span><span class="n">plugin</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Add harvester to harvester lookup table.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@overrides</span>
+<span class="k">def</span> <span class="nf">init_plugin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">plugin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Add harvester to harvester lookup table.&quot;&quot;&quot;</span>
+    <span class="n">h_name</span> <span class="o">=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">name</span>
+    <span class="n">schema</span> <span class="o">=</span> <span class="n">plugin</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">returns</span>
+    <span class="k">if</span> <span class="n">schema</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema</span><span class="o">.</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">h_name</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h3 id="metador_core.harvester.PGHarvester.for_schema" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">for_schema</span>
+
+
+<a href="#metador_core.harvester.PGHarvester.for_schema" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">for_schema</span><span class="p">(</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MetadataSchema</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">include_children</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_parents</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>List installed harvesters for the given metadata schema.</p>
+<p>To extend the query to parent or child schemas, set <code>include_children</code>
+and/or <code>include_parents</code> accordingly.</p>
+<p>Harvesters for child schemas are always compatible with the schema.
+(assuming correct implementation of the child schemas),</p>
+<p>Harvesters for parent schemas can be incompatible in some circumstances
+(specifically, if the parent accepts values for some field that are
+forbidden in the more specialized schema).</p>
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>schema</code></td>
+          <td>
+                <code><span title="typing.Union">Union</span>[str, <a class="autorefs autorefs-internal" title="metador_core.schema.MetadataSchema" href="../schema/#metador_core.schema.MetadataSchema">MetadataSchema</a>]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>schema name or class for which to return harvesters</p>
+            </div>
+          </td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+        <tr>
+          <td><code>include_children</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Also include results for installed children</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>include_parents</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Also include results for parent schemas</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+
+
+  <p><strong>Returns:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>
+                <code><span title="typing.Set">Set</span>[str]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Set of harvesters.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">for_schema</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MetadataSchema</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">include_children</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_parents</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;List installed harvesters for the given metadata schema.</span>
+
+<span class="sd">    To extend the query to parent or child schemas, set `include_children`</span>
+<span class="sd">    and/or `include_parents` accordingly.</span>
+
+<span class="sd">    Harvesters for child schemas are always compatible with the schema.</span>
+<span class="sd">    (assuming correct implementation of the child schemas),</span>
+
+<span class="sd">    Harvesters for parent schemas can be incompatible in some circumstances</span>
+<span class="sd">    (specifically, if the parent accepts values for some field that are</span>
+<span class="sd">    forbidden in the more specialized schema).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        schema: schema name or class for which to return harvesters</span>
+<span class="sd">        include_children: Also include results for installed children</span>
+<span class="sd">        include_parents: Also include results for parent schemas</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Set of harvesters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">schema_name</span> <span class="o">=</span> <span class="n">_schema_arg</span><span class="p">(</span><span class="n">schema</span><span class="p">)</span><span class="o">.</span><span class="n">Plugin</span><span class="o">.</span><span class="n">name</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_harvesters_for</span><span class="p">[</span><span class="n">schema_name</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">include_children</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">schemas</span><span class="o">.</span><span class="n">children</span><span class="p">(</span><span class="n">schema_name</span><span class="p">):</span>
+            <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">for_schema</span><span class="p">(</span><span class="n">child</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">include_parents</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">parent</span> <span class="ow">in</span> <span class="n">schemas</span><span class="o">.</span><span class="n">parent_path</span><span class="p">(</span><span class="n">schema_name</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">for_schema</span><span class="p">(</span><span class="n">parent</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ret</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h2 id="metador_core.harvester.def_sidecar_func" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">def_sidecar_func</span>
+
+
+<a href="#metador_core.harvester.def_sidecar_func" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="n">def_sidecar_func</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Return sidecar filename for a given file path using the default convention.</p>
+<p>This means, the path gets a '_meta.yaml' suffix attached.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">def_sidecar_func</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return sidecar filename for a given file path using the default convention.</span>
+
+<span class="sd">    This means, the path gets a &#39;_meta.yaml&#39; suffix attached.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="si">}</span><span class="s2">_meta.yaml&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h2 id="metador_core.harvester.metadata_loader" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">metadata_loader</span>
+
+
+<a href="#metador_core.harvester.metadata_loader" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="n">metadata_loader</span><span class="p">(</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">MetadataSchema</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">use_sidecar</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">sidecar_func</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Type</span><span class="p">[</span><span class="n">MetadataLoader</span><span class="p">]</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Return harvester for partial metadata files of specified schema.</p>
+<p>Will return an empty partial schema in case the file does not exist.</p>
+<p>The fields provided in the file must be valid, or an exception will be raised.
+This is to avoid the situation where a user intends to add or override
+harvester metadata, but the fields are silently ignored, leading to possible
+surprise and confusion.</p>
+<p>By default, the returned harvester will attempt to parse the provided file.</p>
+<p>Set <code>use_sidecar</code> if you intend to pass it filenames of data files, but
+want it to instead load metadata from a sidecar file.</p>
+<p>Provide a <code>sidecar_func</code> if you want to change the used sidecar file convention.
+By default, <code>def_sidecar_func</code> is used to transform the path.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">metadata_loader</span><span class="p">(</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">MetadataSchema</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">use_sidecar</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">sidecar_func</span><span class="o">=</span><span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Type</span><span class="p">[</span><span class="n">MetadataLoader</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return harvester for partial metadata files of specified schema.</span>
+
+<span class="sd">    Will return an empty partial schema in case the file does not exist.</span>
+
+<span class="sd">    The fields provided in the file must be valid, or an exception will be raised.</span>
+<span class="sd">    This is to avoid the situation where a user intends to add or override</span>
+<span class="sd">    harvester metadata, but the fields are silently ignored, leading to possible</span>
+<span class="sd">    surprise and confusion.</span>
+
+<span class="sd">    By default, the returned harvester will attempt to parse the provided file.</span>
+
+<span class="sd">    Set `use_sidecar` if you intend to pass it filenames of data files, but</span>
+<span class="sd">    want it to instead load metadata from a sidecar file.</span>
+
+<span class="sd">    Provide a `sidecar_func` if you want to change the used sidecar file convention.</span>
+<span class="sd">    By default, `def_sidecar_func` is used to transform the path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">used_sidecar_f</span> <span class="o">=</span> <span class="n">_identity</span>
+    <span class="k">if</span> <span class="n">use_sidecar</span><span class="p">:</span>
+        <span class="n">used_sidecar_f</span> <span class="o">=</span> <span class="n">sidecar_func</span> <span class="k">if</span> <span class="n">sidecar_func</span> <span class="k">else</span> <span class="n">def_sidecar_func</span>
+
+    <span class="k">class</span> <span class="nc">XLoader</span><span class="p">(</span><span class="n">MetadataLoader</span><span class="p">):</span>
+        <span class="n">_partial_schema</span> <span class="o">=</span> <span class="n">schema</span><span class="o">.</span><span class="n">Partial</span>
+        <span class="n">_sidecar_func</span> <span class="o">=</span> <span class="n">used_sidecar_f</span>
+
+    <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">schema</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">Loader&quot;</span>
+    <span class="n">XLoader</span><span class="o">.</span><span class="vm">__qualname__</span> <span class="o">=</span> <span class="n">XLoader</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="k">return</span> <span class="n">XLoader</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h2 id="metador_core.harvester.configure" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">configure</span>
+
+
+<a href="#metador_core.harvester.configure" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="n">configure</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">harvesters</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Harvester</span><span class="p">,</span> <span class="n">Type</span><span class="p">[</span><span class="n">Harvester</span><span class="p">]],</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Harvester</span><span class="p">,</span> <span class="n">Type</span><span class="p">[</span><span class="n">Harvester</span><span class="p">]]</span>
+<span class="p">)</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Given a sequence of harvesters, configure them all at once.</p>
+<p>Can be used to set the same parameter in all of them easily.</p>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">configure</span><span class="p">(</span><span class="o">*</span><span class="n">harvesters</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Harvester</span><span class="p">,</span> <span class="n">Type</span><span class="p">[</span><span class="n">Harvester</span><span class="p">]],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Given a sequence of harvesters, configure them all at once.</span>
+
+<span class="sd">    Can be used to set the same parameter in all of them easily.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">h</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="n">harvesters</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h2 id="metador_core.harvester.file_harvester_pipeline" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">file_harvester_pipeline</span>
+
+
+<a href="#metador_core.harvester.file_harvester_pipeline" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="n">file_harvester_pipeline</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">hvs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">FileHarvester</span><span class="p">,</span> <span class="n">Type</span><span class="p">[</span><span class="n">FileHarvester</span><span class="p">]]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Path</span><span class="p">],</span> <span class="n">Any</span><span class="p">]</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Generate a harvesting pipeline for a file.</p>
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>hvs</code></td>
+          <td>
+                <code><span title="typing.Union">Union</span>[<a class="autorefs autorefs-internal" title="metador_core.harvester.FileHarvester" href="#metador_core.harvester.FileHarvester">FileHarvester</a>, <span title="typing.Type">Type</span>[<a class="autorefs autorefs-internal" title="metador_core.harvester.FileHarvester" href="#metador_core.harvester.FileHarvester">FileHarvester</a>]]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>FileHarvester classes or pre-configured instances to use.
+The passed objects must be preconfigured as needed,
+except for fixing a filepath (it will be overwritten).</p>
+            </div>
+          </td>
+          <td>
+                <code>()</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+
+
+  <p><strong>Returns:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>
+                <code><span title="typing.Callable">Callable</span>[[<span title="pathlib.Path">Path</span>], <span title="typing.Any">Any</span>]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Function that takes a file path and will return</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+                <code><span title="typing.Callable">Callable</span>[[<span title="pathlib.Path">Path</span>], <span title="typing.Any">Any</span>]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>the harvesters configured for the passed path.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">file_harvester_pipeline</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">hvs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">FileHarvester</span><span class="p">,</span> <span class="n">Type</span><span class="p">[</span><span class="n">FileHarvester</span><span class="p">]]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Path</span><span class="p">],</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a harvesting pipeline for a file.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        hvs: FileHarvester classes or pre-configured instances to use.</span>
+<span class="sd">            The passed objects must be preconfigured as needed,</span>
+<span class="sd">            except for fixing a filepath (it will be overwritten).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Function that takes a file path and will return</span>
+<span class="sd">        the harvesters configured for the passed path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">path</span><span class="p">:</span> <span class="n">configure</span><span class="p">(</span><span class="o">*</span><span class="n">hvs</span><span class="p">,</span> <span class="n">filepath</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+
+<h2 id="metador_core.harvester.harvest" class="doc doc-heading">
+          <span class="doc doc-object-name doc-function-name">harvest</span>
+
+
+<a href="#metador_core.harvester.harvest" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="n">harvest</span><span class="p">(</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">S</span><span class="p">],</span>
+    <span class="n">sources</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">Harvester</span><span class="p">]],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">ignore_invalid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">return_partial</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">S</span>
+</code></pre></div>
+
+  <div class="doc doc-contents ">
+  
+      <p>Run a harvesting pipeline and return combined results.</p>
+<p>Will run the harvesters in the passed order, combining results.</p>
+<p>In general you can expect that if two harvesters provide the same field,
+the newer value by a later harvester will overwrite an existing one from an
+earlier harvester, or the values are combined in a suitable way.</p>
+<p>If converting some Harvester result to the desired schema fails,
+a <code>ValidationError</code> will be raised.  To change that behaviour,
+set <code>ignore_invalid</code>, will make sure that suitable fields are still used,
+even if the given object as a whole is not fully parsable.</p>
+<p>Note that <code>ignore_invalid</code> only affects the conversion AFTER running the
+harvesters, it does NOT affect the way the harvesters treat invalid metadata.</p>
+<p>By default, it is assumed that the result of the whole pipeline can be
+converted into a fully valid non-partial schema instance.
+If this final conversion fails, an exception will be raised.
+To prevent this conversion, set <code>return_partial</code>. In that case, you will
+get the partial instance as-is and can manually call <code>from_partial()</code>.</p>
+
+
+
+  <p><strong>Parameters:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Description</th>
+        <th>Default</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td><code>schema</code></td>
+          <td>
+                <code><span title="typing.Type">Type</span>[<span title="metador_core.harvester.S">S</span>]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Class of schema to be returned.</p>
+            </div>
+          </td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+        <tr>
+          <td><code>sources</code></td>
+          <td>
+                <code><span title="typing.Iterable">Iterable</span>[<span title="typing.Union">Union</span>[<span title="pathlib.Path">Path</span>, <a class="autorefs autorefs-internal" title="metador_core.harvester.Harvester" href="#metador_core.harvester.Harvester">Harvester</a>]]</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>List of sources (Paths or Harvester instances).</p>
+            </div>
+          </td>
+          <td>
+              <em>required</em>
+          </td>
+        </tr>
+        <tr>
+          <td><code>ignore_invalid</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Whether to ignore invalid fields in Harvester outputs.</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>return_partial</code></td>
+          <td>
+                <code>bool</code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Whether to return raw partial instance (default: False).</p>
+            </div>
+          </td>
+          <td>
+                <code>False</code>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+
+
+  <p><strong>Returns:</strong></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>
+                <code><span title="metador_core.harvester.S">S</span></code>
+          </td>
+          <td>
+            <div class="doc-md-description">
+              <p>Metadata object with combined results.</p>
+            </div>
+          </td>
+        </tr>
+    </tbody>
+  </table>
+
+          <details class="quote">
+            <summary>Source code in <code>src/metador_core/harvester/__init__.py</code></summary>
+            <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">harvest</span><span class="p">(</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Type</span><span class="p">[</span><span class="n">S</span><span class="p">],</span>
+    <span class="n">sources</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">Harvester</span><span class="p">]],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">ignore_invalid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">return_partial</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">S</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run a harvesting pipeline and return combined results.</span>
+
+<span class="sd">    Will run the harvesters in the passed order, combining results.</span>
+
+<span class="sd">    In general you can expect that if two harvesters provide the same field,</span>
+<span class="sd">    the newer value by a later harvester will overwrite an existing one from an</span>
+<span class="sd">    earlier harvester, or the values are combined in a suitable way.</span>
+
+<span class="sd">    If converting some Harvester result to the desired schema fails,</span>
+<span class="sd">    a `ValidationError` will be raised.  To change that behaviour,</span>
+<span class="sd">    set `ignore_invalid`, will make sure that suitable fields are still used,</span>
+<span class="sd">    even if the given object as a whole is not fully parsable.</span>
+
+<span class="sd">    Note that `ignore_invalid` only affects the conversion AFTER running the</span>
+<span class="sd">    harvesters, it does NOT affect the way the harvesters treat invalid metadata.</span>
+
+<span class="sd">    By default, it is assumed that the result of the whole pipeline can be</span>
+<span class="sd">    converted into a fully valid non-partial schema instance.</span>
+<span class="sd">    If this final conversion fails, an exception will be raised.</span>
+<span class="sd">    To prevent this conversion, set `return_partial`. In that case, you will</span>
+<span class="sd">    get the partial instance as-is and can manually call `from_partial()`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        schema: Class of schema to be returned.</span>
+<span class="sd">        sources: List of sources (Paths or Harvester instances).</span>
+<span class="sd">        ignore_invalid: Whether to ignore invalid fields in Harvester outputs.</span>
+<span class="sd">        return_partial: Whether to return raw partial instance (default: False).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Metadata object with combined results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">cast</span><span class="p">(</span><span class="n">meta</span><span class="p">):</span>
+        <span class="c1"># configure cast to ignore or not ignore invalid fields</span>
+        <span class="k">return</span> <span class="n">schema</span><span class="o">.</span><span class="n">Partial</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="n">ignore_invalid</span><span class="o">=</span><span class="n">ignore_invalid</span><span class="p">)</span>
+
+    <span class="c1"># collect partial metadata (NOTE: in principle, this could be parallelized)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">cast</span><span class="p">(</span><span class="n">_harvest_source</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">s</span><span class="p">)),</span> <span class="n">sources</span><span class="p">)</span>
+
+    <span class="c1"># accumulate collected and casted results in provided order</span>
+    <span class="n">merged</span> <span class="o">=</span> <span class="n">schema</span><span class="o">.</span><span class="n">Partial</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="o">*</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="c1"># retrieve (completed) metadata model</span>
+    <span class="k">return</span> <span class="n">merged</span> <span class="k">if</span> <span class="n">return_partial</span> <span class="k">else</span> <span class="n">merged</span><span class="o">.</span><span class="n">from_partial</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+          </details>
+  </div>
+
+</div>
+
+
+
+  </div>
+
+  </div>
+
+</div>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12Z"/></svg>
+            Back to top
+          </button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../container/wrappers/" class="md-footer__link md-footer__link--prev" aria-label="Previous: wrappers" rel="prev">
+            <div class="md-footer__button md-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                wrappers
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="common/" class="md-footer__link md-footer__link--next" aria-label="Next: common" rel="next">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                common
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4Z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <!-- Copyright and theme information -->
+<div class="md-copyright">
+  
+  
+    Made with
+    <a
+      href="https://squidfunk.github.io/mkdocs-material/"
+      target="_blank" rel="noopener"
+    >
+      Material for MkDocs
+    </a>
+    <!-- added link to project template -->
+    and
+    <a
+      href="https://github.com/Materials-Data-Science-and-Informatics/fair-python-cookiecutter"
+      target="_blank" rel="noopener"
+    >
+      fair-python-cookiecutter
+    </a>
+    <!-- ------------------------------ -->
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/Materials-Data-Science-and-Informatics" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/Materials-Data-Science-and-Informatics" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M352 256c0 22.2-1.2 43.6-3.3 64H163.3c-2.2-20.4-3.3-41.8-3.3-64s1.2-43.6 3.3-64h185.4c2.2 20.4 3.3 41.8 3.3 64zm28.8-64h123.1c5.3 20.5 8.1 41.9 8.1 64s-2.8 43.5-8.1 64H380.8c2.1-20.6 3.2-42 3.2-64s-1.1-43.4-3.2-64zm112.6-32H376.7c-10-63.9-29.8-117.4-55.3-151.6 78.3 20.7 142 77.5 171.9 151.6zm-149.1 0H167.7c6.1-36.4 15.5-68.6 27-94.7 10.5-23.6 22.2-40.7 33.5-51.5C239.4 3.2 248.7 0 256 0s16.6 3.2 27.8 13.8c11.3 10.8 23 27.9 33.5 51.5 11.6 26 20.9 58.2 27 94.7zm-209 0H18.6c30-74.1 93.6-130.9 172-151.6-25.5 34.2-45.3 87.7-55.3 151.6zM8.1 192h123.1c-2.1 20.6-3.2 42-3.2 64s1.1 43.4 3.2 64H8.1C2.8 299.5 0 278.1 0 256s2.8-43.5 8.1-64zm186.6 254.6c-11.6-26-20.9-58.2-27-94.6h176.6c-6.1 36.4-15.5 68.6-27 94.6-10.5 23.6-22.2 40.7-33.5 51.5-11.2 10.7-20.5 13.9-27.8 13.9s-16.6-3.2-27.8-13.8c-11.3-10.8-23-27.9-33.5-51.5zM135.3 352c10 63.9 29.8 117.4 55.3 151.6-78.4-20.7-142-77.5-172-151.6h116.7zm358.1 0c-30 74.1-93.6 130.9-171.9 151.6 25.5-34.2 45.2-87.7 55.3-151.6h116.6z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    <script id="__config" type="application/json">{"base": "../../..", "features": ["content.action.edit", "content.action.view", "content.code.annotate", "header.autohide", "navigation.footer", "navigation.instant", "navigation.tabs", "navigation.tabs.sticky", "navigation.tracking", "navigation.top", "search.highlight", "search.suggest"], "search": "../../../assets/javascripts/workers/search.74e28a9f.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.220ee61c.min.js"></script>
+      
+    
+  </body>
+</html>
