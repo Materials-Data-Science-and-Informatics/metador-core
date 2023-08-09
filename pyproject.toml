@@ -1,7 +1,7 @@
 [tool.poetry]
 # ---- DO NOT EDIT, managed by somesy ----
 name = "metador-core"
-version = "0.1.0"
+version = "0.1.1"
 description = "Core of Metador, the metadata-first research data management framework."
 authors = ["Anton Pirogov <a.pirogov@fz-juelich.de>"]
 license = "MIT"
@@ -50,7 +50,7 @@ isodate = "^0.6.1"
 Pint = "^0.21"
 Pillow = "^9.1.1"
 python-magic = "^0.4.25"
-pandas = "^1.4.1"
+pandas = "^2.0.3"
 overrides = "^7.0.0"
 simple-parsing = "^0.0.20"
 phantom-types = "^2.1.0"
@@ -65,6 +65,7 @@ pytest-cov = "^4.1.0"
 hypothesis = "^6.58.0"
 frozendict = "^2.3.4"
 # somesy = {path = "../somesy", develop = true}
+notebook = "^7.0.2"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.4.2"
@@ -115,6 +116,7 @@ mkdocs-jupyter = "^0.24.2"
 'core.file.text.code__0.1.0'  = "metador_core.widget.common:CodeWidget"
 'core.file.text__0.1.0'  = "metador_core.widget.common:TextWidget"
 'core.file.json__0.1.0'  = "metador_core.widget.common:JSONWidget"
+'core.file.csv__0.1.0'  = "metador_core.widget.common:CSVWidget"
 'core.file.pdf__0.1.0'   = "metador_core.widget.common:PDFWidget"
 'core.file.image__0.1.0' = "metador_core.widget.common:ImageWidget"
 'core.file.audio__0.1.0' = "metador_core.widget.common:AudioWidget"

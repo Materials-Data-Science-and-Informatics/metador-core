@@ -4,8 +4,10 @@ These basically integrate many default widgets provided by panel/bokeh into Meta
 """
 
 import json
+from io import StringIO
 from typing import List, Set, Type
 
+import pandas as pd
 import panel as pn
 from overrides import overrides
 from panel.viewable import Viewable
@@ -55,6 +57,36 @@ class FileWidget(Widget):
 # wrap simple generic widgets from panel:
 
 # pass content:
+
+
+class CSVWidget(FileWidget):
+    class Plugin(FileWidget.Plugin):
+        name = "core.file.csv"
+        version = (0, 1, 0)
+
+    MIME_TYPES = {"text/csv", "text/tab-separated-values"}
+    FILE_EXTS = {".csv", ".tsv"}
+
+    @overrides
+    def show(self) -> Viewable:
+        df = pd.read_csv(
+            StringIO(self.file_data().decode("utf-8")),
+            sep=None,  # auto-infer csv/tsv
+            engine="python",  # mute warning
+            # smart date processing
+            parse_dates=True,
+            dayfirst=True,
+            cache_dates=True,
+        )
+        return pn.widgets.Tabulator(
+            df,
+            disabled=True,
+            layout="fit_data_table",
+            # NOTE: pagination looks buggy, table sometimes won't show up
+            # need to investigate that further, maybe it's a bug
+            # pagination="remote",
+            # page_size=10,
+        )
 
 
 class MarkdownWidget(FileWidget):

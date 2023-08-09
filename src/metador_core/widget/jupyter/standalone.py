@@ -40,7 +40,7 @@ def silence_flask():
 # As this is only used ad-hoc e.g. by a researcher playing in a notebook,
 # this should be not a problem ("serious" servers are implemented elsewhere!).
 
-DEFAULT_PANEL_EXTS = ["ace"]
+DEFAULT_PANEL_EXTS = ["ace", "tabulator"]
 
 host: str = "127.0.0.1"
 port: int = -1

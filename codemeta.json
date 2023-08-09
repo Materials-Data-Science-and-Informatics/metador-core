@@ -14,11 +14,11 @@
     "audience": [
         {
             "@type": "Audience",
-            "audienceType": "Developers"
+            "audienceType": "Science/Research"
         },
         {
             "@type": "Audience",
-            "audienceType": "Science/Research"
+            "audienceType": "Developers"
         }
     ],
     "author": [
@@ -99,7 +99,7 @@
             "identifier": "pandas",
             "name": "pandas",
             "runtimePlatform": "Python 3",
-            "version": "^1.4.1"
+            "version": "^2.0.3"
         },
         {
             "@type": "SoftwareApplication",
@@ -180,5 +180,5 @@
         }
     ],
     "url": "https://github.com/Materials-Data-Science-and-Informatics/metador-core",
-    "version": "0.1.0"
+    "version": "0.1.1"
 }
