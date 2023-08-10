@@ -78,7 +78,6 @@ repos:
       - id: reuse
 
   - repo: https://github.com/Materials-Data-Science-and-Informatics/somesy
-    rev: "111f006" # "0.1.0" TODO: set to tag once released
+    rev: 'v0.1.0'
     hooks:
       - id: somesy
-        files: '^somesy\.toml|pyproject\.toml$'
