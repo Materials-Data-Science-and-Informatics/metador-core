@@ -66,6 +66,7 @@ hypothesis = "^6.58.0"
 frozendict = "^2.3.4"
 # somesy = {path = "../somesy", develop = true}
 notebook = "^7.0.2"
+testbook = "^0.4.2"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.4.2"
