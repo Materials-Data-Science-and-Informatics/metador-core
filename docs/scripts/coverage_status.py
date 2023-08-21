@@ -24,7 +24,7 @@ def on_pre_build(config):
     """Generate coverage report if it is missing and create a badge."""
     if not Path("htmlcov").is_dir() or not Path(".coverage").is_file():
         log.info("Missing htmlcov or .coverage, running pytest to collect.")
-        pytest.main(["--cov", "--cov-report=html"])
+        pytest.main(["--cov=src", "--cov-report=html"])
     else:
         log.info("Using existing coverage data.")
 

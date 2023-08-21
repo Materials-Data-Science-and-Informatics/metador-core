@@ -5,7 +5,7 @@ import pytest
 from testbook import testbook
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def nb_cwd():
     """Fixture to change CWD to location of notebooks."""
     old = os.getcwd()
