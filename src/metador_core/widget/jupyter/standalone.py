@@ -40,7 +40,7 @@ def silence_flask():
 # As this is only used ad-hoc e.g. by a researcher playing in a notebook,
 # this should be not a problem ("serious" servers are implemented elsewhere!).
 
-DEFAULT_PANEL_EXTS = ["ace", "tabulator"]
+DEFAULT_PANEL_EXTS = ["ace", "tabulator", "mathjax"]
 
 host: str = "127.0.0.1"
 port: int = -1
@@ -67,7 +67,9 @@ def run(*, debug: bool = False, pn_exts: Optional[List[str]] = None):
 
     if not debug:
         silence_flask()
-    pn.extension(*(pn_exts or DEFAULT_PANEL_EXTS))  # required for panel within jupyter
+    pn.extension(
+        *(pn_exts or DEFAULT_PANEL_EXTS), inline=True
+    )  # required for panel within jupyter
 
     port = get_free_port()
     flask_base = f"http://{host}:{port}"
@@ -92,7 +94,7 @@ def run(*, debug: bool = False, pn_exts: Optional[List[str]] = None):
         flask_app.run(host=host, port=port)
 
     # launch
-    t_flask = Thread(target=run_flask)
-    t_bokeh = Thread(target=run_bokeh)
+    t_flask = Thread(target=run_flask, daemon=True)
+    t_bokeh = Thread(target=run_bokeh, daemon=True)
     t_flask.start()
     t_bokeh.start()

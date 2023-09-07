@@ -17,7 +17,7 @@ from overrides import overrides
 
 from ..util.diff import DiffNode, DirDiff
 from . import MetadorContainer, Packer
-from .utils import DirValidationErrors, check_metadata_file, embed_file
+from .utils import DirValidationErrors, check_metadata_file, pack_file
 
 BibMeta = Any
 TableMeta = Any
@@ -132,12 +132,12 @@ class GenericPacker(Packer):
                     elif path.name.lower().endswith((".jpg", ".jpeg", ".png")):
                         # embed image file with image-specific metadata
                         print("CREATE:", path, "->", key, "(image)")
-                        embed_file(mc, key, path)
+                        pack_file(mc, path, target=key)
                         # mc[key].meta["common_image"] = image_meta_for(path)
 
                     else:
                         # treat as opaque blob and add file metadata
                         print("CREATE:", path, "->", key, "(file)")
-                        embed_file(mc, key, path)
+                        pack_file(mc, path, target=key)
 
                     # mc[key].meta["common_file"] = file_meta_for(path)

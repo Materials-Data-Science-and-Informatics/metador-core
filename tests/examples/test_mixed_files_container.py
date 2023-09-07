@@ -1,6 +1,6 @@
 from metador_core.container import MetadorContainer
 from metador_core.harvester import file_harvester_pipeline, harvest, metadata_loader
-from metador_core.packer.utils import embed_file
+from metador_core.packer.utils import pack_file
 
 
 def test_pack(plugingroups_test, tutorialfiles, tmp_ds_path):
@@ -30,15 +30,15 @@ def test_pack(plugingroups_test, tutorialfiles, tmp_ds_path):
     with MetadorContainer(tmp_ds_path / "test.h5", "w") as m:
         m.meta["core.bib"] = BibMeta.parse_file(bibmeta_path)
 
-        node = embed_file(m, "foo/bar", imgfile_path, metadata=imgmeta)
+        node = pack_file(m, imgfile_path, target="foo/bar", metadata=imgmeta)
         node.meta[DBMeta] = DBMeta.show(group=1)
-        node = embed_file(m, "pdffile", pdffile_path)
+        node = pack_file(m, pdffile_path, target="pdffile")
         node.meta[DBMeta] = DBMeta.show(group=1, priority=10)
-        node = embed_file(m, "jsonfile", jsonfile_path)
+        node = pack_file(m, jsonfile_path)
         node.meta[DBMeta] = DBMeta()
-        node = embed_file(m, "mdfile", mdfile_path)
+        node = pack_file(m, mdfile_path)
         node.meta[DBMeta] = DBMeta()
-        node = embed_file(m, "htmlfile", htmlfile_path)
+        node = pack_file(m, htmlfile_path)
         node.meta[DBMeta] = DBMeta.show(
             [
                 DBMeta.widget(widget_name="core.file.text.code", group=2),

@@ -56,6 +56,7 @@ simple-parsing = "^0.0.20"
 phantom-types = "^2.1.0"
 panel = "^0.14.0"
 Flask = "^2.1.3"
+typer = {extras = ["all"], version = "^0.9.0"}
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.19.0"
@@ -85,6 +86,9 @@ anybadge = "^1.14.0"
 black = "^23.7.0"
 mkdocs-jupyter = "^0.24.2"
 
+[tool.poetry.scripts]
+metador = "metador_core.cli:app"
+
 [tool.poetry.plugins.metador_plugingroup]
 # Metador supports defining custom validated plugin groups.
 # Here we define the default entities used in Metador.
@@ -101,11 +105,19 @@ mkdocs-jupyter = "^0.24.2"
 # These are optional and can be used freely, e.g. by some packer:
 'core.file__0.1.0' = "metador_core.schema.common.rocrate:FileMeta"
 'core.dir__0.1.0' = "metador_core.schema.common.rocrate:DirMeta"
+'core.org__0.1.0' = "metador_core.schema.common.rocrate:Organization"
+'core.person__0.1.0' = "metador_core.schema.common.rocrate:Person"
 'core.bib__0.1.0' = "metador_core.schema.common:BibMeta"
 'core.imagefile__0.1.0' = "metador_core.schema.common:ImageFileMeta"
 'core.table__0.1.0' = "metador_core.schema.common:TableMeta"
 # This one needed for configuring the generic dashboard for a container:
 'core.dashboard__0.1.0' = "metador_core.widget.dashboard:DashboardConf"
+# Example schemas:
+'example.matsci.material__0.1.0' = "metador_core.schema.examples.matsci:Material"
+'example.matsci.method__0.1.0' = "metador_core.schema.examples.matsci:Method"
+'example.matsci.instrument__0.1.0' = "metador_core.schema.examples.matsci:Instrument"
+'example.matsci.specimen__0.1.0' = "metador_core.schema.examples.matsci:Specimen"
+'example.matsci.info__0.1.0' = "metador_core.schema.examples.matsci:MatsciFileInfo"
 
 [tool.poetry.plugins.metador_harvester]
 'core.file.generic__0.1.0' = "metador_core.harvester.common:FileMetaHarvester"

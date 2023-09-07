@@ -1,19 +1,24 @@
 """The Metador widget server."""
+from __future__ import annotations
+
 import io
-from typing import Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 import numpy as np
+import panel as pn
 from bokeh.application import Application
 from bokeh.application.handlers.function import FunctionHandler
 from bokeh.document import Document
 from bokeh.embed import server_document
 from bokeh.server.server import Server
 from flask import Blueprint, request, send_file
-from panel.viewable import Viewable
 from tornado.ioloop import IOLoop
 from werkzeug.exceptions import BadRequest, NotFound
 
 from metador_core.container import ContainerProxy, MetadorContainer, MetadorNode
+
+if TYPE_CHECKING:
+    from panel.viewable import Viewable
 
 
 class WidgetServer:
@@ -191,6 +196,11 @@ class WidgetServer:
         """Run bokeh server with the registered apps (will block the current process)."""
         # kwargs["io_loop"] = kwargs.get("io_loop") or IOLoop()
         # server = pn.io.server.get_server(self._bokeh_apps, **kwargs)
+
+        # NOTE: this loads unused extensions (e.g. ace) that are not even listed?!
+        # pn.extension(inline=True)
+        # This seems to work ok:
+        pn.config.inline = True
 
         kwargs["loop"] = kwargs.get("io_loop") or IOLoop()
         server = Server(self._bokeh_apps, **kwargs)

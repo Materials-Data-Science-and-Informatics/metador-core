@@ -53,11 +53,11 @@ def check_metadata_file(path: Path, **kwargs):
 FileMeta = schemas.get("core.file", (0, 1, 0))
 
 
-def embed_file(
+def pack_file(
     node: Union[MetadorContainer, MetadorGroup],
-    node_path: str,
     file_path: Union[Path, str],
     *,
+    target: Optional[str] = None,
     metadata: Optional[MetadataSchema] = None,
 ) -> MetadorDataset:
     """Embed a file, adding minimal generic metadata to it.
@@ -66,8 +66,8 @@ def embed_file(
 
     Args:
         node: Container where to embed the file contents
-        node_path: Fresh path in container where to place the file
         file_path: Path of an existing file to be embedded
+        target: Fresh path in container where to place the file
         metadata: If provided, will attach this instead of harvesting defaults.
 
     Returns:
@@ -75,8 +75,12 @@ def embed_file(
     """
     file_path = Path(file_path)
 
+    # if no target path given, use <current node path / file name>
+    if not target:
+        target = file_path.name
+
     # check container and file
-    if node_path in node:
+    if target in node:
         raise ValueError(f"Path '{node}' already exists in given container or group!")
     if not file_path.is_file():
         raise ValueError(f"Path '{file_path}' does not look like an existing file!")
@@ -97,7 +101,7 @@ def embed_file(
         raise ValueError(msg)
 
     data = _h5_wrap_bytes(file_path.read_bytes())
-    ret = node.create_dataset(node_path, data=data)
+    ret = node.create_dataset(target, data=data)
 
     # set file metadata @id to be relative to dataset root just like RO Crate wants
     metadata.id_ = urllib.parse.quote(f".{ret.name}")

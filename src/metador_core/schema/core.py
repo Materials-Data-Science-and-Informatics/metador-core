@@ -72,8 +72,9 @@ class SchemaBase(BaseModelPlus):
             model = UndefVersion._unwrap(model) or model
 
             # custom extra key to connect back to metador schema:
-            if pgi := model.__dict__.get("Plugin"):
-                schema[KEY_SCHEMA_PG] = pgi.ref().copy(exclude={"group"}).json_dict()
+            # TODO: does not always work?!
+            # if pgi := model.__dict__.get("Plugin"):
+            #     schema[KEY_SCHEMA_PG] = pgi.ref().copy(exclude={"group"}).json_dict()
 
             # enrich schema with descriptions retrieved from e.g. docstrings
             if model is not MetadataSchema:

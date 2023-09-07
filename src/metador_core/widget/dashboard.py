@@ -333,7 +333,7 @@ def get_grp_row(
             server=server,
             container_id=container_id,
         ),
-        pn.layout.Divider(margin=(100, 0, 20, 0)) if divider == True else None,
+        pn.layout.Divider(margin=(100, 0, 20, 0)) if divider else None,
         flex_direction="column",
         justify_content="space-evenly",
         align_content="space-evenly",
@@ -417,7 +417,7 @@ class Dashboard:
                 get_grp_row(
                     idx=idx,
                     widget_group=widget_group,
-                    divider=True,
+                    divider=False,  # does not work offline with panel >= 1.0?
                     server=self._server,
                     container_id=self._container_id,
                 )

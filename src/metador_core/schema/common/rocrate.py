@@ -49,6 +49,10 @@ class DirMeta(schemaorg.Dataset):
 
 @rocrate(type="Organization")
 class Organization(schemaorg.Organization):
+    class Plugin:
+        name = "core.org"
+        version = (0, 1, 0)
+
     @validator("id_")
     def check_id(cls, v):
         if not v:
@@ -60,6 +64,10 @@ class Organization(schemaorg.Organization):
 
 @rocrate(type="Person")
 class Person(schemaorg.Person):
+    class Plugin:
+        name = "core.person"
+        version = (0, 1, 0)
+
     @validator("id_")
     def check_id(cls, v):
         if not v:

@@ -119,10 +119,7 @@ class BibMeta(DirMeta):
         version = (0, 1, 0)
 
     author: List[Person]
-    """List of authors (creators of the actual content)."""
-
-    creator: Person
-    """Person who created the container."""
+    """List of authors (creators of the actual data)."""
 
 
 class ImageFileMeta(FileMeta):

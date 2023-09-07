@@ -78,15 +78,19 @@ class CSVWidget(FileWidget):
             dayfirst=True,
             cache_dates=True,
         )
-        return pn.widgets.Tabulator(
+        return pn.widgets.DataFrame(
             df,
             disabled=True,
-            layout="fit_data_table",
-            # NOTE: pagination looks buggy, table sometimes won't show up
-            # need to investigate that further, maybe it's a bug
-            # pagination="remote",
-            # page_size=10,
         )
+        # return pn.widgets.Tabulator(
+        #     df,
+        #     disabled=True,
+        #     layout="fit_data_table",
+        #     # NOTE: pagination looks buggy, table sometimes won't show up
+        #     # need to investigate that further, maybe it's a bug
+        #     # pagination="remote",
+        #     # page_size=10,
+        # )
 
 
 class MarkdownWidget(FileWidget):
@@ -130,6 +134,7 @@ class CodeWidget(FileWidget):
         return obj.encodingFormat.startswith("text")
 
     def show(self) -> Viewable:
+        # return pn.widgets.CodeEditor( # in Panel > 1.0
         return pn.widgets.Ace(
             filename=self._meta.filename,
             readonly=True,
