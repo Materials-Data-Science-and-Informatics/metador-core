@@ -4,7 +4,11 @@ Here we provide notes that summarize the most important changes in each released
 
 Please consult the changelog to inform yourself about breaking changes and security issues.
 
-## [v0.1.1](https://github.com/Materials-Data-Science-and-Informatics/metador-core/tree/v0.1.1) <small>(2023-??-??)</small> { id="0.1.1" }
+## [v0.1.2](https://github.com/Materials-Data-Science-and-Informatics/metador-core/tree/v0.1.2) <small>(2023-??-??)</small> { id="0.1.2" }
+
+* minor tweaks and fixes
+
+## [v0.1.1](https://github.com/Materials-Data-Science-and-Informatics/metador-core/tree/v0.1.1) <small>(2023-09-11)</small> { id="0.1.1" }
 
 * added `metador` CLI tools for self-diagnosis (other features can be added in the future)
 * added CSV/TSV widget

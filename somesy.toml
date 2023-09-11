@@ -1,6 +1,6 @@
 [project]
 name = "metador-core"
-version = "0.1.1"
+version = "0.1.2"
 description = "Core of Metador, the metadata-first research data management framework."
 license = "MIT"
 repository = "https://github.com/Materials-Data-Science-and-Informatics/metador-core"
