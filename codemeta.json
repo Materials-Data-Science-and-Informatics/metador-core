@@ -41,9 +41,16 @@
         "rdm"
     ],
     "license": "http://spdx.org/licenses/MIT",
+    "maintainer": {
+        "@type": "Person",
+        "email": "a.pirogov@fz-juelich.de",
+        "familyName": "Pirogov",
+        "givenName": "Anton"
+    },
     "name": "metador-core",
     "operatingSystem": "POSIX > Linux",
     "runtimePlatform": "Python 3",
+    "softwareHelp": "https://github.com/Materials-Data-Science-and-Informatics/metador-core",
     "softwareRequirements": [
         {
             "@type": "SoftwareApplication",
@@ -78,7 +85,7 @@
             "identifier": "h5py",
             "name": "h5py",
             "runtimePlatform": "Python 3",
-            "version": "^3.8.0"
+            "version": "^3.10.0"
         },
         {
             "@type": "SoftwareApplication",
@@ -114,6 +121,13 @@
             "name": "panel",
             "runtimePlatform": "Python 3",
             "version": "^0.14.0"
+        },
+        {
+            "@type": "SoftwareApplication",
+            "identifier": "param",
+            "name": "param",
+            "runtimePlatform": "Python 3",
+            "version": "^1.13.0"
         },
         {
             "@type": "SoftwareApplication",

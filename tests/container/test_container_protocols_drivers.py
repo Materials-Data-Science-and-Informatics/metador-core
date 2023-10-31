@@ -130,7 +130,7 @@ def test_h5filelike(tmp_mc_path, mc_driver):
 
     f = mc_driver.value(tmp_mc_path, "r")
     f.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         f["a"]  # access to a closed file should not work
 
 

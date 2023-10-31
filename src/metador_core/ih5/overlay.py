@@ -117,7 +117,7 @@ class IH5Node:
     def _guard_open(self):
         """Check that the record is open (if it was closed, the files are gone)."""
         if not self:
-            raise ValueError("Record is not open or accessible!")
+            raise KeyError("Record is not open or accessible!")
 
     def _guard_read_only(self):
         if self._is_read_only:
