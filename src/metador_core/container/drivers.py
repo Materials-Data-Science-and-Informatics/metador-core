@@ -5,7 +5,7 @@ from typing import Any, Optional, Type, Union, cast
 import h5py
 
 from ..ih5.container import IH5Record
-from .protocols import H5FileLike, OpenMode
+from ..util.types import H5FileLike, OpenMode
 
 
 class MetadorDriverEnum(Enum):

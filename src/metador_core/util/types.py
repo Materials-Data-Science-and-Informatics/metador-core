@@ -20,7 +20,12 @@ from typing import (
     runtime_checkable,
 )
 
-from typing_extensions import get_args
+from .typing import get_args
+
+OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
+"""User open modes that can be passed during initialization."""
+
+OPEN_MODES = list(get_args(OpenMode))
 
 
 @runtime_checkable
@@ -138,11 +143,6 @@ class H5GroupLike(H5NodeLike, Protocol):  # pragma: no cover
         ...
 
 
-OpenMode = Literal["r", "r+", "a", "w", "w-", "x"]
-"""User open modes that can be passed during initialization."""
-_OPEN_MODES = list(get_args(OpenMode))
-
-
 @runtime_checkable
 class H5FileLike(H5GroupLike, Protocol):  # pragma: no cover
     """A HDF5 File acts like the root group and has some extra features."""
@@ -163,4 +163,4 @@ class H5FileLike(H5GroupLike, Protocol):  # pragma: no cover
         ...
 
 
-__all__ = ["H5FileLike", "H5GroupLike", "H5DatasetLike", "H5NodeLike", "OpenMode"]
+__all__ = ["H5FileLike", "H5GroupLike", "H5DatasetLike", "H5NodeLike"]

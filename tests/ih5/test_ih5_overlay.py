@@ -560,7 +560,7 @@ def test_not_open_fail(dummy_ds_factory):
     ds.close()
 
     def assert_ex(f):
-        with pytest.raises(ValueError) as e:
+        with pytest.raises(KeyError) as e:
             f()
         assert str(e).lower().find("not open") >= 0
 

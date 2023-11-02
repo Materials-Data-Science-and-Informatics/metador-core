@@ -6,10 +6,10 @@ from typing import Any, Dict, MutableMapping, Optional, Set, Type, Union
 import h5py
 import wrapt
 
+from ..util.types import H5DatasetLike, H5FileLike, H5GroupLike, H5NodeLike, OpenMode
 from . import utils as M
 from .drivers import MetadorDriver, to_h5filelike
 from .interface import MetadorContainerTOC, MetadorMeta, NodeAcl, NodeAclFlags
-from .protocols import H5DatasetLike, H5FileLike, H5GroupLike, H5NodeLike, OpenMode
 
 
 class UnsupportedOperationError(AttributeError):

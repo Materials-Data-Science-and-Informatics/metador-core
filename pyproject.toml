@@ -160,6 +160,7 @@ licensecheck = "licensecheck"  # run this when you add new deps
 addopts = "--cov-report=term-missing:skip-covered"
 filterwarnings = [
     "ignore::DeprecationWarning:bokeh.core.*",
+    "ignore::DeprecationWarning:jupyter_client.*",
 ]
 
 [tool.coverage.run]

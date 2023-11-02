@@ -24,10 +24,10 @@ from typing import (
 import h5py
 import numpy as np
 
-from ..container.protocols import H5DatasetLike
+from ..util.types import H5DatasetLike
 
 if TYPE_CHECKING:
-    from ..container.protocols import H5GroupLike
+    from ..util.types import H5GroupLike
     from .record import IH5Record
 else:
     IH5Record = Any
@@ -346,8 +346,11 @@ class IH5InnerNode(IH5Node):
     def get(self, key: str, default=None):
         try:
             return self[key]
-        except KeyError:
-            return default
+        except KeyError as e:
+            if str(e).find("not open") < 0:
+                return default
+            else:
+                raise
 
     def __getitem__(self, key: str):
         self._guard_open()

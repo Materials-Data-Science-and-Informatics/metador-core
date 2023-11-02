@@ -23,9 +23,9 @@ import h5py
 from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Annotated, Final
 
-from ..container.protocols import _OPEN_MODES, OpenMode
 from ..schema.types import QualHashsumStr
 from ..util.hashsums import qualified_hashsum
+from ..util.types import OPEN_MODES, OpenMode
 from .overlay import IH5Group, h5_copy_from_to
 
 # the magic string we use to identify a valid container
@@ -472,7 +472,7 @@ class IH5Record(IH5Group):
             paths = None
             path: Path = Path(record)
 
-        if mode not in _OPEN_MODES:
+        if mode not in OPEN_MODES:
             raise ValueError(f"Unknown file open mode: {mode}")
 
         if mode[0] == "w" or mode == "x":

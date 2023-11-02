@@ -30,6 +30,7 @@ from ..plugins import schemas
 from ..schema import MetadataSchema
 from ..schema.plugins import PluginPkgMeta, PluginRef
 from ..schema.types import SemVerTuple
+from ..util.types import H5DatasetLike, H5FileLike, H5GroupLike
 from . import utils as M
 from .drivers import (
     METADOR_DRIVERS,
@@ -38,7 +39,6 @@ from .drivers import (
     get_driver_type,
     get_source,
 )
-from .protocols import H5DatasetLike, H5FileLike, H5GroupLike
 
 if TYPE_CHECKING:
     from .wrappers import MetadorContainer, MetadorNode
