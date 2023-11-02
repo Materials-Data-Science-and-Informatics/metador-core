@@ -64,8 +64,8 @@
             <a id="indexLink" class="nav" href="covindex.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="d_01dadae4b3fcdebb_skeleton_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.3.1">coverage.py v7.3.1</a>,
-            created at 2023-09-11 11:02 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.3.2">coverage.py v7.3.2</a>,
+            created at 2023-11-02 09:33 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"/>
@@ -105,9 +105,9 @@
     <p class="run"><span class="n"><a id="t23" href="#t23">23</a></span><span class="t"><span class="key">from</span> <span class="nam">pydantic</span> <span class="key">import</span> <span class="nam">BaseModel</span><span class="op">,</span> <span class="nam">Field</span><span class="op">,</span> <span class="nam">PrivateAttr</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t24" href="#t24">24</a></span><span class="t"><span class="key">from</span> <span class="nam">typing_extensions</span> <span class="key">import</span> <span class="nam">Annotated</span><span class="op">,</span> <span class="nam">Final</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t25" href="#t25">25</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">container</span><span class="op">.</span><span class="nam">protocols</span> <span class="key">import</span> <span class="nam">_OPEN_MODES</span><span class="op">,</span> <span class="nam">OpenMode</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">schema</span><span class="op">.</span><span class="nam">types</span> <span class="key">import</span> <span class="nam">QualHashsumStr</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">util</span><span class="op">.</span><span class="nam">hashsums</span> <span class="key">import</span> <span class="nam">qualified_hashsum</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t26" href="#t26">26</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">schema</span><span class="op">.</span><span class="nam">types</span> <span class="key">import</span> <span class="nam">QualHashsumStr</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t27" href="#t27">27</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">util</span><span class="op">.</span><span class="nam">hashsums</span> <span class="key">import</span> <span class="nam">qualified_hashsum</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t28" href="#t28">28</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="op">.</span><span class="nam">util</span><span class="op">.</span><span class="nam">types</span> <span class="key">import</span> <span class="nam">OPEN_MODES</span><span class="op">,</span> <span class="nam">OpenMode</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t29" href="#t29">29</a></span><span class="t"><span class="key">from</span> <span class="op">.</span><span class="nam">overlay</span> <span class="key">import</span> <span class="nam">IH5Group</span><span class="op">,</span> <span class="nam">h5_copy_from_to</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t30" href="#t30">30</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t31" href="#t31">31</a></span><span class="t"><span class="com"># the magic string we use to identify a valid container</span>&nbsp;</span><span class="r"></span></p>
@@ -554,7 +554,7 @@
     <p class="run"><span class="n"><a id="t472" href="#t472">472</a></span><span class="t">            <span class="nam">paths</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t473" href="#t473">473</a></span><span class="t">            <span class="nam">path</span><span class="op">:</span> <span class="nam">Path</span> <span class="op">=</span> <span class="nam">Path</span><span class="op">(</span><span class="nam">record</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t474" href="#t474">474</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t475" href="#t475">475</a></span><span class="t">        <span class="key">if</span> <span class="nam">mode</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">_OPEN_MODES</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t475" href="#t475">475</a></span><span class="t">        <span class="key">if</span> <span class="nam">mode</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">OPEN_MODES</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t476" href="#t476">476</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span><span class="str">f"Unknown file open mode: {mode}"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t477" href="#t477">477</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t478" href="#t478">478</a></span><span class="t">        <span class="key">if</span> <span class="nam">mode</span><span class="op">[</span><span class="num">0</span><span class="op">]</span> <span class="op">==</span> <span class="str">"w"</span> <span class="key">or</span> <span class="nam">mode</span> <span class="op">==</span> <span class="str">"x"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -743,8 +743,8 @@
             <a id="indexLink" class="nav" href="covindex.html">&Hat; index</a> &nbsp; &nbsp;
             <a id="nextFileLink" class="nav" href="d_01dadae4b3fcdebb_skeleton_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
-            <a class="nav" href="https://coverage.readthedocs.io/en/7.3.1">coverage.py v7.3.1</a>,
-            created at 2023-09-11 11:02 +0000
+            <a class="nav" href="https://coverage.readthedocs.io/en/7.3.2">coverage.py v7.3.2</a>,
+            created at 2023-11-02 09:33 +0000
         </p>
     </div>
 </footer>
